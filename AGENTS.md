@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents working in the OpenBeavs v2 repository. OpenBeavs is the OSU AI agent platform: a hub that registers, secures, and relays messages to A2A agents. Read this file fully before making changes.
 
-## 🧭 Core Principles & Persona
+##  Core Principles & Persona
 
 All agents in this repository operate under a shared set of baseline instructions:
 
@@ -10,7 +10,7 @@ All agents in this repository operate under a shared set of baseline instruction
 * **Deterministic Tools:** Rely heavily on validated tool execution rather than generalized LLM assumptions.
 * **Error Handling:** Gracefully log failures and notify the orchestrator when a task cannot be completed.
 
-## 🚫 Git rules (hard constraints)
+##  Git rules (hard constraints)
 
 - **Never commit.** Do not run `git commit`, `git commit --amend`, or any command that creates a commit.
 - Do not push, merge, rebase, tag, force-push, or open pull requests.
