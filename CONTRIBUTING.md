@@ -42,20 +42,27 @@ List prerequisites, setup steps, environment variables/secrets handling, and how
 
 ### Prerequisites
 
-TBD
+* [Docker](https://www.docker.com/)
+* [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+* [Node.js and npm](https://nodejs.org/)
 
 ### Running the app Locally
 
-TBD
+Systems from the old repo will be migrated to this repo, however, their documentation iss outdated. Running the app locally will not be possible until development work is done.
 
-### Hanlding secrets
+### Handling secrets
 
 - Don't store or push secrets to the codebase
 - Use environment variables for secrets
 
 ## Branching & Workflow
 
-TBD
+Our workflow is GitFlow.
+Default branch is `main`.
+Branch naming should be simple and to the point, creating a new branch for a new feature.
+* Examples: `feature/agent-registration`, `bugfix/hub-div-center`
+Rebase when bringing in lots of changes at once, but try to avoid. Standard procedure is merge.
+After merging a branch, close/delete the feature branch.
 
 ## Issues & Planning
 
@@ -108,7 +115,17 @@ A change must have all of its test pass, along with review from other project me
 
 ## Contribution Norm
 
-State the floor (every contributor lands at least one piece of accepted work per sprint), where each kind of work lives (the repository, the issue tracker, the partner's system), and what accepted means for each.
+To ensure equitable distribution of effort and accountability across all sprints, our team commits to an explicit **contribution floor**:
+
+> **The Floor:** Every team member must land at least **one (1) piece of accepted work per sprint**. 
+
+### Work Classification & Acceptance Criteria
+| Work Type | Where It Lives | What "Accepted" Means |
+| :--- | :--- | :--- |
+| **Code & Unit Tests** | GitHub Repository (`OpenBeavs`) via feature branch & PR | • Meets the Definition of Done (DoD).<br>• All automated test suites and linting checks pass.<br>• Approved by at least one teammate other than the author.<br>• Successfully merged into `main`. |
+| **Architecture, ADRs & Technical Docs** | GitHub Repository (`docs/`, `ADR/`, or root `.md` files) | • Accurately documents design decisions, schemas, or guides.<br>• Reviewed and approved by the Quality Owner / team via PR. |
+| **Sprint Management, Spikes & User Stories** | GitHub Projects Board & GitHub Issues | • Issue contains clear acceptance criteria.<br>• Tangible deliverable attached (e.g., research findings, spiked code demo).<br>• Verified by the Project Manager (PM) and moved to **Done**. |
+| **Partner Deliverables & Client Specs** | Partner Meeting Notes / Shared Drive & Demo Sessions | • Demonstrated to project sponsor (**John V. Sweet**) during sprint reviews.<br>• Confirmed to meet sponsor requirements or acknowledged in meeting notes. |
 
 ## Pull Requests & Reviews
 
