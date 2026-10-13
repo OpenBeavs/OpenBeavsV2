@@ -111,7 +111,44 @@ Unit tests will be implemented using whatever testing framework is decided on. (
 
 ## Definition of Done
 
-A change must have all of its test pass, along with review from other project members before it is merged. (This will change as the project evolves)
+A change is ready to merge when it meets its acceptance criteria,
+passes the applicable checks below, and receives approval from at
+least one team member other than the author. Code contributions count
+as accepted work once they are merged into `main`.
+
+### Required Checks and Implementation Plan
+
+| Check | Enforcement | Implementation Owner | Target Sprint |
+| :--- | :--- | :--- | :--- |
+| Acceptance criteria are met | The author includes testing evidence in the PR, and the reviewer verifies it against the linked issue's acceptance criteria. | [Name — PR checklist owner] | Sprint [#] |
+| Automated tests pass | Planned required CI job: `tests`. Runs the automated test suite on each PR and blocks merging on failure. New or changed behavior includes appropriate tests; bug fixes include regression tests where practical. | [Name — test setup owner] | Sprint [#] |
+| Linting and formatting checks pass | Planned required CI job: `lint`. Checks code against the team's agreed rules and blocks merging on failure. | [Name — lint setup owner] | Sprint [#] |
+| The application builds | Planned required CI job: `build`. Builds the application and blocks merging on failure. | [Name — build setup owner] | Sprint [#] |
+| Security checks pass | Planned required CI job: `security`. Runs secret scanning and dependency vulnerability checks; detected secrets or high/critical dependency findings must be resolved before merging. | [Name — security setup owner] | Sprint [#] |
+| Another member approves the change | Planned branch protection requires one approval from someone other than the author, resolved review conversations, and passing required CI checks before merging into `main`. | [Name — branch protection owner] | Sprint [#] |
+| Documentation is current | The PR checklist requires updated setup, usage, or configuration documentation when affected, or an explanation of why no update is needed; the reviewer verifies this. | [Name — documentation checklist owner] | Sprint [#] |
+
+### Checks Before Automation Is Available
+
+Until each automated gate is implemented, the author runs any available
+equivalent checks locally and records the commands and results in the PR.
+If a check cannot yet run, the author identifies the limitation and
+provides relevant manual verification for the reviewer.
+
+Missing automation must not be reported as a passing CI check.
+The implementation owner tracks each planned gate in a GitHub issue
+with its target sprint and adds a link to the enforcing CI configuration
+in this section once it is available.
+
+### Ownership and Maintenance
+
+The Quality Owner maintains this Definition of Done and tracks the
+implementation of its gates. Each named implementation owner sets up
+their assigned checks. Every contributor remains responsible for
+meeting the requirements for their changes.
+
+The team reviews this Definition of Done at each sprint retrospective
+and records any agreed changes.
 
 ## Contribution Norm
 
