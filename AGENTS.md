@@ -19,6 +19,25 @@ All agents in this repository operate under a shared set of baseline instruction
 - Read-only git commands are fine: `git status`, `git diff`, `git log`, `git blame`.
 - If a task seems to require a commit, stop and ask.
 
+## AI usage & confidentiality rules
+
+Guidelines for AI coding agents and team members interacting with AI systems (e.g., ChatGPT, Claude, Antigravity, and repository agents):
+
+- **What may be shared with AI:**
+  - **Project Code:** All codebase source files, architecture diagrams, schemas, templates, tests, scripts, and documentation may be freely entered into AI tools for development, debugging, testing, refactoring, and code review.
+  - **Partner Information:** Project requirements, feedback, user stories, technical specs, and architectural guidance from project partner John V. Sweet may be shared with AI tools for context and planning.
+  - **Meeting Content:** Meeting notes, agendas, summaries, transcripts, and action items may be entered into AI tools for summarization, issue drafting, or documentation, provided any sensitive personal information about team members is omitted or redacted.
+- **Strict prohibitions (Secrets & Credentials):**
+  - **Secrets such as environment variables (`.env`, `.env.local`), private API keys, signing secrets, service account credentials, and database passwords must NEVER be explicitly given or pasted into AI tools or committed to the repository.**
+  - **OSU Credentials & Personal Info:** Never enter personal credentials, OSU student/staff account passwords, or Microsoft SSO authentication secrets/tokens into any AI tool.
+  - AI agents must never log, echo, request, or persist real environment variable values or secrets. Use mock values, placeholders, or references to environment variable names only.
+- **AI Coordinator confidentiality responsibilities:**
+  - The AI Coordinator monitors agent configurations and AI tool workflows across the team to enforce confidentiality compliance.
+  - Ensures AI keys, API credits, and GCP credentials are secure (stored in Google Cloud Secret Manager or untracked local environment variables) and never exposed to AI contexts or public repositories.
+  - Maintains `AGENTS.md` and updates guidelines as project security policies evolve.
+- **Human Review Mandate:**
+  - All AI-generated code, tests, and documentation must be reviewed and verified by a human team member before being staged, committed, or merged.
+
 ## Project overview
 
 - **UI:** SvelteKit with Svelte.

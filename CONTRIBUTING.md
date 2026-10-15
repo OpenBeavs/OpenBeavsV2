@@ -120,13 +120,13 @@ as accepted work once they are merged into `main`.
 
 | Check | Enforcement | Implementation Owner | Target Sprint |
 | :--- | :--- | :--- | :--- |
-| Acceptance criteria are met | The author includes testing evidence in the PR, and the reviewer verifies it against the linked issue's acceptance criteria. | [Name — PR checklist owner] | Sprint [#] |
-| Automated tests pass | Planned required CI job: `tests`. Runs the automated test suite on each PR and blocks merging on failure. New or changed behavior includes appropriate tests; bug fixes include regression tests where practical. | [Name — test setup owner] | Sprint [#] |
-| Linting and formatting checks pass | Planned required CI job: `lint`. Checks code against the team's agreed rules and blocks merging on failure. | [Name — lint setup owner] | Sprint [#] |
-| The application builds | Planned required CI job: `build`. Builds the application and blocks merging on failure. | [Name — build setup owner] | Sprint [#] |
-| Security checks pass | Planned required CI job: `security`. Runs secret scanning and dependency vulnerability checks; detected secrets or high/critical dependency findings must be resolved before merging. | [Name — security setup owner] | Sprint [#] |
-| Another member approves the change | Planned branch protection requires one approval from someone other than the author, resolved review conversations, and passing required CI checks before merging into `main`. | [Name — branch protection owner] | Sprint [#] |
-| Documentation is current | The PR checklist requires updated setup, usage, or configuration documentation when affected, or an explanation of why no update is needed; the reviewer verifies this. | [Name — documentation checklist owner] | Sprint [#] |
+| Acceptance criteria are met | The author includes testing evidence in the PR, and the reviewer verifies it against the linked issue's acceptance criteria. | Faith Nambasa (Project Manager) | Sprint 1 |
+| Automated tests pass | Planned required CI job: `tests`. Runs the automated test suite on each PR and blocks merging on failure. New or changed behavior includes appropriate tests; bug fixes include regression tests where practical. | Dean R Leon (Quality Owner) | Sprint 2 |
+| Linting and formatting checks pass | Planned required CI job: `lint`. Checks code against the team's agreed rules and blocks merging on failure. | Dean R Leon (Quality Owner) | Sprint 1 |
+| The application builds | Planned required CI job: `build`. Builds the application and blocks merging on failure. | Jiya Pradhan (AI Coordinator) | Sprint 1 |
+| Security checks pass | Planned required CI job: `security`. Runs secret scanning and dependency vulnerability checks; detected secrets or high/critical dependency findings must be resolved before merging. | Jiya Pradhan (AI Coordinator) | Sprint 2 |
+| Another member approves the change | Planned branch protection requires one approval from someone other than the author, resolved review conversations, and passing required CI checks before merging into `main`. | Faith Nambasa (Project Manager) | Sprint 1 |
+| Documentation is current | The PR checklist requires updated setup, usage, or configuration documentation when affected, or an explanation of why no update is needed; the reviewer verifies this. | Pedro P Blanco Jaramillo (Documentation Owner) | Sprint 1 |
 
 ### Checks Before Automation Is Available
 
@@ -188,6 +188,7 @@ TBD (will either be done on GitHub Actions or on Google Cloud Run)
 | **Vulnerability Reporting** | Immediately report security concerns to the team and create a **private, high-priority GitHub Issue**. |
 | **Prohibited Patterns** | **NEVER hard-code secrets** (API keys, credentials) directly into the code base. |
 | **Secrets Management** | All secrets must be loaded via environment variables (e.g., a `.env` file in `.gitignore` or GCP Secret Manager). |
+| **AI Tool Confidentiality** | Code, architecture, partner requirements, and meeting content may be entered into AI tools. **Secrets such as environment variables (`.env`), API keys, signing secrets, and service credentials must NEVER be explicitly given to AI tools.** |
 | **Dependency Updates** | Review and update dependencies at the start of every sprint using tools like `npm audit` or Dependabot. |
 | **Scanning Tools** | Implement a linter and static analysis tool to check for common security errors. |
 
