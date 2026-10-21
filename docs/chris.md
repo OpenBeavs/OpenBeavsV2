@@ -28,6 +28,13 @@ backend/app/chris/llm.py      Gemini Interactions API call; the only provider-sp
 backend/app/chris/agent_selection.py  validated agent choice (built, not wired in yet)
 ```
 
+## Data storage
+
+Requests set `store: false`, so Gemini does not keep interactions (the default
+is to store them for up to 55 days on the paid tier). Chris sends its own
+history, so it does not use `previous_interaction_id`. Do not remove this
+without a team decision on retention.
+
 ## Run
 
 ```

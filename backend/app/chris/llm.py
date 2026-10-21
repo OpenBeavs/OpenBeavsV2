@@ -56,7 +56,11 @@ def _to_interaction_payload(
             for m in turns
         ]
 
-    payload: dict = {"model": model, "input": model_input}
+    # store=False: Gemini stores interactions by default (up to 55 days on the
+    # paid tier). Chris sends its own history, so opt out of server-side storage.
+    # Structured output (response_format) is unaffected; only previous_interaction_id
+    # and background execution need storage, and Chris uses neither.
+    payload: dict = {"model": model, "input": model_input, "store": False}
     if system:
         payload["system_instruction"] = system
     if response_schema is not None:
