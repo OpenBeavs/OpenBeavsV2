@@ -1,0 +1,10 @@
+[project]
+name = "openbeavs-backend"
+version = "0.1.0"
+description = "OpenBeavs v2 backend (prototype): Chris orchestrator."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+]
