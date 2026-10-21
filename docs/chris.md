@@ -24,8 +24,8 @@ Errors: 400 empty message, 500 missing config, 503 model call failed.
 backend/app/main.py           mounts routers
 backend/app/config.py         reads env vars
 backend/app/chris/router.py   HTTP route
-backend/app/chris/llm.py      Gemini REST call; the only provider-specific file
-backend/app/chris/routing.py  validated agent choice (built, not wired in yet)
+backend/app/chris/llm.py      Gemini Interactions API call; the only provider-specific file
+backend/app/chris/agent_selection.py  validated agent choice (built, not wired in yet)
 ```
 
 ## Run

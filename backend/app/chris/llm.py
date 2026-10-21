@@ -1,7 +1,7 @@
 """Chris's language-model access.
 
 This is the only module that knows which provider is used (currently Gemini,
-called directly over its REST API). The rest of Chris calls ``generate`` and
+called directly over its REST Interactions API). The rest of Chris calls ``generate`` and
 never sees provider details, so swapping providers means rewriting this file.
 """
 
@@ -9,7 +9,7 @@ import httpx
 
 from app.config import require_env
 
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 REQUEST_TIMEOUT_SECONDS = 30
 
 # Adapted from the v1 direct-answer prompt. No agents exist in v2 yet, so the
@@ -27,43 +27,59 @@ class LLMError(RuntimeError):
     """Raised when the model call fails or returns no usable text."""
 
 
-def _to_gemini_payload(messages: list[dict], response_schema: dict | None = None) -> dict:
-    """Convert provider-neutral messages into a Gemini ``generateContent`` body.
+def _to_interaction_payload(
+    messages: list[dict], model: str, response_schema: dict | None = None
+) -> dict:
+    """Convert provider-neutral messages into a Gemini Interactions request body.
 
     Args:
         messages: Dicts with ``role`` ("system", "user" or "assistant") and
-            ``content``. System messages become Gemini's ``system_instruction``;
-            "assistant" is mapped to Gemini's "model" role.
-        response_schema: Optional JSON schema (Gemini schema dialect). When set,
-            the model is constrained to reply with JSON matching it.
+            ``content``. System messages are joined into ``system_instruction``.
+            A single user message is sent as a plain string (the documented
+            form). With earlier turns, ``input`` is a list of steps:
+            "user" becomes ``user_input`` and "assistant" becomes ``model_output``.
+        model: Gemini model id.
+        response_schema: Optional JSON Schema. When set, the model is
+            constrained to reply with JSON matching it.
     """
-    system_parts = [{"text": m["content"]} for m in messages if m["role"] == "system"]
-    contents = [
-        {
-            "role": "model" if m["role"] == "assistant" else "user",
-            "parts": [{"text": m["content"]}],
-        }
-        for m in messages
-        if m["role"] != "system"
-    ]
-    payload: dict = {"contents": contents}
-    if system_parts:
-        payload["system_instruction"] = {"parts": system_parts}
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    turns = [m for m in messages if m["role"] != "system"]
+
+    if len(turns) == 1:
+        model_input: str | list[dict] = turns[0]["content"]
+    else:
+        model_input = [
+            {
+                "type": "model_output" if m["role"] == "assistant" else "user_input",
+                "content": [{"type": "text", "text": m["content"]}],
+            }
+            for m in turns
+        ]
+
+    payload: dict = {"model": model, "input": model_input}
+    if system:
+        payload["system_instruction"] = system
     if response_schema is not None:
-        payload["generationConfig"] = {
-            "responseMimeType": "application/json",
-            "responseSchema": response_schema,
+        payload["response_format"] = {
+            "type": "text",
+            "mime_type": "application/json",
+            "schema": response_schema,
         }
     return payload
 
 
 def _extract_text(data: dict) -> str:
-    """Return the reply text from a Gemini response, or raise ``LLMError``."""
+    """Return the reply text from an Interaction response, or raise ``LLMError``."""
     try:
-        parts = data["candidates"][0]["content"]["parts"]
-        text = "".join(p.get("text", "") for p in parts)
-    except (KeyError, IndexError, TypeError):
-        raise LLMError("Gemini returned no candidates (the request may have been blocked).")
+        text = "".join(
+            item.get("text", "")
+            for step in data["steps"]
+            if step.get("type") == "model_output"
+            for item in step.get("content", [])
+            if item.get("type") == "text"
+        )
+    except (KeyError, TypeError, AttributeError):
+        raise LLMError("Gemini returned an unexpected response shape.")
     if not text.strip():
         raise LLMError("Gemini returned an empty reply.")
     return text
@@ -81,15 +97,14 @@ async def generate(messages: list[dict], response_schema: dict | None = None) ->
     """
     api_key = require_env("GEMINI_API_KEY")
     model = require_env("CHRIS_MODEL").removeprefix("models/")
-    url = f"{GEMINI_BASE_URL}/{model}:generateContent"
 
     try:
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
             # Key goes in a header, not the URL, so it never lands in logs.
             response = await client.post(
-                url,
+                GEMINI_URL,
                 headers={"x-goog-api-key": api_key},
-                json=_to_gemini_payload(messages, response_schema),
+                json=_to_interaction_payload(messages, model, response_schema),
             )
             response.raise_for_status()
             data = response.json()

@@ -42,24 +42,21 @@ class RoutingDecision(BaseModel):
     """The validated shape of the model's routing reply."""
 
     agent_id: str
-    confidence: float = Field(ge=0.0, le=1.0)
-    reason: str
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Certainty from 0 to 1 that this is the right choice."
+    )
+    reason: str = Field(description="One short sentence.")
 
 
 def _build_schema(agent_ids: list[str]) -> dict:
-    """Build the response schema; ``agent_id`` may only be an installed id or "none"."""
-    return {
-        "type": "OBJECT",
-        "properties": {
-            "agent_id": {"type": "STRING", "enum": [*agent_ids, NONE_ID]},
-            "confidence": {
-                "type": "NUMBER",
-                "description": "Certainty from 0 to 1 that this is the right choice.",
-            },
-            "reason": {"type": "STRING", "description": "One short sentence."},
-        },
-        "required": ["agent_id", "confidence", "reason"],
-    }
+    """Build the response schema from ``RoutingDecision`` (one definition for both).
+
+    ``agent_id`` is narrowed to an enum of the installed ids plus "none" for
+    this request, so the model cannot return an id that is not installed.
+    """
+    schema = RoutingDecision.model_json_schema()
+    schema["properties"]["agent_id"]["enum"] = [*agent_ids, NONE_ID]
+    return schema
 
 
 def _build_system_prompt(agents: list[Agent]) -> str:
