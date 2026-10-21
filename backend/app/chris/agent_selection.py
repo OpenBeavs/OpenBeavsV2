@@ -1,4 +1,4 @@
-"""Agent routing decision for Chris (not yet wired into the HTTP route).
+"""Agent routing decision for Chris.
 
 Two layers keep the decision safe:
 1. The model is constrained to a JSON schema whose ``agent_id`` is an enum of
@@ -13,10 +13,11 @@ choice is the *right* agent; measure that with a labeled test set.
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.chris.agents import Agent
 from app.chris.llm import LLMError, generate
 
 log = logging.getLogger(__name__)
@@ -29,13 +30,17 @@ CONFIDENCE_THRESHOLD = 0.7
 
 
 @dataclass
-class Agent:
-    """The minimum agent metadata the router needs."""
+class Selection:
+    """Outcome of a routing attempt.
 
-    id: str
-    name: str
-    description: str = ""
-    skills: list[str] = field(default_factory=list)
+    ``agent`` is None when Chris should answer directly. ``confidence`` and
+    ``reason`` are the model's own, kept so a decision can be inspected even
+    when it was rejected (for example, low confidence).
+    """
+
+    agent: Agent | None = None
+    confidence: float | None = None
+    reason: str | None = None
 
 
 class RoutingDecision(BaseModel):
@@ -67,8 +72,9 @@ def _build_system_prompt(agents: list[Agent]) -> str:
         for a in agents
     )
     return (
-        "You are a strict router for the OpenBeavs hub. Decide whether one of the "
-        "agents below is the RIGHT tool for the user's message.\n\n"
+        "You are Chris, the OpenBeavs AI hub orchestrator. Your job here is to act as a "
+        "strict router: decide whether one of the agents below is the RIGHT tool for "
+        "the user's message.\n\n"
         f"Agents:\n{lines}\n\n"
         "Rules:\n"
         "1. Choose an agent only if its skills or description SPECIFICALLY and CLEARLY "
@@ -79,14 +85,14 @@ def _build_system_prompt(agents: list[Agent]) -> str:
     )
 
 
-async def choose_agent(message: str, agents: list[Agent]) -> Agent | None:
-    """Return the agent that should handle ``message``, or None to answer directly.
+async def choose_agent(message: str, agents: list[Agent]) -> Selection:
+    """Decide which agent should handle ``message``; ``Selection.agent`` None means answer directly.
 
-    Never raises for model or parsing problems (they log and return None).
-    Configuration errors still propagate so they are not silently hidden.
+    Never raises for model or parsing problems (they log and return an empty
+    Selection). Configuration errors still propagate so they are not hidden.
     """
     if not agents:
-        return None
+        return Selection()
 
     by_id = {a.id: a for a in agents}
     messages = [
@@ -100,20 +106,22 @@ async def choose_agent(message: str, agents: list[Agent]) -> Agent | None:
     except (LLMError, ValueError, ValidationError) as e:
         # ValueError covers json.JSONDecodeError.
         log.warning("Routing decision failed, answering directly: %s", e)
-        return None
+        return Selection()
 
+    seen = Selection(confidence=decision.confidence, reason=decision.reason)
     log.info(
         "Routing decision: agent=%s confidence=%.2f reason=%s",
         decision.agent_id, decision.confidence, decision.reason,
     )
 
     if decision.agent_id == NONE_ID:
-        return None
+        return seen
     agent = by_id.get(decision.agent_id)
     if agent is None:
         log.warning("Model returned unknown agent id %r; answering directly.", decision.agent_id)
-        return None
+        return seen
     if decision.confidence < CONFIDENCE_THRESHOLD:
         log.info("Confidence below threshold; answering directly.")
-        return None
-    return agent
+        return seen
+    seen.agent = agent
+    return seen

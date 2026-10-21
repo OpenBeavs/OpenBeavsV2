@@ -12,17 +12,6 @@ from app.config import require_env
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 REQUEST_TIMEOUT_SECONDS = 30
 
-# Adapted from the v1 direct-answer prompt. No agents exist in v2 yet, so the
-# installed-agents list is always "none" (keeps Chris from inventing agents).
-CHRIS_SYSTEM_PROMPT = (
-    "You are Chris, the OpenBeavs AI hub assistant. "
-    "You are answering the user directly; there is no agent being called right now. "
-    "NEVER invent or guess agent names. Only refer to agents that appear in the "
-    "INSTALLED AGENTS list below. If the list is empty, say the user has no agents installed."
-    "\n\nINSTALLED AGENTS: none"
-)
-
-
 class LLMError(RuntimeError):
     """Raised when the model call fails or returns no usable text."""
 

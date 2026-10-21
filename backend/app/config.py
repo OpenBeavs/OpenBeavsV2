@@ -24,3 +24,8 @@ def require_env(name: str) -> str:
     if not value:
         raise ConfigError(f"{name} is not set. Add it to backend/.env.")
     return value
+
+
+def env_flag(name: str) -> bool:
+    """Return True if environment variable ``name`` is "1", "true" or "yes"."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
