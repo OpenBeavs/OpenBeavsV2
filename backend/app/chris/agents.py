@@ -24,14 +24,25 @@ MOCK_AGENTS: list[Agent] = [
         name="Honors College",
         description="Answers questions about the OSU Honors College: admission, "
         "thesis requirements, honors courses, scholarships and advising.",
-        skills=["honors college", "honors thesis", "honors courses", "honors scholarship"],
+        skills=[
+            "honors college",
+            "honors thesis",
+            "honors courses",
+            "honors scholarship",
+        ],
     ),
     Agent(
         id="engineering-advisor",
         name="Engineering Advisor",
         description="Helps College of Engineering students with degree requirements, "
         "course planning, prerequisites, majors and registration.",
-        skills=["engineering", "degree requirements", "course planning", "prerequisites", "major"],
+        skills=[
+            "engineering",
+            "degree requirements",
+            "course planning",
+            "prerequisites",
+            "major",
+        ],
     ),
     Agent(
         id="writing-center",

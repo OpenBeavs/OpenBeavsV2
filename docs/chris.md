@@ -1,57 +1,122 @@
 # Chris (prototype)
 
-Chris answers messages through Gemini and can pick an agent. Agents and agent calling are not migrated yet, so routing is tested with a mock list.
+Chris answers messages through Gemini and can pick an agent. Routing queries active agents from the database (or a mock list for offline testing) and persists conversation sessions into the database.
 
 ## API
 
-`POST /chris/message`
-
+### `GET /health`
+Returns service status for Cloud Run liveness probes and local monitoring:
 ```json
-{ "message": "Hello", "history": [{ "role": "user", "content": "..." }] }
+{
+  "status": "ok",
+  "app": "OpenBeavs v2"
+}
 ```
 
-Returns `{ "response": "..." }`, plus `routed_to`, `agent_name`, `routing_confidence`, `routing_reason` (null when routing did not run or picked no agent). `history` is optional (roles: `user`, `assistant`).
-Errors: 400 empty message, 500 missing config, 503 model call failed.
+### `GET /chris/agents`
+Returns all active agents registered in the database available for Chris routing:
+```json
+[
+  {
+    "id": "8f695b47-27a7-4ce7-9932-975fc618ba1d",
+    "name": "osu_rag_agent",
+    "description": "An Oregon State University expert agent...",
+    "endpoint_url": "https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent/",
+    "card_url": "https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent",
+    "trust_tier": "public",
+    "required_role": null,
+    "skills": [...],
+    "capabilities": {"streaming": false},
+    "is_featured": true
+  }
+]
+```
+
+### `POST /chris/message`
+
+```json
+{
+  "message": "What majors does OSU offer?",
+  "history": [{ "role": "user", "content": "..." }],
+  "chat_id": "optional-uuid",
+  "user_id": "optional-onid-or-null",
+  "guest_session_id": "optional-guest-uuid",
+  "source_domain": "library.oregonstate.edu"
+}
+```
+
+Returns:
+```json
+{
+  "response": "...",
+  "chat_id": "uuid-of-session",
+  "routed_to": "8f695b47-27a7-4ce7-9932-975fc618ba1d",
+  "agent_name": "osu_rag_agent",
+  "routing_confidence": 0.94,
+  "routing_reason": "Matches OSU academics and degree information"
+}
+```
+
+- `chat_id`: UUID of the persisted chat session in the database.
+- `routed_to` and `agent_name`: set when Chris picked an installed agent.
+- `routing_*` fields show the model's decision and confidence.
+- Errors: 400 empty message, 500 missing config, 503 model call failed.
+
 
 ## Config (`backend/.env`, git-ignored)
 
 - `GEMINI_API_KEY`: Gemini API key
-- `CHRIS_MODEL`: Gemini model id (no default)
-- `CHRIS_USE_MOCK_AGENTS`: set to `true` to route against the mock agents (testing only)
+- `CHRIS_MODEL`: Gemini model id (e.g. `gemini-2.5-flash`)
+- `CHRIS_USE_MOCK_AGENTS`: set to `true` to force routing against hardcoded mock agents (testing only)
+- `DATABASE_URL`: Database connection string (defaults to `sqlite:///./openbeavs.db` in local dev; points to Google Cloud SQL PostgreSQL `openbeavs_v2` in production).
 
 ## Layout
 
 ```
-backend/app/main.py           mounts routers
-backend/app/config.py         reads env vars
-backend/app/chris/router.py   HTTP route
-backend/app/chris/llm.py      Gemini Interactions API call; the only provider-specific file
+backend/app/main.py             mounts routers
+backend/app/config.py           reads env vars (including DATABASE_URL)
+backend/app/db/                 SQLAlchemy 2.0 Base, engine, and get_db dependency
+backend/app/models/             declarative models: Agent, User, Chat, Message, Ticket
+backend/app/chris/router.py     HTTP route (queries DB agents, records turns)
+backend/app/chris/llm.py        Gemini Interactions API call; provider-specific file
 backend/app/chris/agent_selection.py  validated agent choice
-backend/app/chris/agents.py   Agent type and the mock agent list
-backend/app/chris/prompts.py  direct-answer system prompt
+backend/app/chris/agents.py     Agent type and mock agent fallback list
+backend/app/chris/prompts.py    direct-answer system prompt
+backend/alembic/                database migrations
 ```
 
-## Mock agents
+## Agent Routing
 
-With `CHRIS_USE_MOCK_AGENTS=true`, Chris routes against `MOCK_AGENTS` (Honors College, Engineering Advisor, Writing Center, Library). If an agent is chosen the reply says Chris would route there; no agent is called. Low confidence (below 0.7) or no match falls back to a direct answer.
+By default, Chris queries all active agents from the `agents` database table. If `CHRIS_USE_MOCK_AGENTS=true` is set, or if the database contains no agents, it falls back to `MOCK_AGENTS` (Honors College, Engineering Advisor, Writing Center, Library).
 
-## Data storage
+If an agent is chosen, the reply currently acknowledges the routing; actual A2A HTTP client execution will be wired next. Low confidence (below 0.7) or no match falls back to a direct answer.
 
-Requests set `store: false`, so Gemini does not keep interactions (the default
-is to store them for up to 55 days on the paid tier). Chris sends its own
-history, so it does not use `previous_interaction_id`. Do not remove this
-without a team decision on retention.
+## Data storage & Privacy
+
+- Requests set `store: false`, so Gemini does not retain interactions on Google's servers.
+- Conversations are recorded in the local or Cloud SQL database:
+  - `chats`: Stores session metadata, `source_domain` (for embedded iframe context), and an `expires_at` TTL for unauthenticated guest sessions (2 hours).
+  - `messages`: Stores individual turns linked to `chat_id` with cascading deletion upon session purge.
 
 ## Run
 
-```
+```bash
 cd backend
-uv sync
-uv run uvicorn app.main:app --reload --env-file .env
+python -m uvicorn app.main:app --reload --env-file .env
 ```
 
 Docs at http://localhost:8000/docs.
 
+## Migrations & Seeding
+
+```bash
+# Apply database migrations
+alembic upgrade head
+
+# Seed initial agents (osu_rag_agent, Hello World, Chris)
+python -m app.db.seed_agents
+```
+
 ## Not migrated yet
 
-Real agents and A2A calls, suggestions, auth and trust tiers, database, Open WebUI hook.
+Real A2A HTTP client dispatch, SSO token claim verification middleware, step-up MFA modals.
