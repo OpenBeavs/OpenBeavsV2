@@ -12,6 +12,7 @@ from app.config import require_env
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 REQUEST_TIMEOUT_SECONDS = 30
 
+
 class LLMError(RuntimeError):
     """Raised when the model call fails or returns no usable text."""
 
@@ -103,7 +104,9 @@ async def generate(messages: list[dict], response_schema: dict | None = None) ->
             data = response.json()
     except httpx.HTTPStatusError as e:
         # Status code only; the response body is not echoed back.
-        raise LLMError(f"Gemini request failed with HTTP {e.response.status_code}.") from e
+        raise LLMError(
+            f"Gemini request failed with HTTP {e.response.status_code}."
+        ) from e
     except (httpx.HTTPError, ValueError) as e:
         raise LLMError(f"Gemini request failed: {type(e).__name__}.") from e
 
