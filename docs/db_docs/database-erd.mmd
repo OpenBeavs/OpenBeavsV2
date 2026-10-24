@@ -26,6 +26,11 @@ erDiagram
         json capabilities "Streaming, input/output modes, etc."
         boolean is_active "Whether agent is active for routing"
         boolean is_featured "Showcased in UI"
+        string status "Review status: pending | approved | provisional | revoked"
+        string submitted_by "Email of the submitter (NULL for seeded agents)"
+        string reviewed_by "Email of the admin who last reviewed it"
+        bigint reviewed_at "Epoch timestamp of the last review"
+        string review_note "Reviewer note or automatic flag from submission"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
     }

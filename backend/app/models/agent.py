@@ -6,7 +6,7 @@ Represents an A2A (Agent-to-Agent) service registered with the hub.
 import time
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -19,6 +19,8 @@ class Agent(Base):
     """Registered A2A agent metadata and routing configuration."""
 
     __tablename__ = "agents"
+    # One registry entry per card URL. NULL card URLs are allowed (and do not clash).
+    __table_args__ = (UniqueConstraint("card_url", name="uq_agents_card_url"),)
 
     id: Mapped[str] = mapped_column(
         String(64),
@@ -79,6 +81,36 @@ class Agent(Base):
         nullable=False,
         default=False,
         doc="Whether agent is highlighted on the hub showcase",
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="pending",
+        doc=(
+            "Registry review status: 'pending' (submitted, not routable), "
+            "'approved' or 'provisional' (routable), 'revoked' (not routable). "
+            "New rows default to 'pending'; only an admin review changes it."
+        ),
+    )
+    submitted_by: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Identity (email) of whoever submitted the agent; NULL for seeded agents",
+    )
+    reviewed_by: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="Identity (email) of the admin who last reviewed the agent",
+    )
+    reviewed_at: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        doc="Epoch seconds of the last admin review",
+    )
+    review_note: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        doc="Reviewer note, or an automatic flag raised when the card was submitted",
     )
     created_at: Mapped[int] = mapped_column(
         BigInteger,

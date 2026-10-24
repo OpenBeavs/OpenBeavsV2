@@ -17,8 +17,14 @@ CREATE TABLE IF NOT EXISTS agents (
     capabilities JSON DEFAULT '{}'::json,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+    status VARCHAR(32) NOT NULL,
+    submitted_by VARCHAR(255),
+    reviewed_by VARCHAR(255),
+    reviewed_at BIGINT,
+    review_note TEXT,
     created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL
+    updated_at BIGINT NOT NULL,
+    CONSTRAINT uq_agents_card_url UNIQUE (card_url)
 );
 
 -- 2. Users Table (OSU Microsoft SSO / OIDC)

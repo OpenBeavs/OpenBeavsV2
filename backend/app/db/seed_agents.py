@@ -43,6 +43,7 @@ INITIAL_AGENTS = [
         ],
         "capabilities": {"pushNotifications": False, "streaming": False},
         "is_active": True,
+        "status": "approved",
         "is_featured": True,
         "created_at": 1778370775,
         "updated_at": 1778370775,
@@ -65,6 +66,7 @@ INITIAL_AGENTS = [
         ],
         "capabilities": {"streaming": True},
         "is_active": True,
+        "status": "approved",
         "is_featured": False,
         "created_at": 1779224572,
         "updated_at": 1779224572,
@@ -86,6 +88,7 @@ INITIAL_AGENTS = [
         ],
         "capabilities": {"streaming": True},
         "is_active": True,
+        "status": "approved",
         "is_featured": True,
         "created_at": 1778023031,
         "updated_at": 1778023031,
@@ -102,6 +105,9 @@ def seed_agents() -> None:
             if agent:
                 log.info("Updating existing agent: %s", data["id"])
                 for k, v in data.items():
+                    if k == "status":
+                        # Never overwrite an admin's review decision on re-seed.
+                        continue
                     setattr(agent, k, v)
             else:
                 log.info("Seeding new agent: %s (%s)", data["id"], data["name"])

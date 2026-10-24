@@ -37,6 +37,7 @@ def test_db():
         endpoint_url="https://example.com/a2a",
         skills=["osu", "admissions", "campus"],
         is_active=True,
+        status="approved",  # new agents default to "pending", which Chris never routes to
     )
     session.add(agent)
     session.commit()

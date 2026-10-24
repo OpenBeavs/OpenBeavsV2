@@ -16,6 +16,7 @@ INSERT INTO agents (
     capabilities,
     is_active,
     is_featured,
+    status,
     created_at,
     updated_at
 ) VALUES 
@@ -31,6 +32,7 @@ INSERT INTO agents (
     '{"pushNotifications": false, "streaming": false}'::json,
     TRUE,
     TRUE,
+    'approved',
     1778370775,
     1778370775
 ),
@@ -46,6 +48,7 @@ INSERT INTO agents (
     '{"streaming": true}'::json,
     TRUE,
     FALSE,
+    'approved',
     1779224572,
     1779224572
 ),
@@ -61,6 +64,7 @@ INSERT INTO agents (
     '{"streaming": true}'::json,
     TRUE,
     TRUE,
+    'approved',
     1778023031,
     1778023031
 )
@@ -74,3 +78,4 @@ ON CONFLICT (id) DO UPDATE SET
     capabilities = EXCLUDED.capabilities,
     is_active = EXCLUDED.is_active,
     updated_at = EXCLUDED.updated_at;
+-- status is deliberately not updated on conflict: re-running this seed must not undo an admin's review decision.

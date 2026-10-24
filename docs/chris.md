@@ -14,7 +14,7 @@ Returns service status for Cloud Run liveness probes and local monitoring:
 ```
 
 ### `GET /chris/agents`
-Returns all active agents registered in the database available for Chris routing:
+Returns the active agents Chris can route to: agents in the `agents` table whose registry status is `approved` or `provisional` (pending and revoked agents are never listed):
 ```json
 [
   {
@@ -87,7 +87,7 @@ backend/alembic/                database migrations
 
 ## Agent Routing
 
-By default, Chris queries all active agents from the `agents` database table. If `CHRIS_USE_MOCK_AGENTS=true` is set, or if the database contains no agents, it falls back to `MOCK_AGENTS` (Honors College, Engineering Advisor, Writing Center, Library).
+By default, Chris queries the active agents in the `agents` table whose registry status is `approved` or `provisional` (see `docs/registry.md`). If `CHRIS_USE_MOCK_AGENTS=true` is set, or if the table has no rows at all (a brand-new database), it falls back to `MOCK_AGENTS` (Honors College, Engineering Advisor, Writing Center, Library).
 
 If an agent is chosen, the reply currently acknowledges the routing; actual A2A HTTP client execution will be wired next. Low confidence (below 0.7) or no match falls back to a direct answer.
 
