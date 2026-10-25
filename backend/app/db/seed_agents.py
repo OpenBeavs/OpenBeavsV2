@@ -97,24 +97,20 @@ INITIAL_AGENTS = [
 
 
 def seed_agents() -> None:
-    """Insert or update initial agents in the database."""
+    """Insert missing initial agents without changing existing records."""
     db = SessionLocal()
     try:
         for data in INITIAL_AGENTS:
             agent = db.get(Agent, data["id"])
             if agent:
-                log.info("Updating existing agent: %s", data["id"])
-                for k, v in data.items():
-                    if k == "status":
-                        # Never overwrite an admin's review decision on re-seed.
-                        continue
-                    setattr(agent, k, v)
+                # Reseeding must preserve settings and metadata managed after setup.
+                log.info("Keeping existing agent unchanged: %s", data["id"])
             else:
                 log.info("Seeding new agent: %s (%s)", data["id"], data["name"])
                 agent = Agent(**data)
                 db.add(agent)
         db.commit()
-        log.info("Seeding complete! %d agents registered.", len(INITIAL_AGENTS))
+        log.info("Seeding complete! %d default agents checked.", len(INITIAL_AGENTS))
     finally:
         db.close()
 

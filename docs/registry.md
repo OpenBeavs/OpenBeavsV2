@@ -127,8 +127,11 @@ Applying it to an existing Cloud SQL database depends on how that database was b
 
 Take a Cloud SQL backup first. The SQL file ends with its rollback statements.
 
-`seed_agents.py` marks the seeded production agents `approved` and never overwrites
-an existing agent's status, so re-running it does not undo a review decision.
+Both `backend/app/db/seed_agents.py` and `docs/db_docs/seed_agents.sql` insert
+missing default agents as `approved` and leave existing records entirely unchanged.
+Re-running either seed preserves status, activity, tier, role, featured settings,
+review history, timestamps, and edited agent metadata (including URLs). Changes to
+existing agents require an explicit update rather than rerunning the seed.
 
 ## Running it locally
 

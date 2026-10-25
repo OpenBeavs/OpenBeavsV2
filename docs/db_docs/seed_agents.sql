@@ -68,14 +68,5 @@ INSERT INTO agents (
     1778023031,
     1778023031
 )
-ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name,
-    description = EXCLUDED.description,
-    endpoint_url = EXCLUDED.endpoint_url,
-    card_url = EXCLUDED.card_url,
-    trust_tier = EXCLUDED.trust_tier,
-    skills = EXCLUDED.skills,
-    capabilities = EXCLUDED.capabilities,
-    is_active = EXCLUDED.is_active,
-    updated_at = EXCLUDED.updated_at;
--- status is deliberately not updated on conflict: re-running this seed must not undo an admin's review decision.
+-- Preserve all existing settings and metadata; only add missing default agents.
+ON CONFLICT (id) DO NOTHING;
