@@ -80,24 +80,21 @@ def derive_card_url(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}{WELL_KNOWN}agent.json"
 
 
-def derive_endpoint_url(card_url: str) -> str:
-    """Return the A2A JSON-RPC endpoint: the card's path without ``/.well-known/…``.
+def parse_card(
+    raw: Any,
+    card_url: str,
+    *,
+    allow_http: bool = False,
+    resolver: Resolver | None = None,
+) -> AgentCard:
+    """Validate card fields and the advertised absolute service URL.
 
-    Built from the address we fetched, never from a URL written inside the card,
-    so a hostile card cannot redirect later calls to an internal host.
-    """
-    parts = urlsplit(card_url)
-    prefix = (
-        parts.path[: parts.path.index(WELL_KNOWN)] if WELL_KNOWN in parts.path else ""
-    )
-    return f"{parts.scheme}://{parts.netloc}{prefix}/"
-
-
-def parse_card(raw: Any, card_url: str) -> AgentCard:
-    """Validate decoded card JSON and return the fields the registry stores.
+    Preserve the endpoint path and query; never guess from the discovery URL.
+    The resolver and HTTP policy are shared with discovery-address validation.
 
     Raises:
         CardError: If a required field is missing or a value is unusable.
+        UnsafeURLError: If the advertised endpoint is not a safe public URL.
     """
     if not isinstance(raw, dict):
         raise CardError("The agent card must be a JSON object.")
@@ -124,9 +121,19 @@ def parse_card(raw: Any, card_url: str) -> AgentCard:
     if not isinstance(capabilities, dict):
         raise CardError("Capabilities must be an object.")
 
-    endpoint_url = derive_endpoint_url(card_url)
+    endpoint_url = raw.get("url")
+    if not isinstance(endpoint_url, str) or not endpoint_url.strip():
+        raise CardError("The agent card must advertise a non-empty endpoint url.")
+    endpoint_url = endpoint_url.strip()
+    # Reject ambiguous URL text before different URL parsers can reinterpret it.
+    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in endpoint_url):
+        raise CardError("The endpoint url must not contain whitespace or controls.")
+    if "\\" in endpoint_url or "#" in endpoint_url:
+        raise CardError("The endpoint url must not contain backslashes or fragments.")
     if len(card_url) > MAX_URL_LENGTH or len(endpoint_url) > MAX_URL_LENGTH:
         raise CardError(f"URLs must be at most {MAX_URL_LENGTH} characters.")
+
+    validate_agent_url(endpoint_url, allow_http=allow_http, resolver=resolver)
 
     flags = []
     searchable = " ".join([name, description, str(skills)])
@@ -194,4 +201,4 @@ def fetch_card(
         raw = httpx.Response(200, content=bytes(body)).json()
     except ValueError as exc:
         raise CardError("The agent card is not valid JSON.") from exc
-    return parse_card(raw, card_url)
+    return parse_card(raw, card_url, allow_http=allow_http, resolver=resolver)
