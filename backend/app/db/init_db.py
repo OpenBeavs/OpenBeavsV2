@@ -1,31 +1,37 @@
-"""Script to initialize all tables in the configured database.
+"""Script to initialize all tables in the configured database via Alembic.
 
 Works against local SQLite or Google Cloud SQL PostgreSQL depending
 on the DATABASE_URL environment variable.
 """
 
 import logging
+from pathlib import Path
 
-from app.db.base import Base
+from alembic.config import Config
+
+from alembic import command
 from app.db.seed_agents import seed_agents
 from app.db.session import engine
-from app.models import Agent, Chat, Message, Ticket, User  # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
 def init_tables() -> None:
-    """Create all 5 database tables using Base.metadata."""
+    """Apply Alembic migrations up to head to create and version all tables."""
     log.info("Connecting to target database: %s", engine.url)
-    Base.metadata.create_all(bind=engine)
-    log.info(
-        "All 5 tables created successfully: agents, users, chats, messages, tickets."
-    )
+    backend_dir = Path(__file__).resolve().parents[2]
+    alembic_ini_path = backend_dir / "alembic.ini"
+    log.info("Applying Alembic migrations using config: %s", alembic_ini_path)
+
+    alembic_cfg = Config(str(alembic_ini_path))
+    alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.upgrade(alembic_cfg, "head")
+    log.info("Alembic upgrade head completed successfully.")
 
 
 def init_and_seed() -> None:
-    """Create all tables and seed initial production agents."""
+    """Create all tables via Alembic and seed initial production agents."""
     init_tables()
     seed_agents()
 

@@ -1,7 +1,10 @@
 -- =============================================================================
--- OpenBeavs v2: Cloud SQL PostgreSQL Schema Definition
+-- OpenBeavs v2: Cloud SQL PostgreSQL Schema Definition (REFERENCE EXPORT ONLY)
 -- Database: openbeavs_v2
--- Generated from SQLAlchemy 2.0 declarative models
+-- NOTE: Do NOT run this file manually as a setup step. Database schemas are
+-- managed exclusively via Alembic migrations (run: `alembic upgrade head`).
+-- This file is generated from SQLAlchemy 2.0 declarative models and serves
+-- strictly as an architectural and DDL reference export.
 -- =============================================================================
 
 -- 1. Agents Table (A2A Registry)

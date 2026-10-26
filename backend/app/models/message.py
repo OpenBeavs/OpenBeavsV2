@@ -57,9 +57,9 @@ class Message(Base):
     created_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
-        default=lambda: int(time.time()),
+        default=lambda: int(time.time() * 1000),
         index=True,
-        doc="Message timestamp in epoch seconds",
+        doc="Message timestamp in epoch milliseconds",
     )
 
     # Relationships

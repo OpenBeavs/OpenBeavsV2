@@ -4,6 +4,7 @@ Can be run locally or against Google Cloud SQL depending on DATABASE_URL.
 """
 
 import logging
+import time
 
 from app.db.session import SessionLocal
 from app.models.agent import Agent
@@ -94,15 +95,25 @@ INITIAL_AGENTS = [
 
 
 def seed_agents() -> None:
-    """Insert or update initial agents in the database."""
+    """Insert new agents or update descriptive fields of existing agents.
+
+    Preserves runtime flags like is_active and is_featured, retains
+    created_at, and sets updated_at to the current timestamp.
+    """
     db = SessionLocal()
     try:
+        now = int(time.time())
         for data in INITIAL_AGENTS:
             agent = db.get(Agent, data["id"])
             if agent:
-                log.info("Updating existing agent: %s", data["id"])
-                for k, v in data.items():
-                    setattr(agent, k, v)
+                log.info("Updating existing agent descriptive fields: %s", data["id"])
+                agent.name = data["name"]
+                agent.description = data.get("description")
+                agent.endpoint_url = data["endpoint_url"]
+                agent.card_url = data.get("card_url")
+                agent.skills = data.get("skills")
+                agent.capabilities = data.get("capabilities")
+                agent.updated_at = now
             else:
                 log.info("Seeding new agent: %s (%s)", data["id"], data["name"])
                 agent = Agent(**data)
