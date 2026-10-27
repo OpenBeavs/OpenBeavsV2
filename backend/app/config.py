@@ -7,6 +7,14 @@ instead of crashing the server at import.
 """
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load local backend/.env automatically if present
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_env_path)
+load_dotenv()
 
 
 class ConfigError(RuntimeError):
@@ -29,3 +37,13 @@ def require_env(name: str) -> str:
 def env_flag(name: str) -> bool:
     """Return True if environment variable ``name`` is "1", "true" or "yes"."""
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def get_env(name: str, default: str = "") -> str:
+    """Return the value of environment variable ``name`` or ``default``."""
+    return os.environ.get(name, default).strip()
+
+
+def get_database_url() -> str:
+    """Return the configured DATABASE_URL or default to local SQLite."""
+    return get_env("DATABASE_URL", "sqlite:///./openbeavs.db")

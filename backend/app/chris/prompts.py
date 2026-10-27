@@ -16,7 +16,8 @@ def build_direct_prompt(agents: list[Agent]) -> str:
     """Return the direct-answer prompt with the real installed-agent list."""
     if agents:
         lines = "\n".join(
-            f"- {a.name}" + (f": {a.description}" if a.description else "") for a in agents
+            f"- {a.name}" + (f": {a.description}" if a.description else "")
+            for a in agents
         )
         section = f"\n\nINSTALLED AGENTS:\n{lines}"
     else:

@@ -15,7 +15,7 @@ import json
 import logging
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError
 
 from app.chris.agents import Agent
 from app.chris.llm import LLMError, generate
@@ -46,11 +46,20 @@ class Selection:
 class RoutingDecision(BaseModel):
     """The validated shape of the model's routing reply."""
 
-    agent_id: str
-    confidence: float = Field(
-        ge=0.0, le=1.0, description="Certainty from 0 to 1 that this is the right choice."
+    agent_id: str = Field(
+        validation_alias=AliasChoices("agent_id", "agent", "id"),
+        description="The id of the chosen agent, or 'none'.",
     )
-    reason: str = Field(description="One short sentence.")
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Certainty from 0 to 1 that this is the right choice.",
+    )
+    reason: str = Field(
+        default="",
+        description="One short sentence.",
+    )
 
 
 def _build_schema(agent_ids: list[str]) -> dict:
@@ -111,14 +120,18 @@ async def choose_agent(message: str, agents: list[Agent]) -> Selection:
     seen = Selection(confidence=decision.confidence, reason=decision.reason)
     log.info(
         "Routing decision: agent=%s confidence=%.2f reason=%s",
-        decision.agent_id, decision.confidence, decision.reason,
+        decision.agent_id,
+        decision.confidence,
+        decision.reason,
     )
 
     if decision.agent_id == NONE_ID:
         return seen
     agent = by_id.get(decision.agent_id)
     if agent is None:
-        log.warning("Model returned unknown agent id %r; answering directly.", decision.agent_id)
+        log.warning(
+            "Model returned unknown agent id %r; answering directly.", decision.agent_id
+        )
         return seen
     if decision.confidence < CONFIDENCE_THRESHOLD:
         log.info("Confidence below threshold; answering directly.")
