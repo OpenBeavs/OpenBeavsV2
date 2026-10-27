@@ -82,13 +82,20 @@ def test_chris_direct_answer_persists_chat_and_messages(
     # Verify database persistence
     chat = test_db.get(Chat, chat_id)
     assert chat is not None
-    assert chat.guest_session_id == "iframe_guest_123"
+    assert chat.guest_session_id != "iframe_guest_123"
+    assert data["guest_session_id"]
+    assert chat.guest_session_id != data["guest_session_id"]
     assert chat.source_domain == "library.oregonstate.edu"
     assert chat.session_type == "guest"
     assert chat.expires_at is not None  # Has 2-hour TTL
 
     # Verify messages
-    messages = test_db.query(Message).filter(Message.chat_id == chat_id).all()
+    messages = (
+        test_db.query(Message)
+        .filter(Message.chat_id == chat_id)
+        .order_by(Message.sequence)
+        .all()
+    )
     assert len(messages) == 2
     assert messages[0].sender_type == "user"
     assert messages[0].content == "Hi Chris!"
@@ -125,7 +132,12 @@ def test_chris_routed_agent_persists_chat_and_messages(
     assert chat is not None
     assert chat.agent_id == "osu-rag-agent"
 
-    messages = test_db.query(Message).filter(Message.chat_id == chat_id).all()
+    messages = (
+        test_db.query(Message)
+        .filter(Message.chat_id == chat_id)
+        .order_by(Message.sequence)
+        .all()
+    )
     assert len(messages) == 2
     assert messages[0].sender_type == "user"
     assert messages[1].sender_type == "agent"

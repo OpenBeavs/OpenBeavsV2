@@ -76,7 +76,7 @@ INITIAL_AGENTS = [
         "name": "Chris",
         "description": "OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.",
         "endpoint_url": "/chris/message",
-        "card_url": "/chris/.well-known/agent.json",
+        "card_url": None,
         "trust_tier": "public",
         "skills": [
             {

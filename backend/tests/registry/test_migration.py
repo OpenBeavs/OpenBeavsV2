@@ -36,7 +36,7 @@ def sqlite_url(tmp_path: Path) -> str:
 def test_there_is_a_single_migration_head() -> None:
     config = Config(str(BACKEND / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND / "alembic"))
-    assert ScriptDirectory.from_config(config).get_heads() == [REGISTRY_REVISION]
+    assert ScriptDirectory.from_config(config).get_heads() == ["b82f6d1a390c"]
 
 
 def test_existing_agents_stay_routable_after_upgrade(

@@ -76,10 +76,10 @@ def test_chris_is_never_offered_to_himself(client: TestClient, db: Session) -> N
     assert offered_to_router(client) == ["live"]
 
 
-def test_mock_agents_are_used_only_for_a_completely_empty_table(
+def test_empty_table_does_not_enable_mock_agents(
     client: TestClient,
 ) -> None:
-    assert offered_to_router(client) == [a.id for a in MOCK_AGENTS]
+    assert offered_to_router(client) == []
 
 
 def test_revoking_every_agent_does_not_bring_back_the_mock_agents(

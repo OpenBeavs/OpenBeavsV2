@@ -1,6 +1,7 @@
 -- =============================================================================
 -- OpenBeavs v2: Cloud SQL PostgreSQL Schema Definition
 -- Database: openbeavs_v2
+-- Reference only: initialize and upgrade with Alembic, not this file.
 -- Generated from SQLAlchemy 2.0 declarative models
 -- =============================================================================
 
@@ -64,11 +65,14 @@ CREATE INDEX IF NOT EXISTS idx_chats_expires_at ON chats(expires_at);
 CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(36) PRIMARY KEY,
     chat_id VARCHAR(36) NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    sequence BIGINT NOT NULL,
+    agent_id VARCHAR(64) REFERENCES agents(id) ON DELETE SET NULL,
     sender_type VARCHAR(32) NOT NULL,
     content TEXT NOT NULL,
     encrypted_dek BYTEA,
     meta JSON,
-    created_at BIGINT NOT NULL
+    created_at BIGINT NOT NULL,
+    CONSTRAINT uq_messages_chat_sequence UNIQUE (chat_id, sequence)
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);

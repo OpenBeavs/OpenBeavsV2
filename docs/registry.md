@@ -26,7 +26,8 @@ submit URL  ->  hub fetches the agent card  ->  stored as "pending"  ->  admin r
    `provisional` make the agent active and visible; `revoke` and `reject` make it
    inactive and hidden. The reviewer and time are recorded.
 5. **Routing.** Chris offers the router only active agents whose status is
-   `approved` or `provisional` (`service.routable_agents`).
+   `approved` or `provisional`, with public access and no required role
+   (`service.routable_agents`). This is a conservative filter, not a new tier system.
 
 ## Statuses
 
@@ -34,8 +35,10 @@ submit URL  ->  hub fetches the agent card  ->  stored as "pending"  ->  admin r
 |---|---|---|---|
 | `pending` | no | no (submitter and admins only) | Submitted, awaiting review |
 | `approved` | yes | yes | Reviewed and accepted |
-| `provisional` | yes | yes | Accepted for a pilot; the UI shows an "unverified" warning |
+| `provisional` | yes | yes | Accepted for a pilot; a UI warning is not implemented here |
 | `revoked` | no | no (submitter and admins only) | Rejected or withdrawn |
+
+Routability also requires active state, public access, and no required role.
 
 `status` has no database default, so a row can never become routable by omission.
 `trust_tier` (`public` / `authenticated` / `privileged`) is a separate gate for *who
@@ -121,10 +124,14 @@ Applying it to an existing Cloud SQL database depends on how that database was b
    `DATABASE_URL` set).
 3. **The table does not exist** (the database was created from
    `create_tables_cloud.sql`): run `docs/db_docs/migrate_agents_registry.sql`, then
-   `alembic stamp a7c3e91d5b02` so Alembic knows the state.
+   after verifying that **all tables and constraints** match that revision,
+   `alembic stamp a7c3e91d5b02` so Alembic knows the state, then `alembic upgrade head`.
+   Rehearse this against a disposable PostgreSQL copy before touching Cloud SQL;
+   do not stamp a revision based only on the presence of the agents table.
 4. Verify: `SELECT id, name, status, is_active FROM agents;` shows every existing
    agent as `approved`.
 
+The message-order migration `b82f6d1a390c` now follows the registry revision.
 Take a Cloud SQL backup first. The SQL file ends with its rollback statements.
 
 Both `backend/app/db/seed_agents.py` and `docs/db_docs/seed_agents.sql` insert

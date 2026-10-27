@@ -2,6 +2,7 @@ erDiagram
     USERS ||--o{ CHATS : "owns"
     AGENTS ||--o{ CHATS : "handles"
     CHATS ||--o{ MESSAGES : "contains"
+    AGENTS |o--o{ MESSAGES : "authors"
     USERS ||--o{ TICKETS : "submits"
 
     USERS {
@@ -38,19 +39,21 @@ erDiagram
     CHATS {
         string id PK "UUID"
         string user_id FK "References USERS(id), NULL for guest sessions"
-        string guest_session_id "UUID, NULL for authenticated users"
+        string guest_session_id "SHA-256 guest token digest; NULL for authenticated users"
         string agent_id FK "References AGENTS(id)"
         string title "Chat title or summary"
         string source_domain "OSU site origin (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
-        bigint expires_at "24-hour TTL for guest chats; NULL for auth users"
+        bigint expires_at "2-hour TTL for guest chats; NULL for auth users"
     }
 
     MESSAGES {
         string id PK "UUID"
         string chat_id FK "References CHATS(id)"
+        bigint sequence "Unique position within chat"
+        string agent_id FK "Actual expert author; NULL for Chris or unknown"
         string sender_type "user | agent | system"
         text content "Plaintext OR base64 ciphertext when encrypted"
         bytea encrypted_dek "Encrypted per-chat Data Encryption Key (AES-256)"

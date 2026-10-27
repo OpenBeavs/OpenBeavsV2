@@ -5,23 +5,28 @@ Kept thin; model access lives in ``llm.py`` and routing in ``agent_selection.py`
 """
 
 import logging
-import time
-import uuid
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.chris.agent_selection import choose_agent
 from app.chris.agents import MOCK_AGENTS, Agent
 from app.chris.llm import LLMError, generate
 from app.chris.prompts import build_direct_prompt
+from app.chris.sessions import (
+    chat_principal,
+    load_history,
+    persist_turn,
+    prepare_conversation,
+    purge_expired_chats,
+)
 from app.config import ConfigError, env_flag
 from app.db import get_db
-from app.models import Chat as DBChat
-from app.models import Message as DBMessage
-from app.registry.service import has_any_agents, routable_agents
+from app.registry.auth import Principal, require_admin
+from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +61,7 @@ class ChrisMessageResponse(BaseModel):
 
     response: str
     chat_id: str | None = None
+    guest_session_id: str | None = None
     routed_to: str | None = None
     agent_name: str | None = None
     routing_confidence: float | None = None
@@ -105,12 +111,12 @@ def _installed_agents(db: Session) -> list[Agent]:
     if env_flag("CHRIS_USE_MOCK_AGENTS"):
         return MOCK_AGENTS
 
-    db_agents = routable_agents(db)
-    if not db_agents and not has_any_agents(db):
-        # Only a brand-new, empty table falls back to the mock list. If rows exist
-        # but none are routable (for example every agent was revoked), Chris must
-        # answer directly instead of routing to a made-up agent.
-        return MOCK_AGENTS
+    try:
+        db_agents = routable_agents(db)
+    except SQLAlchemyError:
+        db.rollback()
+        log.error("Agent lookup failed; no external agents will be offered.")
+        return []
 
     return [
         Agent(
@@ -123,140 +129,77 @@ def _installed_agents(db: Session) -> list[Agent]:
     ]
 
 
-def _persist_turn(
-    db: Session,
-    form: ChrisMessageForm,
-    user_text: str,
-    response_text: str,
-    routed_agent_id: str | None,
-    meta: dict[str, Any] | None = None,
-) -> str:
-    """Save or update chat session and record user/agent turns."""
-    now = int(time.time())
-    chat_id = form.chat_id or str(uuid.uuid4())
-
-    chat = db.get(DBChat, chat_id)
-    if not chat:
-        # 2-hour TTL for guest/anonymous sessions
-        expires_at = now + 7200 if not form.user_id else None
-        session_type = "authenticated" if form.user_id else "guest"
-        chat = DBChat(
-            id=chat_id,
-            user_id=form.user_id,
-            guest_session_id=form.guest_session_id,
-            agent_id=routed_agent_id,
-            title=user_text[:50] if len(user_text) > 50 else user_text,
-            source_domain=form.source_domain,
-            session_type=session_type,
-            created_at=now,
-            updated_at=now,
-            expires_at=expires_at,
-        )
-        db.add(chat)
-    else:
-        chat.updated_at = now
-        if routed_agent_id:
-            chat.agent_id = routed_agent_id
-
-    # Record User Message
-    user_msg = DBMessage(
-        chat_id=chat_id,
-        sender_type="user",
-        content=user_text,
-        created_at=now,
-    )
-    # Record Assistant Message
-    agent_msg = DBMessage(
-        chat_id=chat_id,
-        sender_type="agent",
-        content=response_text,
-        meta=meta,
-        created_at=now,
-    )
-    db.add_all([user_msg, agent_msg])
-    db.commit()
-    return chat_id
-
-
 @router.post("/message", response_model=ChrisMessageResponse)
 async def chris_message(
     form: ChrisMessageForm,
     db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal | None, Depends(chat_principal)],
 ) -> ChrisMessageResponse:
-    """Route a message to an agent or answer it directly via the configured model.
+    """Authorize, select a candidate or answer directly, and save the turn.
 
-    Agent calling is not implemented yet: when an agent is chosen, the reply
-    says so instead of calling it.
+    Expert dispatch is still a prototype: selection returns a Chris-authored
+    acknowledgement, never an invented answer attributed to an expert.
     """
     message = form.message.strip()
     if not message:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty."
+        raise HTTPException(400, "Message cannot be empty.")
+    try:
+        conversation = prepare_conversation(
+            db, form.chat_id, form.user_id, form.guest_session_id, principal
         )
+        history = (
+            load_history(db, conversation)
+            if conversation.existing
+            else [{"role": m.role, "content": m.content} for m in form.history]
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        # Never substitute client history if ownership or stored history cannot be checked.
+        raise HTTPException(503, "Conversation storage unavailable.") from None
 
     agents = _installed_agents(db)
-
     try:
         selection = await choose_agent(message, agents)
-
         if selection.agent:
-            response_text = (
-                f"Chris would route this to {selection.agent.name}. "
-                "Calling agents is not implemented yet."
+            reply = f"Chris would route this to {selection.agent.name}. Calling agents is not implemented yet."
+        else:
+            reply = await generate(
+                [
+                    {"role": "system", "content": build_direct_prompt(agents)},
+                    *history,
+                    {"role": "user", "content": message},
+                ]
             )
-            chat_id = _persist_turn(
-                db,
-                form,
-                message,
-                response_text,
-                routed_agent_id=selection.agent.id,
-                meta={
-                    "routing_confidence": selection.confidence,
-                    "routing_reason": selection.reason,
-                },
-            )
-            return ChrisMessageResponse(
-                response=response_text,
-                chat_id=chat_id,
-                routed_to=selection.agent.id,
-                agent_name=selection.agent.name,
-                routing_confidence=selection.confidence,
-                routing_reason=selection.reason,
-            )
-
-        messages = [
-            {"role": "system", "content": build_direct_prompt(agents)},
-            *({"role": m.role, "content": m.content} for m in form.history),
-            {"role": "user", "content": message},
-        ]
-        reply = await generate(messages)
-
-        chat_id = _persist_turn(
-            db,
-            form,
-            message,
-            reply,
-            routed_agent_id=None,
-            meta={
-                "routing_confidence": selection.confidence,
-                "routing_reason": selection.reason,
-            },
-        )
     except ConfigError as e:
         log.error("Chris configuration error: %s", e)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(e)) from e
+    except LLMError:
+        log.error("Chris model call failed.")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-    except LLMError as e:
-        log.error("Chris model call failed: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Chris is temporarily unavailable. Please try again shortly.",
-        )
+            503, "Chris is temporarily unavailable. Please try again shortly."
+        ) from None
 
+    routed_id = selection.agent.id if selection.agent else None
+    chat_id = persist_turn(
+        db,
+        conversation,
+        principal,
+        message,
+        reply,
+        routed_id,
+        form.source_domain,
+        {
+            "routing_confidence": selection.confidence,
+            "routing_reason": selection.reason,
+            "selected_agent_id": routed_id,
+        },
+    )
     return ChrisMessageResponse(
         response=reply,
         chat_id=chat_id,
+        guest_session_id=conversation.guest_token if chat_id else None,
+        routed_to=routed_id,
+        agent_name=selection.agent.name if selection.agent else None,
         routing_confidence=selection.confidence,
         routing_reason=selection.reason,
     )
@@ -281,3 +224,20 @@ def list_active_agents(db: Annotated[Session, Depends(get_db)]) -> list[dict[str
         }
         for a in db_agents
     ]
+
+
+@router.delete("/chats/expired")
+def delete_expired_chats(
+    db: Annotated[Session, Depends(get_db)],
+    admin: Annotated[Principal, Depends(require_admin)],
+) -> dict[str, int]:
+    """Explicitly authorized maintenance; scheduling is a deployment responsibility."""
+    return {"purged": purge_expired_chats(db)}
+
+
+@router.get("/.well-known/agent.json")
+def chris_agent_card() -> None:
+    """Do not advertise the prototype JSON endpoint as an A2A transport."""
+    raise HTTPException(
+        501, "Chris A2A discovery is unavailable until an A2A transport is implemented."
+    )

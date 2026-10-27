@@ -27,12 +27,15 @@ class DuplicateAgentError(ValueError):
 def routable_agents(db: Session) -> list[Agent]:
     """Return the active agents Chris may route to (approved or provisional).
 
-    Pending and revoked agents are excluded, as is Chris himself.
+    Pending and revoked agents are excluded, as is Chris himself. Until real
+    caller authorization exists, only public agents without a role are eligible.
     """
     stmt = select(Agent).where(
         Agent.is_active.is_(True),
         Agent.status.in_(ROUTABLE_STATUSES),
         Agent.id != CHRIS_AGENT_ID,
+        Agent.trust_tier == "public",
+        Agent.required_role.is_(None),
     )
     return list(db.scalars(stmt))
 

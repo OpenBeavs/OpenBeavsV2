@@ -57,7 +57,7 @@ INSERT INTO agents (
     'Chris',
     'OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.',
     '/chris/message',
-    '/chris/.well-known/agent.json',
+    NULL,
     'public',
     NULL,
     '[{"id": "route", "name": "Route Query", "description": "Classify a user query and delegate to the best installed agent.", "tags": ["orchestration", "routing"]}]'::json,
