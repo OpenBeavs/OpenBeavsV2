@@ -40,7 +40,7 @@ class Chat(Base):
         String(64),
         nullable=True,
         index=True,
-        doc="Ephemeral session token for unauthenticated iframe guests",
+        doc="SHA-256 digest of the server-issued guest continuation token",
     )
     agent_id: Mapped[str | None] = mapped_column(
         String(64),
@@ -100,5 +100,5 @@ class Chat(Base):
         "Message",
         back_populates="chat",
         cascade="all, delete-orphan",
-        order_by="Message.created_at",
+        order_by="Message.sequence",
     )

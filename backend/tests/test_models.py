@@ -91,11 +91,13 @@ def test_anonymous_iframe_chat_and_messages(db_session: Session):
     db_session.commit()
 
     msg1 = Message(
+        sequence=1,
         chat_id=chat.id,
         sender_type="user",
         content="What time does the Valley Library close tonight?",
     )
     msg2 = Message(
+        sequence=2,
         chat_id=chat.id,
         sender_type="agent",
         content="Valley Library is open until midnight tonight.",
@@ -128,6 +130,7 @@ def test_guest_session_promotion_to_authenticated(db_session: Session):
     db_session.commit()
 
     msg = Message(
+        sequence=1,
         chat_id=chat.id,
         sender_type="user",
         content="How do I declare my CS major?",
@@ -172,6 +175,7 @@ def test_cascade_delete_on_chat_purge(db_session: Session):
     db_session.commit()
 
     msg = Message(
+        sequence=1,
         chat_id=chat.id,
         sender_type="user",
         content="Temporary message",

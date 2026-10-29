@@ -48,7 +48,7 @@ Both models attempted to call `create_all(bind=engine)` inside their constructor
 1. **Single Responsibility:** The hub stores only registry discovery metadata, routing state, conversation history, and user session references.
 2. **Single Modern ORM:** SQLAlchemy 2.0 (async/sync) with Alembic for migrations. No dual ORM wrappers.
 3. **Relational Messages:** Conversations are broken down into indexed, sequential message rows rather than monolithic JSON blobs.
-4. **Native SSO & Privacy:** Pure OIDC/SSO identity model with envelope encryption and automated guest session TTL cleanup.
+4. **Native SSO & Privacy:** Identity and encryption fields are modeled; SSO and encryption are not implemented. Guest expiry is enforced and an admin cleanup endpoint is available, but scheduling remains a deployment task.
 5. **Multi-Environment Parity:** Standard relational schema that runs on SQLite for fast local development and PostgreSQL on Google Cloud SQL in production.
 
 ---
@@ -60,6 +60,7 @@ erDiagram
     USERS ||--o{ CHATS : "owns"
     AGENTS ||--o{ CHATS : "handles"
     CHATS ||--o{ MESSAGES : "contains"
+    AGENTS |o--o{ MESSAGES : "authors"
     USERS ||--o{ TICKETS : "submits"
 
     USERS {
@@ -84,6 +85,11 @@ erDiagram
         json capabilities "Streaming, input/output modes, etc."
         boolean is_active "Whether agent is active for routing"
         boolean is_featured "Showcased in UI"
+        string status "Review status: pending | approved | provisional | revoked"
+        string submitted_by "Email of the submitter (NULL for seeded agents)"
+        string reviewed_by "Email of the admin who last reviewed it"
+        bigint reviewed_at "Epoch timestamp of the last review"
+        string review_note "Reviewer note or automatic flag from submission"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
     }
@@ -91,19 +97,21 @@ erDiagram
     CHATS {
         string id PK "UUID"
         string user_id FK "References USERS(id), NULL for guest sessions"
-        string guest_session_id "UUID, NULL for authenticated users"
+        string guest_session_id "SHA-256 guest token digest; NULL for authenticated users"
         string agent_id FK "References AGENTS(id)"
         string title "Chat title or summary"
         string source_domain "OSU site origin (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
-        bigint expires_at "24-hour TTL for guest chats; NULL for auth users"
+        bigint expires_at "2-hour TTL for guest chats; NULL for auth users"
     }
 
     MESSAGES {
         string id PK "UUID"
         string chat_id FK "References CHATS(id)"
+        bigint sequence "Unique position within chat"
+        string agent_id FK "Actual expert author; NULL for Chris or unknown"
         string sender_type "user | agent | system"
         text content "Plaintext OR base64 ciphertext when encrypted"
         bytea encrypted_dek "Encrypted per-chat Data Encryption Key (AES-256)"
@@ -135,7 +143,7 @@ Unified table replacing legacy `agent` and `registry_agent`.
 - **`name`** (`String`, NOT NULL): Display name of the agent.
 - **`description`** (`Text`): Description of what the agent does.
 - **`endpoint_url`** (`String`, NOT NULL): The A2A JSON-RPC URL (`/message/send`).
-- **`card_url`** (`String`): URL to the agent's hosted `/.well-known/agent.json`.
+- **`card_url`** (`String`, UNIQUE): URL to the agent's hosted `/.well-known/agent.json`. One registry entry per card URL.
 - **`trust_tier`** (`String`, NOT NULL, default `'public'`): Access tier required:
   - `public`: Accessible to all users including unauthenticated guests.
   - `authenticated`: Requires active OSU OIDC session.
@@ -145,6 +153,11 @@ Unified table replacing legacy `agent` and `registry_agent`.
 - **`capabilities`** (`JSON`): Supported modes (streaming, audio, multimodal).
 - **`is_active`** (`Boolean`, default `True`): Allows soft deactivation.
 - **`is_featured`** (`Boolean`, default `False`): Curated agent highlight on the homepage.
+- **`status`** (`String`, NOT NULL, no database default): Registry review status. `pending` (submitted, not routable), `approved` or `provisional` (routable), `revoked` (not routable). The registry creates new rows as `pending`; only an admin review changes it. Chris routes only to active agents that are `approved` or `provisional`. See `docs/registry.md`.
+- **`submitted_by`** (`String`, NULL): Email of the submitter; NULL for seeded agents.
+- **`reviewed_by`** (`String`, NULL): Email of the admin who last reviewed the agent.
+- **`reviewed_at`** (`BigInteger`, NULL): Epoch seconds of the last review.
+- **`review_note`** (`Text`, NULL): Reviewer note, or an automatic flag raised when the card was submitted.
 - **`created_at`** (`BigInteger`): Creation timestamp (epoch seconds).
 - **`updated_at`** (`BigInteger`): Last card synchronization/update timestamp.
 
@@ -179,7 +192,7 @@ Individual conversational turns replacing monolithic JSON arrays.
 - **`content`** (`Text`, NOT NULL): Message content (or base64 ciphertext if encrypted).
 - **`encrypted_dek`** (`LargeBinary`, NULL): Data Encryption Key (DEK) wrapped by user KMS key. NULL if unencrypted.
 - **`meta`** (`JSON`, NULL): Non-sensitive metadata (routing latency, token counts, error states).
-- **`created_at`** (`BigInteger`, index): Epoch timestamp ensuring sequential ordering.
+- **`created_at`** (`BigInteger`, index): Epoch timestamp in seconds; ordering uses `sequence`.
 
 ### 4.5 `tickets`
 Support and bug feedback tracking.
@@ -201,7 +214,7 @@ Support and bug feedback tracking.
 1. **Guest Sessions & 24h Purge:**
    - Unauthenticated users receive an ephemeral `guest_session_id`.
    - Records have `expires_at = now() + 24 hours`.
-   - A scheduled cleanup task runs `DELETE FROM chats WHERE expires_at < now()`. Due to cascading foreign keys, corresponding rows in `messages` are deleted automatically.
+   - An authorized caller invokes `DELETE /chris/chats/expired`; scheduling remains to be configured. Deleting a guest chat also deletes its messages.
 2. **Guest Promotion:**
    - When a guest logs in via OSU SSO mid-conversation, `chats.user_id` is set to the authenticated user ID, `guest_session_id` is cleared, and `expires_at` is set to `NULL`.
 3. **Envelope Encryption:**
@@ -241,4 +254,15 @@ Support and bug feedback tracking.
    - Connect `POST /chris/message` to persist conversation history into `chats` and `messages`.
 4. **Phase 4: SSO & Guest Gateway**
    - Wire OIDC token claims into `users` table auto-provisioning.
-   - Implement guest session creation with 24-hour expiration TTL.
+   - Implement guest session creation with 2-hour expiration TTL.
+
+
+## Current alignment notes (2026-10-26)
+
+The security/encryption lifecycle above includes target architecture, not completed
+SSO or encryption functionality. See `../chris.md` for the implemented API contract.
+Messages now include a non-null per-chat `sequence` and nullable expert `agent_id`.
+The checked-in PNG is a historical diagram; the Mermaid source reflects these additions.
+Setup uses Alembic exclusively; the create-tables SQL is a reference export.
+Both seed paths insert only missing rows and preserve existing settings and URLs.
+Guest ownership uses a server-issued bearer credential stored as a SHA-256 digest.

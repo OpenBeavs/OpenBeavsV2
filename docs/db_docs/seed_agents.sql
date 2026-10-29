@@ -16,6 +16,7 @@ INSERT INTO agents (
     capabilities,
     is_active,
     is_featured,
+    status,
     created_at,
     updated_at
 ) VALUES 
@@ -31,6 +32,7 @@ INSERT INTO agents (
     '{"pushNotifications": false, "streaming": false}'::json,
     TRUE,
     TRUE,
+    'approved',
     1778370775,
     1778370775
 ),
@@ -46,6 +48,7 @@ INSERT INTO agents (
     '{"streaming": true}'::json,
     TRUE,
     FALSE,
+    'approved',
     1779224572,
     1779224572
 ),
@@ -54,23 +57,16 @@ INSERT INTO agents (
     'Chris',
     'OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.',
     '/chris/message',
-    '/chris/.well-known/agent.json',
+    NULL,
     'public',
     NULL,
     '[{"id": "route", "name": "Route Query", "description": "Classify a user query and delegate to the best installed agent.", "tags": ["orchestration", "routing"]}]'::json,
     '{"streaming": true}'::json,
     TRUE,
     TRUE,
+    'approved',
     1778023031,
     1778023031
 )
-ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name,
-    description = EXCLUDED.description,
-    endpoint_url = EXCLUDED.endpoint_url,
-    card_url = EXCLUDED.card_url,
-    trust_tier = EXCLUDED.trust_tier,
-    skills = EXCLUDED.skills,
-    capabilities = EXCLUDED.capabilities,
-    is_active = EXCLUDED.is_active,
-    updated_at = EXCLUDED.updated_at;
+-- Preserve all existing settings and metadata; only add missing default agents.
+ON CONFLICT (id) DO NOTHING;

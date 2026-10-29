@@ -1,10 +1,9 @@
 -- =============================================================================
 -- OpenBeavs v2: Cloud SQL PostgreSQL Schema Definition (REFERENCE EXPORT ONLY)
 -- Database: openbeavs_v2
--- NOTE: Do NOT run this file manually as a setup step. Database schemas are
--- managed exclusively via Alembic migrations (run: `alembic upgrade head`).
--- This file is generated from SQLAlchemy 2.0 declarative models and serves
--- strictly as an architectural and DDL reference export.
+-- Do NOT run this file manually as a setup step. Initialize and upgrade
+-- exclusively through Alembic: alembic upgrade head.
+-- Generated from SQLAlchemy 2.0 declarative models
 -- =============================================================================
 
 -- 1. Agents Table (A2A Registry)
@@ -20,8 +19,14 @@ CREATE TABLE IF NOT EXISTS agents (
     capabilities JSON DEFAULT '{}'::json,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+    status VARCHAR(32) NOT NULL,
+    submitted_by VARCHAR(255),
+    reviewed_by VARCHAR(255),
+    reviewed_at BIGINT,
+    review_note TEXT,
     created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL
+    updated_at BIGINT NOT NULL,
+    CONSTRAINT uq_agents_card_url UNIQUE (card_url)
 );
 
 -- 2. Users Table (OSU Microsoft SSO / OIDC)
@@ -61,11 +66,14 @@ CREATE INDEX IF NOT EXISTS idx_chats_expires_at ON chats(expires_at);
 CREATE TABLE IF NOT EXISTS messages (
     id VARCHAR(36) PRIMARY KEY,
     chat_id VARCHAR(36) NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    sequence BIGINT NOT NULL,
+    agent_id VARCHAR(64) REFERENCES agents(id) ON DELETE SET NULL,
     sender_type VARCHAR(32) NOT NULL,
     content TEXT NOT NULL,
     encrypted_dek BYTEA,
     meta JSON,
-    created_at BIGINT NOT NULL
+    created_at BIGINT NOT NULL,
+    CONSTRAINT uq_messages_chat_sequence UNIQUE (chat_id, sequence)
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);

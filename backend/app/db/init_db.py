@@ -11,7 +11,6 @@ from alembic.config import Config
 
 from alembic import command
 from app.db.seed_agents import seed_agents
-from app.db.session import engine
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -19,7 +18,6 @@ log = logging.getLogger(__name__)
 
 def init_tables() -> None:
     """Apply Alembic migrations up to head to create and version all tables."""
-    log.info("Connecting to target database: %s", engine.url)
     backend_dir = Path(__file__).resolve().parents[2]
     alembic_ini_path = backend_dir / "alembic.ini"
     log.info("Applying Alembic migrations using config: %s", alembic_ini_path)

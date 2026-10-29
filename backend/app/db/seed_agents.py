@@ -4,7 +4,6 @@ Can be run locally or against Google Cloud SQL depending on DATABASE_URL.
 """
 
 import logging
-import time
 
 from app.db.session import SessionLocal
 from app.models.agent import Agent
@@ -44,6 +43,7 @@ INITIAL_AGENTS = [
         ],
         "capabilities": {"pushNotifications": False, "streaming": False},
         "is_active": True,
+        "status": "approved",
         "is_featured": True,
         "created_at": 1778370775,
         "updated_at": 1778370775,
@@ -66,6 +66,7 @@ INITIAL_AGENTS = [
         ],
         "capabilities": {"streaming": True},
         "is_active": True,
+        "status": "approved",
         "is_featured": False,
         "created_at": 1779224572,
         "updated_at": 1779224572,
@@ -75,7 +76,7 @@ INITIAL_AGENTS = [
         "name": "Chris",
         "description": "OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.",
         "endpoint_url": "/chris/message",
-        "card_url": "/chris/.well-known/agent.json",
+        "card_url": None,
         "trust_tier": "public",
         "skills": [
             {
@@ -87,6 +88,7 @@ INITIAL_AGENTS = [
         ],
         "capabilities": {"streaming": True},
         "is_active": True,
+        "status": "approved",
         "is_featured": True,
         "created_at": 1778023031,
         "updated_at": 1778023031,
@@ -95,31 +97,20 @@ INITIAL_AGENTS = [
 
 
 def seed_agents() -> None:
-    """Insert new agents or update descriptive fields of existing agents.
-
-    Preserves runtime flags like is_active and is_featured, retains
-    created_at, and sets updated_at to the current timestamp.
-    """
+    """Insert missing initial agents without changing existing records."""
     db = SessionLocal()
     try:
-        now = int(time.time())
         for data in INITIAL_AGENTS:
             agent = db.get(Agent, data["id"])
             if agent:
-                log.info("Updating existing agent descriptive fields: %s", data["id"])
-                agent.name = data["name"]
-                agent.description = data.get("description")
-                agent.endpoint_url = data["endpoint_url"]
-                agent.card_url = data.get("card_url")
-                agent.skills = data.get("skills")
-                agent.capabilities = data.get("capabilities")
-                agent.updated_at = now
+                # Reseeding must preserve settings and metadata managed after setup.
+                log.info("Keeping existing agent unchanged: %s", data["id"])
             else:
                 log.info("Seeding new agent: %s (%s)", data["id"], data["name"])
                 agent = Agent(**data)
                 db.add(agent)
         db.commit()
-        log.info("Seeding complete! %d agents registered.", len(INITIAL_AGENTS))
+        log.info("Seeding complete! %d default agents checked.", len(INITIAL_AGENTS))
     finally:
         db.close()
 

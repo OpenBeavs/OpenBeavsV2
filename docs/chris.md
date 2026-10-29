@@ -14,7 +14,7 @@ Returns service status for Cloud Run liveness probes and local monitoring:
 ```
 
 ### `GET /chris/agents`
-Returns all active agents registered in the database available for Chris routing:
+Returns the active agents Chris can route to: agents in the `agents` table whose registry status is `approved` or `provisional` (pending and revoked agents are never listed):
 ```json
 [
   {
@@ -39,8 +39,8 @@ Returns all active agents registered in the database available for Chris routing
   "message": "What majors does OSU offer?",
   "history": [{ "role": "user", "content": "..." }],
   "chat_id": "optional-uuid",
-  "user_id": "optional-onid-or-null",
-  "guest_session_id": "optional-guest-uuid",
+  "user_id": null,
+  "guest_session_id": "server-issued-token-for-continuation",
   "source_domain": "library.oregonstate.edu"
 }
 ```
@@ -50,6 +50,7 @@ Returns:
 {
   "response": "...",
   "chat_id": "uuid-of-session",
+  "guest_session_id": "server-issued-token-for-guests",
   "routed_to": "8f695b47-27a7-4ce7-9932-975fc618ba1d",
   "agent_name": "osu_rag_agent",
   "routing_confidence": 0.94,
@@ -60,7 +61,20 @@ Returns:
 - `chat_id`: UUID of the persisted chat session in the database.
 - `routed_to` and `agent_name`: set when Chris picked an installed agent.
 - `routing_*` fields show the model's decision and confidence.
-- Errors: 400 empty message, 500 missing config, 503 model call failed.
+- Start a guest conversation with just `message` (and optionally `history` and `source_domain`).
+  Keep the returned `chat_id` and `guest_session_id`; send both to continue it.
+  Treat the token as a bearer credential: do not log it or share it. Only its SHA-256 digest is stored.
+- `user_id` in the body is not authentication. A supplied ID without a matching verified
+  principal is rejected. SSO is not implemented; the existing `REGISTRY_DEV_AUTH`
+  header mechanism can be used only in local development with a provisioned user.
+- Continued chats load history from the database. Client history is accepted only
+  for a new conversation. A failed ownership/history lookup never falls back to client history.
+- Legacy guest sessions without server-issued credentials cannot be continued; start a new chat.
+- Errors: 400 empty message; 403 wrong ownership/token or untrusted identity;
+  404 unknown chat; 410 expired chat; 501 authentication not configured;
+  500 missing model config; 503 model or required database lookup unavailable.
+- If model generation succeeds but saving fails, the answer is returned with
+  `chat_id=null` and `guest_session_id=null`; the client must not label it as saved.
 
 
 ## Config (`backend/.env`, git-ignored)
@@ -80,14 +94,18 @@ backend/app/models/             declarative models: Agent, User, Chat, Message, 
 backend/app/chris/router.py     HTTP route (queries DB agents, records turns)
 backend/app/chris/llm.py        Gemini Interactions API call; provider-specific file
 backend/app/chris/agent_selection.py  validated agent choice
-backend/app/chris/agents.py     Agent type and mock agent fallback list
+backend/app/chris/agents.py     Agent type and explicitly enabled mock list
+backend/app/chris/sessions.py   Ownership, guest credentials, ordered persistence and cleanup
 backend/app/chris/prompts.py    direct-answer system prompt
 backend/alembic/                database migrations
 ```
 
 ## Agent Routing
 
-By default, Chris queries all active agents from the `agents` database table. If `CHRIS_USE_MOCK_AGENTS=true` is set, or if the database contains no agents, it falls back to `MOCK_AGENTS` (Honors College, Engineering Advisor, Writing Center, Library).
+By default, Chris queries the active agents in the `agents` table whose registry status is `approved` or `provisional` (see `docs/registry.md`). Only public agents with no required role are eligible until caller authorization is implemented.
+`CHRIS_USE_MOCK_AGENTS=true` explicitly enables `MOCK_AGENTS` for tests. An empty
+catalog or failed agent lookup never enables mocks; Chris answers directly.
+Mock candidate IDs are recorded only as metadata, never as nonexistent foreign keys.
 
 If an agent is chosen, the reply currently acknowledges the routing; actual A2A HTTP client execution will be wired next. Low confidence (below 0.7) or no match falls back to a direct answer.
 
@@ -120,3 +138,41 @@ python -m app.db.seed_agents
 ## Not migrated yet
 
 Real A2A HTTP client dispatch, SSO token claim verification middleware, step-up MFA modals.
+
+
+## Maintenance and discovery
+
+`DELETE /chris/chats/expired` requires the existing `require_admin` dependency.
+With production authentication unimplemented it fails closed; development headers
+are usable only with explicit local dev auth. A scheduler is not installed by this
+change. Guest continuation rejects expiry immediately, even before cleanup runs.
+Cleanup deletes expired guest chats and their messages.
+
+`GET /chris/.well-known/agent.json` returns 501 until Chris implements an actual A2A
+transport. `/chris/message` is still a prototype JSON endpoint, not JSON-RPC
+`message/send`; it must not be advertised as a working A2A transport. New Chris
+seed rows have `card_url=NULL`; insert-only seeds do not rewrite old records.
+
+## Message order and attribution
+
+Messages have a unique `(chat_id, sequence)` position. Appends allocate positions
+under a PostgreSQL chat-row lock; the unique constraint also rejects conflicting
+SQLite writes instead of silently corrupting order. A failed append returns no
+saved chat ID. Timestamps remain epoch **seconds**, consistent with existing data.
+Concurrent model calls may use the same earlier history; sequence describes save
+order, not serialized model execution. Clients should send one turn at a time.
+
+`messages.agent_id` is reserved for the expert that actually authored a response.
+It stays NULL for user turns, Chris responses, and unknown legacy authors. The
+current "would route" message is authored by Chris, so it stays NULL too; the
+chosen candidate is in `meta.selected_agent_id`. Actual A2A dispatch is not added.
+
+Revision `b82f6d1a390c` follows the registry revision and backfills sequence by
+`created_at, id`. Legacy timestamp ties get a deterministic order; their original
+order cannot be recovered. It preserves IDs, contents, chat references, and existing second-based timestamps.
+Modern millisecond timestamps written by Dean's interim version are normalized to
+seconds after ordering; downgrade does not restore their old units.
+
+`python -m app.db.init_db` now runs Alembic to head before insert-only seeding.
+The standalone create-tables SQL is reference-only. Existing databases without an
+Alembic version require verified schema baselining first; do not stamp blindly.
