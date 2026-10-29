@@ -1,7 +1,8 @@
 -- =============================================================================
--- OpenBeavs v2: Cloud SQL PostgreSQL Schema Definition
+-- OpenBeavs v2: Cloud SQL PostgreSQL Schema Definition (REFERENCE EXPORT ONLY)
 -- Database: openbeavs_v2
--- Reference only: initialize and upgrade with Alembic, not this file.
+-- Do NOT run this file manually as a setup step. Initialize and upgrade
+-- exclusively through Alembic: alembic upgrade head.
 -- Generated from SQLAlchemy 2.0 declarative models
 -- =============================================================================
 
