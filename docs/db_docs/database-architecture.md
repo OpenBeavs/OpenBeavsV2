@@ -2,11 +2,17 @@
 
 ## 1. Executive Summary
 
-This document presents the architectural analysis of the legacy OpenBeavs (v1) database, the rationale for simplifying it in OpenBeavs v2, and the concrete target schema.
+This document presents the legacy database analysis and the five-table v2
+schema. The schema supports future identity/encryption work, but columns alone
+do not implement those flows. Current behavior is described below and in
+[Chris](../chris.md) and [the frontend guide](../frontend.md).
 
 The legacy repository was built as a direct fork of **Open WebUI**, inheriting over 20 tables, dual ORMs (`Peewee` and `SQLAlchemy`), embedded vector databases (`ChromaDB`), and local password authentication. Because OpenBeavs is fundamentally an **A2A (Agent-to-Agent) protocol discovery hub and orchestrator for Oregon State University**, more than 80% of the inherited schema was dead weight.
 
-In OpenBeavs v2, the database is streamlined into **5 core tables** managed by a single modern ORM (**SQLAlchemy 2.0** with **Alembic**). This reduces operational overhead, removes cold-start latency on Google Cloud Run, enables true message streaming and pagination, and aligns directly with OSU's Microsoft SSO (OIDC) identity model.
+OpenBeavs v2 has **5 core tables** managed by **SQLAlchemy 2.0** and **Alembic**.
+Chris records relational conversation turns. Streaming, history pagination,
+verified Microsoft SSO, and envelope encryption are not implemented by the
+current API. Cold-start and capacity benefits have not been measured here.
 
 ---
 
@@ -48,7 +54,9 @@ Both models attempted to call `create_all(bind=engine)` inside their constructor
 1. **Single Responsibility:** The hub stores only registry discovery metadata, routing state, conversation history, and user session references.
 2. **Single Modern ORM:** SQLAlchemy 2.0 (async/sync) with Alembic for migrations. No dual ORM wrappers.
 3. **Relational Messages:** Conversations are broken down into indexed, sequential message rows rather than monolithic JSON blobs.
-4. **Native SSO & Privacy:** Pure OIDC/SSO identity model with envelope encryption and automated guest session TTL cleanup.
+4. **Identity & Privacy:** Schema fields reserve space for OIDC identity and
+   encryption. The current guest flow stores plaintext and sets a two-hour
+   expiry; cleanup must be explicitly invoked, not automatically scheduled.
 5. **Multi-Environment Parity:** Standard relational schema that runs on SQLite for fast local development and PostgreSQL on Google Cloud SQL in production.
 
 ---
@@ -98,7 +106,7 @@ erDiagram
         string session_type "authenticated | guest | a2a"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
-        bigint expires_at "24-hour TTL for guest chats; NULL for auth users"
+        bigint expires_at "2-hour guest expiry; cleanup must be invoked"
     }
 
     MESSAGES {
@@ -198,17 +206,18 @@ Support and bug feedback tracking.
 
 ## 5. Security, Privacy & Retention Architecture
 
-1. **Guest Sessions & 24h Purge:**
-   - Unauthenticated users receive an ephemeral `guest_session_id`.
-   - Records have `expires_at = now() + 24 hours`.
-   - A scheduled cleanup task runs `DELETE FROM chats WHERE expires_at < now()`. Due to cascading foreign keys, corresponding rows in `messages` are deleted automatically.
-2. **Guest Promotion:**
-   - When a guest logs in via OSU SSO mid-conversation, `chats.user_id` is set to the authenticated user ID, `guest_session_id` is cleared, and `expires_at` is set to `NULL`.
-3. **Envelope Encryption:**
-   - Sensitive user chats are encrypted using AES-256-GCM.
-   - A random per-chat Data Encryption Key (DEK) encrypts messages.
-   - The DEK is encrypted with the user's KMS wrapping key (`kms_key_ref`) and stored in `messages.encrypted_dek`.
-   - Plaintext keys never touch the database disk.
+1. **Guest sessions and cleanup:** The frontend creates an in-memory random
+   `guest_session_id`. Chris sets `expires_at` to creation time plus two hours.
+   `purge_expired_chats()` deletes expired chats and related messages when
+   invoked by the maintenance endpoint. No scheduler is installed; expiry is
+   not checked when accepting a subsequent message.
+2. **Current ownership checks:** Guest continuations must match a stored guest
+   identifier. A caller-supplied `user_id` is looked up in the users table, but
+   this does not verify identity. The frontend never supplies one. SSO and
+   automatic guest-to-user promotion remain unimplemented.
+3. **Encryption fields:** `kms_key_ref` and `encrypted_dek` are schema fields for
+   future work. The current Chris route persists plaintext content and does
+   not perform envelope encryption.
 
 ---
 
@@ -221,24 +230,18 @@ Support and bug feedback tracking.
 | **Migrations** | Dual: `peewee_migrate` + `Alembic` | Standard `Alembic` only |
 | **Agent Modeling** | Fragmented (`agent` & `registry_agent`) | Unified `agents` registry |
 | **Chat Storage** | Monolithic JSON/ciphertext blob | Relational `messages` with foreign keys |
-| **Message Streaming** | Must rewrite whole JSON on each token/turn | Direct single-row insertion |
+| **Message Storage** | Whole conversation JSON blob | Individual relational rows; API replies are not streamed |
 | **Vector DB in Hub** | ChromaDB SQLite + PgVector | **Zero** (delegated to A2A agents) |
-| **Authentication** | Local password auth + bcrypt bugs | Pure OSU Microsoft SSO / OIDC |
+| **Authentication** | Local password auth + bcrypt bugs | Guest prototype; verified OIDC is future work |
 | **Container Footprint** | Heavy (multi-GB Open WebUI base) | Minimal lightweight FastAPI service |
-| **Cloud Run Cold Start** | High (~10–20s dual ORM/migration boot) | Fast (<1s instant readiness) |
+| **Cloud Run Cold Start** | Legacy startup includes more initialization | Not benchmarked in this repository |
 
 ---
 
-## 7. Implementation Roadmap for V2
+## 7. Implementation status
 
-1. **Phase 1: Database Setup**
-   - Create `backend/app/db/session.py` with SQLAlchemy 2.0 `create_async_engine` (or sync `engine`) and connection pooling.
-   - Set up Alembic in `backend/alembic/` configured to target `backend/app/models/`.
-2. **Phase 2: Model Definitions**
-   - Implement `Agent`, `User`, `Chat`, `Message`, and `Ticket` in `backend/app/models/`.
-3. **Phase 3: Chris Orchestrator Integration**
-   - Replace in-memory `MOCK_AGENTS` in `backend/app/chris/agents.py` with queries against the live `agents` table.
-   - Connect `POST /chris/message` to persist conversation history into `chats` and `messages`.
-4. **Phase 4: SSO & Guest Gateway**
-   - Wire OIDC token claims into `users` table auto-provisioning.
-   - Implement guest session creation with 24-hour expiration TTL.
+SQLAlchemy's synchronous engine, all five models, Alembic migrations, agent
+queries, and Chris conversation persistence exist. The frontend integrates the
+existing API without adding migrations. A2A execution, verified SSO, user
+provisioning/promotion, encryption, streaming, saved-chat retrieval, and a
+scheduled cleanup service remain future backend work.

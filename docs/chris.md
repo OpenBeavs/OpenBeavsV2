@@ -14,7 +14,9 @@ Returns service status for Cloud Run liveness probes and local monitoring:
 ```
 
 ### `GET /chris/agents`
-Returns all active agents registered in the database available for Chris routing:
+Returns all active external agents registered in the database, including agents
+whose access tier or role requirement excludes them from current guest routing.
+The frontend treats this as a read-only directory, not execution authorization:
 ```json
 [
   {
@@ -60,7 +62,12 @@ Returns:
 - `chat_id`: UUID of the persisted chat session in the database.
 - `routed_to` and `agent_name`: set when Chris picked an installed agent.
 - `routing_*` fields show the model's decision and confidence.
-- Errors: 400 empty message, 500 missing config, 503 model call failed.
+- Errors: 400 empty message, 403 denied chat access, 422 invalid request,
+  500 missing config or other server failure, 503 model call failed.
+- A non-null `chat_id` selects database history instead of client history. If
+  persistence fails, the reply may still succeed with `chat_id: null`.
+- `user_id` is currently a caller-supplied lookup, not verified SSO identity.
+  The guest-only frontend omits it and uses `guest_session_id` instead.
 
 
 ## Config (`backend/.env`, git-ignored)
@@ -87,7 +94,11 @@ backend/alembic/                database migrations
 
 ## Agent Routing
 
-By default, Chris queries all active agents from the `agents` database table. If `CHRIS_USE_MOCK_AGENTS=true` is set, or if the database contains no agents, it falls back to `MOCK_AGENTS` (Honors College, Engineering Advisor, Writing Center, Library).
+By default, Chris queries active public agents with no required role from the
+`agents` table, excluding Chris itself. Only `CHRIS_USE_MOCK_AGENTS=true` selects
+the mock list (Honors College, Engineering Advisor, Writing Center, Library).
+An empty table or failed agent query produces an empty routing list and Chris
+answers directly. Mock agents are routing fixtures, not an offline model.
 
 If an agent is chosen, the reply currently acknowledges the routing; actual A2A HTTP client execution will be wired next. Low confidence (below 0.7) or no match falls back to a direct answer.
 
@@ -97,6 +108,11 @@ If an agent is chosen, the reply currently acknowledges the routing; actual A2A 
 - Conversations are recorded in the local or Cloud SQL database:
   - `chats`: Stores session metadata, `source_domain` (for embedded iframe context), and an `expires_at` TTL for unauthenticated guest sessions (2 hours).
   - `messages`: Stores individual turns linked to `chat_id` with cascading deletion upon session purge.
+- `DELETE /chris/chats/expired` invokes the cleanup helper. No scheduler is
+  installed by this repository; the expiry timestamp alone does not delete
+  chats or reject further turns. The frontend does not call this route.
+- Encryption-related columns exist, but this request path stores plaintext;
+  verified SSO, guest promotion, and envelope encryption are not implemented.
 
 ## Run
 
@@ -120,3 +136,11 @@ python -m app.db.seed_agents
 ## Not migrated yet
 
 Real A2A HTTP client dispatch, SSO token claim verification middleware, step-up MFA modals.
+
+## Frontend
+
+See [frontend setup and integration](frontend.md). The standalone Svelte frontend
+uses the existing health, directory, and message endpoints through a same-origin
+development/preview proxy. The message endpoint returns ordinary JSON. The
+discovery card currently advertises streaming, but streaming is not implemented.
+Saved-chat list/retrieval endpoints are also not implemented.
