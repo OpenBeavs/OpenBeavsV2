@@ -189,8 +189,9 @@ def test_installed_agents_empty_returns_empty_list(test_db: Session):
         assert agents == []
 
 
-def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
+def test_installed_agents_filters_by_trust_tier_and_role(monkeypatch, test_db: Session):
     """Verify that privileged agents or agents requiring specific roles are filtered out."""
+    monkeypatch.setenv("CHRIS_USE_MOCK_AGENTS", "false")
     # Add a privileged agent
     priv_agent = Agent(
         id="internal-admin-agent",

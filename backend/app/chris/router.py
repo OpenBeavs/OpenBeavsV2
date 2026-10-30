@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_optional_user
 from app.chris.agent_selection import choose_agent
 from app.chris.agents import MOCK_AGENTS, Agent
 from app.chris.llm import LLMError, generate
@@ -97,7 +98,11 @@ def _extract_skills(raw_skills: Any) -> list[str]:
     return []
 
 
-def _installed_agents(db: Session) -> list[Agent]:
+def _installed_agents(
+    db: Session,
+    caller: DBUser | None = None,
+    is_elevated: bool = False,
+) -> list[Agent]:
     """Return the agents Chris can route to.
 
     Uses MOCK_AGENTS if CHRIS_USE_MOCK_AGENTS is set. Otherwise, queries
@@ -108,19 +113,27 @@ def _installed_agents(db: Session) -> list[Agent]:
         return MOCK_AGENTS
 
     try:
-        # Filter for active public agents with no special role requirement.
-        # TODO: Once authentication middleware supplies caller role/tier, expand
-        # this query to include authenticated/privileged agents matching the caller.
-        db_agents = (
-            db.query(DBAgent)
-            .filter(
-                DBAgent.is_active.is_(True),
-                DBAgent.id != "chris",
+        query = db.query(DBAgent).filter(
+            DBAgent.is_active.is_(True),
+            DBAgent.id != "chris",
+        )
+        if not caller:
+            query = query.filter(
                 DBAgent.trust_tier == "public",
                 DBAgent.required_role.is_(None),
             )
-            .all()
-        )
+        else:
+            allowed_tiers = ["public", "authenticated"]
+            if is_elevated or caller.role == "admin":
+                allowed_tiers.append("privileged")
+            query = query.filter(DBAgent.trust_tier.in_(allowed_tiers))
+            if caller.role != "admin":
+                query = query.filter(
+                    (DBAgent.required_role.is_(None))
+                    | (DBAgent.required_role == caller.role)
+                )
+
+        db_agents = query.all()
     except SQLAlchemyError as e:
         log.error("Failed to query installed agents from database: %s", e)
         return []
@@ -166,6 +179,7 @@ def _persist_turn(
     user_text: str,
     response_text: str,
     routed_agent_id: str | None,
+    caller: DBUser | None = None,
     meta: dict[str, Any] | None = None,
 ) -> str | None:
     """Save or update chat session and record user/agent turns.
@@ -180,8 +194,8 @@ def _persist_turn(
 
         chat = db.get(DBChat, chat_id)
         if not chat:
-            # Only treat as authenticated if a verified user exists in the database
-            verified_user = db.get(DBUser, form.user_id) if form.user_id else None
+            # Use authenticated caller if present, or verified DB user from form.user_id
+            verified_user = caller or (db.get(DBUser, form.user_id) if form.user_id else None)
             if verified_user:
                 session_type = "authenticated"
                 user_id = verified_user.id
@@ -239,6 +253,7 @@ def _persist_turn(
 async def chris_message(
     form: ChrisMessageForm,
     db: Annotated[Session, Depends(get_db)],
+    caller: Annotated[DBUser | None, Depends(get_optional_user)] = None,
 ) -> ChrisMessageResponse:
     """Route a message to an agent or answer it directly via the configured model.
 
@@ -258,9 +273,12 @@ async def chris_message(
             is_authorized = False
             if existing_chat.user_id:
                 # Authenticated session: caller must be the verified owner
-                verified_user = db.get(DBUser, form.user_id) if form.user_id else None
-                if verified_user and verified_user.id == existing_chat.user_id:
+                if caller and caller.id == existing_chat.user_id:
                     is_authorized = True
+                else:
+                    verified_user = db.get(DBUser, form.user_id) if form.user_id else None
+                    if verified_user and verified_user.id == existing_chat.user_id:
+                        is_authorized = True
             elif existing_chat.guest_session_id:
                 # Guest session: caller must provide matching guest token
                 if (
@@ -277,7 +295,7 @@ async def chris_message(
                     detail="Access denied: You are not authorized to access or modify this chat session.",
                 )
 
-    agents = _installed_agents(db)
+    agents = _installed_agents(db, caller=caller)
 
     try:
         selection = await choose_agent(message, agents)
@@ -293,6 +311,7 @@ async def chris_message(
                 message,
                 response_text,
                 routed_agent_id=selection.agent.id,
+                caller=caller,
                 meta={
                     "routing_confidence": selection.confidence,
                     "routing_reason": selection.reason,
@@ -365,6 +384,7 @@ async def chris_message(
         message,
         reply,
         routed_agent_id=None,
+        caller=caller,
         meta={
             "routing_confidence": selection.confidence,
             "routing_reason": selection.reason,
