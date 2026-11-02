@@ -12,3 +12,4 @@ __pycache__/
 # Local database files
 *.db
 *.sqlite3
+agent_registry with new repo

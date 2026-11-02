@@ -3,6 +3,7 @@
 Routers stay thin and call these functions; all database access lives here.
 """
 
+import logging
 import time
 import uuid
 
@@ -10,14 +11,23 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_env
 from app.models import Agent
 from app.registry.auth import Principal
 from app.registry.cards import AgentCard
 from app.registry.schemas import ReviewForm
 
+log = logging.getLogger(__name__)
+
 # Statuses whose agents Chris may route to and everyone may see.
 ROUTABLE_STATUSES = ("approved", "provisional")
 CHRIS_AGENT_ID = "chris"
+
+# REGISTRY_APPROVAL_MODE values.
+APPROVAL_AUTO = "auto"
+APPROVAL_MANUAL = "manual"
+AUTO_REVIEWER = "system:auto"
+AUTO_APPROVED_NOTE = "Auto-approved: passed the automated checks (no human review)."
 
 
 class DuplicateAgentError(ValueError):
@@ -45,8 +55,30 @@ def has_any_agents(db: Session) -> bool:
     return db.scalar(select(Agent.id).limit(1)) is not None
 
 
+def approval_mode() -> str:
+    """Return how new submissions are decided: ``auto`` (default) or ``manual``.
+
+    A blank value means the default. An unrecognized value falls back to ``manual``,
+    the stricter choice.
+    """
+    mode = (get_env("REGISTRY_APPROVAL_MODE") or APPROVAL_AUTO).lower()
+    if mode in (APPROVAL_AUTO, APPROVAL_MANUAL):
+        return mode
+    log.warning("Unknown REGISTRY_APPROVAL_MODE %r; using manual approval.", mode)
+    return APPROVAL_MANUAL
+
+
 def submit_agent(db: Session, card: AgentCard, submitted_by: str) -> Agent:
-    """Store a newly submitted agent as ``pending`` (never routable until reviewed).
+    """Store a newly submitted agent.
+
+    The card has already passed the automated checks (safe address, bounded and
+    cleaned card, safe endpoint). What happens next depends on ``approval_mode()``:
+
+    - ``auto`` (default): a card with no warning flags becomes ``provisional`` and
+      active, so Chris can route to it. This is an interim policy until the admin
+      review workflow exists. A card whose text looks like an attempt to steer
+      Chris's routing is held as ``pending`` for a person to look at.
+    - ``manual``: every card is ``pending`` until an admin reviews it.
 
     The trust tier is always ``public`` here; only an admin review can change it.
 
@@ -58,6 +90,7 @@ def submit_agent(db: Session, card: AgentCard, submitted_by: str) -> Agent:
         raise DuplicateAgentError("An agent with this card URL is already registered.")
 
     now = int(time.time())
+    auto_approved = approval_mode() == APPROVAL_AUTO and not card.flags
     agent = Agent(
         id=str(uuid.uuid4()),
         name=card.name,
@@ -67,11 +100,15 @@ def submit_agent(db: Session, card: AgentCard, submitted_by: str) -> Agent:
         trust_tier="public",
         skills=card.skills,
         capabilities=card.capabilities,
-        is_active=False,
+        is_active=auto_approved,
         is_featured=False,
-        status="pending",
+        status="provisional" if auto_approved else "pending",
         submitted_by=submitted_by,
-        review_note=" ".join(card.flags) or None,
+        reviewed_by=AUTO_REVIEWER if auto_approved else None,
+        reviewed_at=now if auto_approved else None,
+        review_note=AUTO_APPROVED_NOTE
+        if auto_approved
+        else (" ".join(card.flags) or None),
         created_at=now,
         updated_at=now,
     )

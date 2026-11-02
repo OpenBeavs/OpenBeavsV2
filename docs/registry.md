@@ -1,8 +1,9 @@
 # Agent Registry
 
 The registry is how an A2A agent gets into OpenBeavs and how Chris decides it may
-route to it. An agent is submitted by URL, reviewed by an admin, and only then
-becomes visible to everyone and routable by Chris.
+route to it. An agent is submitted by URL and must pass a set of automated checks.
+In the default **auto** mode an agent that passes goes live as `provisional`;
+in **manual** mode it waits for an admin to approve it.
 
 It is a module of the backend (`backend/app/registry/`) that writes to the unified
 `agents` table described in `docs/db_docs/database-architecture.md`. There is no
@@ -11,20 +12,28 @@ separate registry database or service.
 ## How an agent gets in
 
 ```
-submit URL  ->  hub fetches the agent card  ->  stored as "pending"  ->  admin review
-                (safe-URL checks, size cap)      (not routable)          approve / provisional / revoke
-                                                                              |
-                                              Chris routes only to "approved" and "provisional"
+submit URL -> safe-address check -> fetch + clean + validate card -> wording check -> decision
+                                                                                        |
+        auto mode (default): clean card -> "provisional" (live)   flagged card -> "pending"
+        manual mode:         every card -> "pending" (waits for an admin)
+                                                                                        |
+                              Chris routes only to "approved" and "provisional"
 ```
 
 1. **Submit.** `POST /registry/agents` with `{"url": "..."}`. Nothing else is accepted.
 2. **Fetch.** The hub requests the agent's discovery card (`/.well-known/agent.json`)
    after checking the address is safe (see Security). The card is validated.
-3. **Pending.** The agent is stored with `status = pending` and `is_active = false`.
-   Only the submitter and admins can see it. Chris cannot route to it.
+3. **Decision** (`REGISTRY_APPROVAL_MODE`, see Approval mode below).
+   - **auto** (default): a card that passed every check, with no warning flag, is
+     stored as `provisional` and active, so Chris can route to it at once. It is
+     recorded as reviewed by `system:auto`. A card flagged for steering wording is
+     held as `pending`.
+   - **manual**: the agent is stored with `status = pending` and `is_active = false`.
+     Only the submitter and admins can see it. Chris cannot route to it.
 4. **Review.** An admin calls `POST /registry/agents/{id}/review`. `approve` and
    `provisional` make the agent active and visible; `revoke` and `reject` make it
-   inactive and hidden. The reviewer and time are recorded.
+   inactive and hidden. The reviewer and time are recorded. This still works on
+   auto-approved agents, so any of them can be revoked.
 5. **Routing.** Chris offers the router only active agents whose status is
    `approved` or `provisional`, with public access and no required role
    (`service.routable_agents`). This is a conservative filter, not a new tier system.
@@ -33,9 +42,9 @@ submit URL  ->  hub fetches the agent card  ->  stored as "pending"  ->  admin r
 
 | Status | Routable by Chris | Visible to other users | Meaning |
 |---|---|---|---|
-| `pending` | no | no (submitter and admins only) | Submitted, awaiting review |
+| `pending` | no | no (submitter and admins only) | Submitted, awaiting review (manual mode, or a card held by the wording check) |
 | `approved` | yes | yes | Reviewed and accepted |
-| `provisional` | yes | yes | Accepted for a pilot; a UI warning is not implemented here |
+| `provisional` | yes | yes | Accepted for a pilot. Auto mode uses this status for agents that passed the automated checks; a UI warning is not implemented here |
 | `revoked` | no | no (submitter and admins only) | Rejected or withdrawn |
 
 Routability also requires active state, public access, and no required role.
@@ -43,6 +52,27 @@ Routability also requires active state, public access, and no required role.
 `status` has no database default, so a row can never become routable by omission.
 `trust_tier` (`public` / `authenticated` / `privileged`) is a separate gate for *who
 may use* an agent. It defaults to `public` and only an admin review can change it.
+
+## Approval mode
+
+Human approval (an admin screen, real sign-in for admins) is planned for later work.
+Until then the registry decides by itself:
+
+| `REGISTRY_APPROVAL_MODE` | A card that passes every check | A card flagged by the wording check |
+|---|---|---|
+| `auto` (default; also used when blank) | `provisional`, active, routable | `pending` |
+| `manual` | `pending` | `pending` |
+
+Any other value is treated as `manual`. No database change is involved: `provisional`
+already exists and `reviewed_by` records `system:auto`.
+
+**No person looks at an auto-approved agent before it goes live**, and Chris sends
+user questions to the endpoint of any live agent. This is acceptable for the MVP only
+because submission requires authentication, which is not implemented for production
+(see Authentication), so in a deployment nobody can submit and only seeded agents are
+live. Before submission is opened, add at least: a check that the endpoint answers, a
+limit per submitter, and the review workflow. Until then use `manual` wherever
+submission is open to people you do not trust.
 
 ## Endpoints
 
@@ -145,6 +175,7 @@ and its tests are in place for when SSO replaces `current_principal`.
 | `REGISTRY_DEV_AUTH` | `true` reads the caller from the `X-User-Id` and `X-User-Email` headers. **Local development and tests only: these headers are trivially forged.** Unset (the default) makes every route return 501 |
 | `REGISTRY_ADMIN_EMAILS` | Comma-separated admin emails (not a secret) |
 | `REGISTRY_ALLOW_HTTP` | `true` allows plain `http` card URLs. Local development only |
+| `REGISTRY_APPROVAL_MODE` | `auto` (default) or `manual`; see Approval mode |
 
 `REGISTRY_DEV_AUTH` is refused, with a 501 and a logged reason, when the process looks
 like a deployment, and the app refuses to start in that combination:

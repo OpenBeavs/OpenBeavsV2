@@ -58,7 +58,12 @@ def submit_agent(
     db: Annotated[Session, Depends(get_db)],
     fetch: Annotated[CardFetcher, Depends(get_card_fetcher)],
 ) -> RegistryAgentOut:
-    """Submit an agent by URL. It stays ``pending`` until an admin approves it."""
+    """Submit an agent by URL.
+
+    In the default ``auto`` approval mode an agent that passes every automated check
+    becomes ``provisional`` (routable) at once; otherwise it stays ``pending`` until
+    an admin approves it. See ``service.submit_agent``.
+    """
     try:
         card = fetch(form.url)
     except (UnsafeURLError, CardError) as e:
@@ -69,7 +74,7 @@ def submit_agent(
     except service.DuplicateAgentError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
-    log.info("Agent %s submitted by %s (pending review)", agent.id, principal.email)
+    log.info("Agent %s submitted by %s (%s)", agent.id, principal.email, agent.status)
     return _to_out(agent, principal)
 
 

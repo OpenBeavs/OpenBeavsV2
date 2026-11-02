@@ -94,6 +94,9 @@ def client(
     """An API client with dev authentication on and the fake fetcher installed."""
     monkeypatch.setenv("REGISTRY_DEV_AUTH", "true")
     monkeypatch.setenv("REGISTRY_ADMIN_EMAILS", ADMIN_EMAIL)
+    # The default is auto approval; most tests exercise the manual review flow, so
+    # they opt in to it here. test_approval_mode.py covers the default and auto.
+    monkeypatch.setenv("REGISTRY_APPROVAL_MODE", "manual")
 
     def override_get_db() -> Iterator[Session]:
         yield db
