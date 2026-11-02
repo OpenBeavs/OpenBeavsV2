@@ -20,10 +20,10 @@ from app.chris.llm import LLMError, generate
 from app.chris.prompts import build_direct_prompt
 from app.config import ConfigError, env_flag
 from app.db import get_db
-from app.models import Agent as DBAgent
 from app.models import Chat as DBChat
 from app.models import Message as DBMessage
 from app.models import User as DBUser
+from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
 
@@ -100,27 +100,16 @@ def _extract_skills(raw_skills: Any) -> list[str]:
 def _installed_agents(db: Session) -> list[Agent]:
     """Return the agents Chris can route to.
 
-    Uses MOCK_AGENTS if CHRIS_USE_MOCK_AGENTS is set. Otherwise, queries
-    active public agents from the database. If the table is empty or the
-    query fails, returns an empty list so Chris answers directly.
+    Uses MOCK_AGENTS if CHRIS_USE_MOCK_AGENTS is set. Otherwise, queries the
+    registry for active agents an admin has approved (or marked provisional).
+    Pending and revoked agents are never routable. If the table is empty or
+    the query fails, returns an empty list so Chris answers directly.
     """
     if env_flag("CHRIS_USE_MOCK_AGENTS"):
         return MOCK_AGENTS
 
     try:
-        # Filter for active public agents with no special role requirement.
-        # TODO: Once authentication middleware supplies caller role/tier, expand
-        # this query to include authenticated/privileged agents matching the caller.
-        db_agents = (
-            db.query(DBAgent)
-            .filter(
-                DBAgent.is_active.is_(True),
-                DBAgent.id != "chris",
-                DBAgent.trust_tier == "public",
-                DBAgent.required_role.is_(None),
-            )
-            .all()
-        )
+        db_agents = routable_agents(db)
     except SQLAlchemyError as e:
         log.error("Failed to query installed agents from database: %s", e)
         return []
@@ -381,12 +370,8 @@ async def chris_message(
 
 @router.get("/agents", response_model=list[AgentSummary])
 def list_active_agents(db: Annotated[Session, Depends(get_db)]) -> list[dict[str, Any]]:
-    """List all active external agents registered for Chris routing."""
-    db_agents = (
-        db.query(DBAgent)
-        .filter(DBAgent.is_active.is_(True), DBAgent.id != "chris")
-        .all()
-    )
+    """List the active, reviewed agents Chris can route to."""
+    db_agents = routable_agents(db)
     return [
         {
             "id": a.id,

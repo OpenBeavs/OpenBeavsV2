@@ -40,6 +40,7 @@ def test_db():
         skills=["osu", "admissions", "campus"],
         trust_tier="public",
         is_active=True,
+        status="approved",  # new agents default to "pending", which Chris never routes to
     )
     session.add(agent)
     session.commit()
@@ -198,6 +199,7 @@ def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
         endpoint_url="https://example.com/admin",
         trust_tier="privileged",
         is_active=True,
+        status="approved",
     )
     # Add an agent requiring a specific role
     faculty_agent = Agent(
@@ -207,6 +209,7 @@ def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
         trust_tier="public",
         required_role="faculty",
         is_active=True,
+        status="approved",
     )
     test_db.add_all([priv_agent, faculty_agent])
     test_db.commit()

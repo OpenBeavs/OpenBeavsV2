@@ -14,9 +14,10 @@ Returns service status for Cloud Run liveness probes and local monitoring:
 ```
 
 ### `GET /chris/agents`
-Returns all active external agents registered in the database, including agents
-whose access tier or role requirement excludes them from current guest routing.
-The frontend treats this as a read-only directory, not execution authorization:
+Returns active external agents whose registry status is `approved` or
+`provisional`, whose trust tier is `public`, and which have no required role.
+Chris itself, pending agents, and revoked agents are excluded. The frontend
+displays this list as a read-only directory; listing is not execution authorization:
 ```json
 [
   {
@@ -94,11 +95,14 @@ backend/alembic/                database migrations
 
 ## Agent Routing
 
-By default, Chris queries active public agents with no required role from the
-`agents` table, excluding Chris itself. Only `CHRIS_USE_MOCK_AGENTS=true` selects
-the mock list (Honors College, Engineering Advisor, Writing Center, Library).
-An empty table or failed agent query produces an empty routing list and Chris
-answers directly. Mock agents are routing fixtures, not an offline model.
+By default, Chris selects active public agents with no required role whose
+registry status is `approved` or `provisional`, excluding Chris itself
+(see [Agent Registry](registry.md)).
+
+Only `CHRIS_USE_MOCK_AGENTS=true` selects the mock list (Honors College,
+Engineering Advisor, Writing Center, Library). An empty table or failed agent
+query produces an empty routing list, and Chris answers directly. Mock agents
+are routing fixtures, not an offline model.
 
 If an agent is chosen, the reply currently acknowledges the routing; actual A2A HTTP client execution will be wired next. Low confidence (below 0.7) or no match falls back to a direct answer.
 
