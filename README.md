@@ -10,5 +10,7 @@ Start with [local setup and frontend integration](docs/frontend.md), then see
 [Chris's API](docs/chris.md). The frontend runs independently of the original
 Open WebUI backend. Real agent calls and verified SSO are future backend work.
 
+For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](docs/registry.md).
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before making
 changes. AI-generated changes remain unstaged and uncommitted for human review.
