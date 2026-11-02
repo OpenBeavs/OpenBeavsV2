@@ -1,7 +1,8 @@
 -- =============================================================================
 -- OpenBeavs v2: Seed Live Production Agents (Exported from Cloud SQL v1)
 -- Database: openbeavs_v2
--- Agents: osu_rag_agent (GCP Cloud Run), Hello World Agent (Render), Chris (Orchestrator)
+-- Agents: osu_rag_agent (GCP Cloud Run), Hello World Agent (Render)
+-- Chris is the orchestrator, not a registered agent, so he is intentionally not seeded.
 -- =============================================================================
 
 INSERT INTO agents (
@@ -51,22 +52,6 @@ INSERT INTO agents (
     'approved',
     1779224572,
     1779224572
-),
-(
-    'chris',
-    'Chris',
-    'OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.',
-    '/chris/message',
-    NULL,
-    'public',
-    NULL,
-    '[{"id": "route", "name": "Route Query", "description": "Classify a user query and delegate to the best installed agent.", "tags": ["orchestration", "routing"]}]'::json,
-    '{"streaming": true}'::json,
-    TRUE,
-    TRUE,
-    'approved',
-    1778023031,
-    1778023031
 )
 -- Preserve all existing settings and metadata; only add missing default agents.
 ON CONFLICT (id) DO NOTHING;

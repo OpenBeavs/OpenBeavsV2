@@ -17,6 +17,7 @@ from app.models import Agent
 BACKEND = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "5f055aea1c94"
 REGISTRY_REVISION = "a7c3e91d5b02"
+HEAD_REVISION = "d4f1b8a2c967"  # removes Chris; see test_chris_removal.py
 NEW_COLUMNS = {"status", "submitted_by", "reviewed_by", "reviewed_at", "review_note"}
 
 
@@ -36,7 +37,7 @@ def sqlite_url(tmp_path: Path) -> str:
 def test_there_is_a_single_migration_head() -> None:
     config = Config(str(BACKEND / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND / "alembic"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["b82f6d1a390c"]
+    assert ScriptDirectory.from_config(config).get_heads() == [HEAD_REVISION]
 
 
 def test_existing_agents_stay_routable_after_upgrade(

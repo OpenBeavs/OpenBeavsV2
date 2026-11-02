@@ -6,8 +6,12 @@ turns untrusted remote JSON into registry fields. It never follows redirects,
 caps the response size, and rejects values that would not fit the database.
 """
 
+import json
 import logging
 import re
+import threading
+import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
@@ -18,12 +22,20 @@ from app.registry.security import Resolver, validate_agent_url
 
 log = logging.getLogger(__name__)
 
-CARD_TIMEOUT_SECONDS = 10
+CARD_TIMEOUT_SECONDS = 10  # hard limit for the whole fetch
+CARD_CONNECT_TIMEOUT_SECONDS = 3
+# Per read/write; cold-starting Cloud Run agents can take several seconds to answer.
+CARD_STEP_TIMEOUT_SECONDS = 8
+_MAX_FETCH_WORKERS = 8
+_fetch_slots = threading.BoundedSemaphore(_MAX_FETCH_WORKERS)
 MAX_CARD_BYTES = 100_000
 MAX_NAME_LENGTH = 128
 MAX_DESCRIPTION_LENGTH = 4000
 MAX_URL_LENGTH = 512
 MAX_SKILLS = 50
+MAX_SKILL_TEXT_LENGTH = 64  # skill id and name, and each tag
+MAX_TAGS_PER_SKILL = 10
+_TIMEOUT_MESSAGE = "The agent card did not arrive in time."
 WELL_KNOWN = "/.well-known/"
 
 # Phrases that try to steer Chris's routing from inside a card. A match flags the
@@ -57,6 +69,56 @@ class AgentCard:
     skills: list[Any] = field(default_factory=list)
     capabilities: dict[str, Any] = field(default_factory=dict)
     flags: list[str] = field(default_factory=list)
+
+
+def clean_text(text: str) -> str:
+    """Make untrusted card text plain: no control or invisible characters.
+
+    Chris puts card text into its prompts, so newlines (which could fake a new
+    prompt section), zero-width and direction-override characters are removed and
+    runs of whitespace collapse to one space.
+    """
+    text = "".join(
+        " " if ch.isspace() else ch
+        for ch in text
+        if not unicodedata.category(ch) in ("Cc", "Cf") or ch.isspace()
+    )
+    return " ".join(text.split())
+
+
+def _clean_skill(skill: Any) -> Any:
+    """Return a skill with its text cleaned and bounded, or raise CardError."""
+    if isinstance(skill, str):
+        skill = {"name": skill}
+    if not isinstance(skill, dict):
+        raise CardError("Each skill must be an object or a string.")
+    cleaned = dict(skill)
+    for key in ("id", "name"):
+        if key in cleaned:
+            value = cleaned[key]
+            if not isinstance(value, str):
+                raise CardError(f"A skill {key} must be text.")
+            cleaned[key] = clean_text(value)
+            if len(cleaned[key]) > MAX_SKILL_TEXT_LENGTH:
+                raise CardError(
+                    f"A skill {key} is longer than {MAX_SKILL_TEXT_LENGTH} characters."
+                )
+    if isinstance(cleaned.get("description"), str):
+        cleaned["description"] = clean_text(cleaned["description"])
+    if "tags" in cleaned:
+        tags = cleaned["tags"]
+        if not isinstance(tags, list) or len(tags) > MAX_TAGS_PER_SKILL:
+            raise CardError(
+                f"Skill tags must be a list of at most {MAX_TAGS_PER_SKILL} items."
+            )
+        if not all(isinstance(tag, str) for tag in tags):
+            raise CardError("Skill tags must be text.")
+        cleaned["tags"] = [clean_text(tag) for tag in tags]
+        if any(len(tag) > MAX_SKILL_TEXT_LENGTH for tag in cleaned["tags"]):
+            raise CardError(
+                f"A skill tag is longer than {MAX_SKILL_TEXT_LENGTH} characters."
+            )
+    return cleaned
 
 
 def looks_like_prompt_injection(text: str) -> bool:
@@ -102,13 +164,16 @@ def parse_card(
     name = raw.get("name")
     if not isinstance(name, str) or not name.strip():
         raise CardError("The agent card has no name.")
-    name = name.strip()
+    name = clean_text(name)
+    if not name:
+        raise CardError("The agent card has no name.")
     if len(name) > MAX_NAME_LENGTH:
         raise CardError(f"The agent name is longer than {MAX_NAME_LENGTH} characters.")
 
     description = raw.get("description") or ""
     if not isinstance(description, str):
         raise CardError("The agent description must be text.")
+    description = clean_text(description)
     if len(description) > MAX_DESCRIPTION_LENGTH:
         raise CardError(
             f"The agent description is longer than {MAX_DESCRIPTION_LENGTH} characters."
@@ -117,6 +182,7 @@ def parse_card(
     skills = raw.get("skills", [])
     if not isinstance(skills, list) or len(skills) > MAX_SKILLS:
         raise CardError(f"Skills must be a list of at most {MAX_SKILLS} items.")
+    skills = [_clean_skill(skill) for skill in skills]
     capabilities = raw.get("capabilities", {})
     if not isinstance(capabilities, dict):
         raise CardError("Capabilities must be an object.")
@@ -142,13 +208,81 @@ def parse_card(
 
     return AgentCard(
         name=name,
-        description=description.strip(),
+        description=description,
         card_url=card_url,
         endpoint_url=endpoint_url,
         skills=skills,
         capabilities=capabilities,
         flags=flags,
     )
+
+
+def _check_cancelled(deadline: float, stop: threading.Event) -> None:
+    """Avoid starting another step after the caller has stopped waiting."""
+    if stop.is_set() or time.monotonic() > deadline:
+        raise CardError(_TIMEOUT_MESSAGE)
+
+
+def _download(
+    http: httpx.Client, card_url: str, deadline: float, stop: threading.Event
+) -> bytes:
+    """Stream the card body, enforcing size, encoding and the cooperative deadline."""
+    # Ask for an uncompressed body and count the bytes on the wire, so a small
+    # compressed response cannot expand into a large one in memory.
+    _check_cancelled(deadline, stop)
+    with http.stream(
+        "GET", card_url, headers={"Accept-Encoding": "identity"}
+    ) as response:
+        _check_cancelled(deadline, stop)
+        if response.is_redirect:
+            raise CardError("The agent card address redirected; use the final URL.")
+        if response.status_code != 200:
+            raise CardError(
+                f"The agent card request returned HTTP {response.status_code}."
+            )
+        encoding = response.headers.get("content-encoding", "identity")
+        if encoding.strip().lower() not in ("", "identity"):
+            raise CardError("The agent card must not be compressed.")
+        declared = response.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_CARD_BYTES:
+            raise CardError("The agent card is too large.")
+        body = bytearray()
+        for chunk in response.iter_raw():
+            body.extend(chunk)
+            if len(body) > MAX_CARD_BYTES:
+                raise CardError("The agent card is too large.")
+            _check_cancelled(deadline, stop)
+    return bytes(body)
+
+
+def _fetch_blocking(
+    http: httpx.Client,
+    url: str,
+    allow_http: bool,
+    resolver: Resolver | None,
+    deadline: float,
+    stop: threading.Event,
+) -> AgentCard:
+    """Every step of a fetch, in order. Runs on a worker thread under a deadline."""
+    _check_cancelled(deadline, stop)
+    card_url = derive_card_url(url)
+    validate_agent_url(card_url, allow_http=allow_http, resolver=resolver)
+    try:
+        body = _download(http, card_url, deadline, stop)
+    except httpx.HTTPError as exc:
+        log.info("Card fetch failed for %s: %s", card_url, type(exc).__name__)
+        raise CardError(
+            f"Could not reach the agent card ({type(exc).__name__})."
+        ) from exc
+    _check_cancelled(deadline, stop)
+    try:
+        raw = json.loads(body)
+    except (ValueError, RecursionError) as exc:
+        # ValueError covers bad JSON/encoding; RecursionError is deeply nested JSON.
+        raise CardError("The agent card is not valid JSON.") from exc
+    # Also validates the advertised endpoint, which does its own DNS lookup.
+    _check_cancelled(deadline, stop)
+    return parse_card(raw, card_url, allow_http=allow_http, resolver=resolver)
 
 
 def fetch_card(
@@ -163,42 +297,69 @@ def fetch_card(
     Args:
         url: What the submitter typed (scheme optional).
         allow_http: Permit plain http (local development only).
-        client: Optional preconfigured client, used by tests.
+        client: Optional preconfigured client, used by tests. It belongs to the
+            caller and is never closed here.
         resolver: Optional DNS resolver, used by tests to avoid real lookups.
+
+    The whole job (DNS lookups, connecting, downloading, validation) runs on a
+    worker thread and this function stops waiting after ``CARD_TIMEOUT_SECONDS``,
+    so the caller's deadline holds even if a DNS lookup or socket operation is
+    stuck. Python cannot kill a thread, so an abandoned worker ends on its own:
+    when its next socket operation times out (``CARD_STEP_TIMEOUT_SECONDS``), when
+    it next checks the deadline, or when the operating system's DNS lookup gives
+    up. It holds no database session and cannot affect the response. At most eight
+    workers run per process; timed-out workers retain capacity through cleanup.
+    When all slots are occupied, new calls fail immediately without starting work.
 
     Raises:
         UnsafeURLError: The address is not safe to fetch.
         CardError: The card could not be fetched, was too large, or is invalid.
     """
-    card_url = derive_card_url(url)
-    validate_agent_url(card_url, allow_http=allow_http, resolver=resolver)
+    slots = _fetch_slots
+    if not slots.acquire(blocking=False):
+        raise CardError("Agent card fetch capacity is exhausted. Please try again later.")
+    deadline = time.monotonic() + CARD_TIMEOUT_SECONDS
+    stop = threading.Event()
+    outcome: list[tuple[bool, Any]] = []
+    finished = threading.Event()
 
-    owns_client = client is None
-    http = client or httpx.Client(timeout=CARD_TIMEOUT_SECONDS, follow_redirects=False)
-    try:
-        with http.stream("GET", card_url) as response:
-            if response.is_redirect:
-                raise CardError("The agent card address redirected; use the final URL.")
-            if response.status_code != 200:
-                raise CardError(
-                    f"The agent card request returned HTTP {response.status_code}."
+    def work() -> None:
+        http = client
+        try:
+            if http is None:
+                http = httpx.Client(
+                    timeout=httpx.Timeout(
+                        CARD_STEP_TIMEOUT_SECONDS, connect=CARD_CONNECT_TIMEOUT_SECONDS
+                    ),
+                    follow_redirects=False,
                 )
-            body = bytearray()
-            for chunk in response.iter_bytes():
-                body.extend(chunk)
-                if len(body) > MAX_CARD_BYTES:
-                    raise CardError("The agent card is too large.")
-    except httpx.HTTPError as exc:
-        log.info("Card fetch failed for %s: %s", card_url, type(exc).__name__)
-        raise CardError(
-            f"Could not reach the agent card ({type(exc).__name__})."
-        ) from exc
-    finally:
-        if owns_client:
-            http.close()
+            outcome.append(
+                (
+                    True,
+                    _fetch_blocking(http, url, allow_http, resolver, deadline, stop),
+                )
+            )
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
+            outcome.append((False, exc))
+        finally:
+            try:
+                if client is None and http is not None:
+                    http.close()
+            except BaseException as exc:  # noqa: BLE001 - re-raised on caller's thread
+                outcome[:] = [(False, exc)]
+            finally:
+                slots.release()
+                finished.set()
 
     try:
-        raw = httpx.Response(200, content=bytes(body)).json()
-    except ValueError as exc:
-        raise CardError("The agent card is not valid JSON.") from exc
-    return parse_card(raw, card_url, allow_http=allow_http, resolver=resolver)
+        threading.Thread(target=work, name="registry-card-fetch", daemon=True).start()
+    except BaseException:
+        slots.release()
+        raise
+    if not finished.wait(max(0, deadline - time.monotonic())):
+        stop.set()
+        raise CardError(_TIMEOUT_MESSAGE)
+    succeeded, value = outcome[0]
+    if not succeeded:
+        raise value
+    return value

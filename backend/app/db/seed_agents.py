@@ -1,5 +1,8 @@
 """Seed live production A2A agents into the database.
 
+Chris is deliberately not seeded: he is the orchestrator, not a registered agent.
+His discovery card is served by code (``app/chris/router.py``).
+
 Can be run locally or against Google Cloud SQL depending on DATABASE_URL.
 """
 
@@ -70,28 +73,6 @@ INITIAL_AGENTS = [
         "is_featured": False,
         "created_at": 1779224572,
         "updated_at": 1779224572,
-    },
-    {
-        "id": "chris",
-        "name": "Chris",
-        "description": "OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.",
-        "endpoint_url": "/chris/message",
-        "card_url": None,
-        "trust_tier": "public",
-        "skills": [
-            {
-                "id": "route",
-                "name": "Route Query",
-                "description": "Classify a user query and delegate to the best installed agent.",
-                "tags": ["orchestration", "routing"],
-            }
-        ],
-        "capabilities": {"streaming": True},
-        "is_active": True,
-        "status": "approved",
-        "is_featured": True,
-        "created_at": 1778023031,
-        "updated_at": 1778023031,
     },
 ]
 

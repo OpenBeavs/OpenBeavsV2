@@ -11,6 +11,7 @@ from app.models import Agent
 from app.registry.service import routable_agents
 
 HELLO_WORLD_ID = "26b643fd-9a61-465d-b075-89ba84d503cb"
+OSU_ID = "8f695b47-27a7-4ce7-9932-975fc618ba1d"
 
 
 @pytest.fixture(params=["python", "sql"])
@@ -42,7 +43,15 @@ def test_seeding_a_fresh_database_makes_the_agents_routable(db: Session, seed) -
     seed()
     routable = {agent.id for agent in routable_agents(db)}
     assert HELLO_WORLD_ID in routable
-    assert "chris" not in routable  # Chris never routes to himself
+    assert "chris" not in routable  # Chris is not seeded and never routes to himself
+
+
+def test_neither_seed_path_inserts_chris(db: Session, seed) -> None:
+    seed()
+    assert db.get(Agent, "chris") is None
+    assert {agent.id for agent in db.scalars(select(Agent))} == {
+        agent["id"] for agent in INITIAL_AGENTS
+    }
 
 
 def test_reseeding_keeps_a_revoked_agent_unroutable(db: Session, seed) -> None:
@@ -92,7 +101,7 @@ def test_reseeding_preserves_all_existing_settings(db: Session, seed, status) ->
     }
 
     # Also prove that skipping an existing record does not prevent missing seeds.
-    db.delete(db.get(Agent, "chris"))
+    db.delete(db.get(Agent, OSU_ID))
     db.commit()
     seed()
     db.refresh(hello)
@@ -100,5 +109,5 @@ def test_reseeding_preserves_all_existing_settings(db: Session, seed, status) ->
     assert {
         column.name: getattr(hello, column.name) for column in Agent.__table__.columns
     } == before
-    assert db.get(Agent, "chris") is not None
+    assert db.get(Agent, OSU_ID) is not None
     assert len(list(db.scalars(select(Agent)))) == len(INITIAL_AGENTS)

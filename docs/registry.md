@@ -78,8 +78,30 @@ Chris's own listing, `GET /chris/agents`, returns the routable agents.
   link-local (including the cloud metadata address `169.254.169.254`), multicast,
   reserved or carrier-grade-NAT address, IPv4 or IPv6.
 - **Advertised endpoint.** The card must include a non-empty absolute `url`. The registry independently checks its scheme, credentials, hostname, and resolved addresses, including when it differs from the card host. Paths such as `/rpc`, trailing slashes, and query strings are preserved. Relative URLs, fragments, backslashes, and embedded whitespace/control characters are rejected. `REGISTRY_ALLOW_HTTP` applies to both addresses but never permits private destinations. This is submission-time validation, not proof of endpoint availability; the existing DNS-rebinding limitation still applies. Existing database records are not rewritten.
-- **Bounded fetch.** No redirects are followed, the response is capped at 100 KB and
-  the request times out after 10 seconds.
+- **Bounded fetch.** No redirects are followed. The hub asks for an uncompressed
+  card (`Accept-Encoding: identity`) and rejects any compressed response, so a small
+  download cannot expand in memory. The body is capped at 100 KB (an oversized
+  `Content-Length` is refused before reading) and must be valid JSON; malformed or
+  deeply nested JSON is a clean 400, not a server error. The whole fetch, including
+  DNS lookups, connecting, downloading and validating the advertised endpoint, has a
+  10 second deadline (3 seconds to connect, 8 per read or write). It runs on a worker thread
+  and the request stops waiting at the deadline even if a lookup or connection is
+  stuck. A fixed internal limit allows **8 outstanding fetch workers per backend
+  process**. When all slots are occupied, new fetches immediately raise a controlled
+  `CardError` (the submission route returns 400 with a capacity-exhausted, try-again
+  message); no worker is created and requests are not queued. Python cannot kill a
+  thread: a timed-out worker keeps its slot until its work and client cleanup end.
+  Blocked DNS or socket calls can outlast the caller's timeout. Cancellation is
+  checked between fetch/validation steps so abandoned work stops when practical.
+  Slots are released on success or failure; workers hold no database session.
+  Clients created by the registry are closed by their worker. A client passed in
+  by a caller is never closed by the registry. The limit is per process, not shared
+  across deployment replicas, and requires no environment variable.
+- **Untrusted card text.** Card text reaches Chris's prompts, so it is cleaned before
+  it is stored: control characters (including newlines), zero-width and
+  direction-override characters are removed and whitespace is collapsed. Skill ids and
+  names and each tag are limited to 64 characters, a skill to 10 tags, and each skill
+  must be an object or a string. Out-of-bounds cards are rejected with a message.
 - **No self-service trust.** A submission cannot set its own status, tier, id or
   active flag (a request with any extra field is rejected).
 - **Admin-only decisions.** Only admins can review; a submitter cannot approve their
@@ -89,9 +111,22 @@ Chris's own listing, `GET /chris/agents`, returns the routable agents.
   reviewer. It does not block the submission, because the human review is the control.
 - **Fail closed.** With no authentication configured every registry route answers 501.
 
-Known limitation: the host is resolved when it is checked and again when it is
-fetched, so a hostile DNS server could answer differently the second time (DNS
-rebinding). Closing it needs connecting to the validated address or an egress proxy.
+**Known limitation (deferred): DNS rebinding.** The host is resolved when it is
+checked and again when the connection is made, so a hostile DNS server could answer
+"public" the first time and "internal" the second. The fix is to connect to the
+validated address (IP pinning) or to use an egress proxy; it is not part of this MVP.
+
+Restrictions this creates for the MVP:
+
+- Nothing in a production deployment can trigger a card fetch: submission needs
+  authentication, which is not implemented, so the registry routes answer 501 there
+  (see Authentication). This is a property of the current MVP configuration, not a
+  permanent guarantee.
+- Nothing calls a stored agent endpoint yet (Chris's A2A client is a stub). The
+  endpoint is validated only when the agent is submitted. **Before any code calls
+  `endpoint_url`** (the A2A client), it must re-validate the address and connect to
+  the validated IP, otherwise a rebinding agent could redirect the call to an internal
+  service. Seeded agents are trusted and were not fetched by the registry.
 
 ## Authentication
 
@@ -100,13 +135,28 @@ reads the caller through one function, `current_principal` in
 `backend/app/registry/auth.py`. Replace it with verification of the OSU Microsoft SSO
 token and nothing else in the registry changes.
 
-Until then:
+**Production approval is not operational yet.** Without verified authentication the
+registry routes (including approve, provisional and revoke) answer 501 in a
+deployment; agents there are managed by seeds and migrations only. The review code
+and its tests are in place for when SSO replaces `current_principal`.
 
 | Variable | Purpose |
 |---|---|
 | `REGISTRY_DEV_AUTH` | `true` reads the caller from the `X-User-Id` and `X-User-Email` headers. **Local development and tests only: these headers are trivially forged.** Unset (the default) makes every route return 501 |
 | `REGISTRY_ADMIN_EMAILS` | Comma-separated admin emails (not a secret) |
 | `REGISTRY_ALLOW_HTTP` | `true` allows plain `http` card URLs. Local development only |
+
+`REGISTRY_DEV_AUTH` is refused, with a 501 and a logged reason, when the process looks
+like a deployment, and the app refuses to start in that combination:
+
+- a Cloud Run variable (`K_SERVICE`, `K_REVISION` or `K_CONFIGURATION`) is set; or
+- `DATABASE_URL` is not SQLite or a Postgres server on this machine. Every host the
+  connection could use counts, including `?host=` and `?hostaddr=` overrides, host
+  lists and `?service=`, so `postgresql://u:p@localhost/db?host=db.example.test`
+  is treated as remote.
+
+A `backend/.env` file is loaded automatically, so keep `REGISTRY_DEV_AUTH` out of any
+`.env` that is copied into a deployment.
 
 `DATABASE_URL` selects the database as for the rest of the backend.
 
@@ -131,8 +181,31 @@ Applying it to an existing Cloud SQL database depends on how that database was b
 4. Verify: `SELECT id, name, status, is_active FROM agents;` shows every existing
    agent as `approved`.
 
-The message-order migration `b82f6d1a390c` now follows the registry revision.
 Take a Cloud SQL backup first. The SQL file ends with its rollback statements.
+
+### Chris is not a registered agent (revision `d4f1b8a2c967`)
+
+Chris is the orchestrator. His discovery card (`GET /chris/.well-known/agent.json`) is
+served by code and he is never offered to the router, so he has no row in `agents`.
+Neither seed (`seed_agents.py`, `seed_agents.sql`) inserts him any more, and the new
+migration `d4f1b8a2c967` (after `a7c3e91d5b02`) removes the row the early seed created:
+it sets `chats.agent_id` to NULL for Chris, then deletes `id = 'chris'`. Chats and
+messages are kept (`chats.agent_id` is `ON DELETE SET NULL` and messages belong to
+chats). It touches nothing else and is safe to run when the row is already gone.
+`routable_agents()` still excludes the id `chris`, so the code is safe before or after
+the migration.
+
+Downgrade restores only the originally seeded Chris row (and does nothing if one
+exists). It cannot restore which chats used to reference Chris or any edits made to
+his row after the upgrade.
+
+**Deployment.** Whoever owns Cloud SQL migrations (Dean, with Jiya approving access)
+takes a backup, then runs `alembic upgrade head` from `backend/` (after the
+`alembic_version` check above; if the database was built from the SQL files, stamp
+`a7c3e91d5b02` first). Verify read-only: `SELECT id FROM agents WHERE id = 'chris';`
+returns no rows and `GET /chris/agents` does not list Chris. Do not delete the row by
+hand. To preview the SQL for PostgreSQL:
+`alembic upgrade a7c3e91d5b02:d4f1b8a2c967 --sql`.
 
 Both `backend/app/db/seed_agents.py` and `docs/db_docs/seed_agents.sql` insert
 missing default agents as `approved` and leave existing records entirely unchanged.
@@ -174,17 +247,19 @@ cd backend
 .venv\Scripts\python.exe -m ruff check .
 ```
 
-`backend/tests/registry/` covers the safe-URL check, card fetching and validation,
-the API (submission, visibility, review, authentication), Chris's routing gate, and
-the migration (including that existing agents stay routable and that valid Postgres
-DDL is produced).
+`backend/tests/registry/` covers the safe-URL check, card fetching and validation
+(including compression, size, deadline and metadata cleaning), the development-auth
+guard, the API (submission, visibility, review, authentication), Chris's routing gate,
+and the migrations (existing agents stay routable, Chris removal with and without
+foreign-key enforcement, round trip, and valid Postgres SQL).
 
 ## Not done yet
 
 - **Chris cannot call agents.** Routing picks an agent, but the A2A client call is
   still a stub in `chris/router.py`. The registry only decides *which* agents Chris may
   choose.
-- **No real authentication** (see above).
+- **No real authentication, so no production approval** (see above).
+- **No DNS-rebinding protection** and no re-validation of stored endpoints (see Security).
 - **Cards are copied once.** There is no refresh when an agent changes its card.
 - **The same agent can be registered twice under different hostnames.** Uniqueness is
   on the card URL, so Cloud Run's two hostnames for one service count as two agents.

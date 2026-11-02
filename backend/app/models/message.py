@@ -7,15 +7,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import (
-    JSON,
-    BigInteger,
-    ForeignKey,
-    LargeBinary,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import JSON, BigInteger, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,17 +20,6 @@ class Message(Base):
     """An individual message turn within a chat conversation."""
 
     __tablename__ = "messages"
-    __table_args__ = (
-        UniqueConstraint("chat_id", "sequence", name="uq_messages_chat_sequence"),
-    )
-
-    sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    agent_id: Mapped[str | None] = mapped_column(
-        String(64),
-        ForeignKey("agents.id", ondelete="SET NULL"),
-        nullable=True,
-        doc="Actual responding expert; NULL for Chris, user turns, or unknown legacy authors",
-    )
 
     id: Mapped[str] = mapped_column(
         String(36),
@@ -76,9 +57,9 @@ class Message(Base):
     created_at: Mapped[int] = mapped_column(
         BigInteger,
         nullable=False,
-        default=lambda: int(time.time()),
+        default=lambda: int(time.time() * 1000),
         index=True,
-        doc="Message timestamp in epoch seconds",
+        doc="Message timestamp in epoch milliseconds",
     )
 
     # Relationships
