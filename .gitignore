@@ -8,8 +8,20 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+backend/*.egg-info/
+backend/build/
 
 # Local database files
 *.db
 *.sqlite3
 agent_registry with new repo
+
+# Frontend dependencies, generated output and browser-test artifacts
+node_modules/
+.svelte-kit/
+frontend/build/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example

@@ -38,17 +38,22 @@ For issues that arise within the team, we recommend a simple escalation path:
 
 ## Getting Started
 
-List prerequisites, setup steps, environment variables/secrets handling, and how to run the app locally.
+See [Frontend setup and integration](docs/frontend.md) for the complete local
+backend/frontend setup, configuration, checks, and static hosting requirements.
 
 ### Prerequisites
 
-* [Docker](https://www.docker.com/)
-* [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-* [Node.js and npm](https://nodejs.org/)
+* Python 3.12 and a project virtual environment.
+* [Node.js 22 or newer and npm](https://nodejs.org/).
+* Backend Gemini configuration for live answers. Docker and Google Cloud SDK
+  are not required for local development.
 
 ### Running the app Locally
 
-Systems from the old repo will be migrated to this repo, however, their documentation iss outdated. Running the app locally will not be possible until development work is done.
+Start FastAPI from `backend/` on port 8000 after installing the backend and
+applying Alembic migrations. In a second terminal, run `npm ci` and `npm run dev`
+from `frontend/`. The frontend proxies the existing Chris API to FastAPI; the
+original Open WebUI backend is not used. Follow the linked guide for commands.
 
 ### Handling secrets
 
@@ -103,11 +108,16 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Automated linting and formatters are TBD, generally, code should be readable, maintainable, and follow the style of the existing codebase.
+Backend lint uses `ruff check .` from `backend/`. Frontend `npm run lint` runs
+ESLint without rewriting files, followed by Svelte/TypeScript checks. Keep
+changes readable and limited to the feature being implemented.
 
 ## Testing
 
-Unit tests will be implemented using whatever testing framework is decided on. (Expanded on when tech stack is finalized.)
+Run `pytest` from `backend/`, including its authorization tests. From `frontend/`,
+run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
+Playwright Chromium browser. Browser tests use API fixtures; a live Gemini
+conversation is a separate acceptance check. See the setup guide for details.
 
 ## Definition of Done
 
@@ -179,7 +189,11 @@ To ensure equitable distribution of effort and accountability across all sprints
 
 ## CI/CD
 
-TBD (will either be done on GitHub Actions or on Google Cloud Run)
+The [Checks workflow](.github/workflows/checks.yml) runs backend Ruff and all
+backend tests, plus frontend lint/type checks, unit tests, build, and browser
+tests on pushes and pull requests. The table above continues to track the
+broader planned gates; secret scanning, dependency policy, and branch protection
+are not supplied by this workflow.
 
 ## Security & Secrets
 
