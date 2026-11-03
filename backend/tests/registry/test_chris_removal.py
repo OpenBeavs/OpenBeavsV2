@@ -297,9 +297,10 @@ class TestChrisIsStillAvailableButNotRegistered:
         self, client: TestClient, db: Session
     ) -> None:
         assert db.get(Agent, "chris") is None
-        response = client.get("/chris/.well-known/agent.json")
+        with client:
+            response = client.get("/chris/a2a/.well-known/agent-card.json")
         assert response.status_code == 200
         card = response.json()
-        assert card["id"] == "chris"
-        assert card["name"] == "Chris"
-        assert card["skills"][0]["id"] == "route"
+        assert card["name"] == "chris"
+        assert card["supportedInterfaces"][0]["protocolVersion"] == "1.0"
+        assert card["skills"]

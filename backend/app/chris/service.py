@@ -1,8 +1,8 @@
 """Chris's direct-answer behavior, independent of HTTP and chat storage."""
 
-from app.chris.agents import Agent
 from app.chris.llm import generate
 from app.chris.prompts import build_direct_prompt
+from app.models import Agent
 
 
 async def answer_direct(

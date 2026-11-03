@@ -1,6 +1,6 @@
 """Chris's direct-answer system prompt."""
 
-from app.chris.agents import Agent
+from app.models import Agent
 
 # Adapted from the v1 direct-answer prompt. The installed-agents list is
 # injected so Chris never invents agents.

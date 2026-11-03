@@ -1,7 +1,6 @@
 """Chat application workflow: authorize, load history, ask Chris, and persist turns.
 
-The existing ordering and database failure fallbacks are preserved. Agent selection
-and model access remain in Chris; this module owns the application's chat state.
+Model access remains in Chris; this module owns the application's chat state.
 """
 
 import logging
@@ -14,11 +13,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
-from app.chris.agent_selection import choose_agent
-from app.chris.agents import MOCK_AGENTS, Agent
 from app.chris.llm import LLMError
 from app.chris.service import answer_direct
-from app.config import ConfigError, env_flag
+from app.config import ConfigError
+from app.models import Agent
 from app.models import Chat as DBChat
 from app.models import Message as DBMessage
 from app.models import User as DBUser
@@ -26,51 +24,13 @@ from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
 
-def _extract_skills(raw_skills: Any) -> list[str]:
-    """Extract list of skill strings/tags from database JSON."""
-    if not raw_skills:
-        return []
-    if isinstance(raw_skills, list):
-        result = []
-        for s in raw_skills:
-            if isinstance(s, str):
-                result.append(s)
-            elif isinstance(s, dict):
-                if "name" in s and isinstance(s["name"], str):
-                    result.append(s["name"])
-                if "tags" in s and isinstance(s["tags"], list):
-                    result.extend(t for t in s["tags"] if isinstance(t, str))
-        return result
-    return []
-
-
 def _installed_agents(db: Session) -> list[Agent]:
-    """Return the agents Chris can route to.
-
-    Uses MOCK_AGENTS if CHRIS_USE_MOCK_AGENTS is set. Otherwise, queries the
-    registry for active agents an admin has approved (or marked provisional).
-    Pending and revoked agents are never routable. If the table is empty or
-    the query fails, returns an empty list so Chris answers directly.
-    """
-    if env_flag("CHRIS_USE_MOCK_AGENTS"):
-        return MOCK_AGENTS
-
+    """Load reviewed public agent metadata for the direct-answer prompt only."""
     try:
-        db_agents = routable_agents(db)
+        return routable_agents(db)
     except SQLAlchemyError as e:
         log.error("Failed to query installed agents from database: %s", e)
         return []
-
-    return [
-        Agent(
-            id=a.id,
-            name=a.name,
-            description=a.description or "",
-            skills=_extract_skills(a.skills),
-        )
-        for a in db_agents
-    ]
-
 
 def purge_expired_chats(db: Session) -> int:
     """Delete expired guest chats whose TTL has elapsed.
@@ -215,33 +175,6 @@ async def handle_message(
     agents = _installed_agents(db)
 
     try:
-        selection = await choose_agent(message, agents)
-
-        if selection.agent:
-            response_text = (
-                f"Chris would route this to {selection.agent.name}. "
-                "Calling agents is not implemented yet."
-            )
-            chat_id = _persist_turn(
-                db,
-                form,
-                message,
-                response_text,
-                routed_agent_id=selection.agent.id,
-                meta={
-                    "routing_confidence": selection.confidence,
-                    "routing_reason": selection.reason,
-                },
-            )
-            return ChrisMessageResponse(
-                response=response_text,
-                chat_id=chat_id,
-                routed_to=selection.agent.id,
-                agent_name=selection.agent.name,
-                routing_confidence=selection.confidence,
-                routing_reason=selection.reason,
-            )
-
         # Single source of truth for history: load from DB if chat_id exists,
         # otherwise use client-provided history.
         if form.chat_id:
@@ -295,17 +228,11 @@ async def handle_message(
         message,
         reply,
         routed_agent_id=None,
-        meta={
-            "routing_confidence": selection.confidence,
-            "routing_reason": selection.reason,
-        },
     )
 
     return ChrisMessageResponse(
         response=reply,
         chat_id=chat_id,
-        routing_confidence=selection.confidence,
-        routing_reason=selection.reason,
     )
 
 

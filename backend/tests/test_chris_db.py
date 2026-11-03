@@ -1,4 +1,4 @@
-"""Integration tests for Chris routing against the database and chat persistence."""
+"""Integration tests for direct answers, directory filtering, and chat persistence."""
 
 import time
 from unittest.mock import AsyncMock, patch
@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.chat.service import _installed_agents, purge_expired_chats
-from app.chris.agent_selection import Selection
 from app.chris.llm import LLMError
 from app.config import ConfigError
 from app.db.base import Base
@@ -60,15 +59,11 @@ def test_db():
     Base.metadata.drop_all(bind=engine)
 
 
-@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
 @patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_chris_direct_answer_persists_chat_and_messages(
-    mock_generate, mock_choose_agent, test_db: Session
+    mock_generate, test_db: Session
 ):
     """Verify that a direct answer from Chris creates chat and message records."""
-    mock_choose_agent.return_value = Selection(
-        agent=None, confidence=0.0, reason="No match"
-    )
     mock_generate.return_value = "Hello! I am Chris, how can I help you today?"
     client = TestClient(app)
 
@@ -81,6 +76,8 @@ def test_chris_direct_answer_persists_chat_and_messages(
     assert response.status_code == 200
     data = response.json()
     assert data["response"] == "Hello! I am Chris, how can I help you today?"
+    assert data["routed_to"] is None
+    assert data["routing_confidence"] is None
     chat_id = data["chat_id"]
     assert chat_id is not None
 
@@ -107,48 +104,6 @@ def test_chris_direct_answer_persists_chat_and_messages(
     assert messages[0].created_at < messages[1].created_at
 
 
-@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
-def test_chris_routed_agent_persists_chat_and_messages(
-    mock_choose_agent, test_db: Session
-):
-    """Verify that routing to an agent records the agent ID in chat and persists turns in messages."""
-    agent = test_db.get(Agent, "osu-rag-agent")
-    mock_choose_agent.return_value = Selection(
-        agent=agent, confidence=0.92, reason="Query about OSU"
-    )
-    client = TestClient(app)
-
-    payload = {
-        "message": "Tell me about OSU admissions",
-        "guest_session_id": "guest_abc",
-        "source_domain": "admissions.oregonstate.edu",
-    }
-    response = client.post("/chris/message", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert data["routed_to"] == "osu-rag-agent"
-    assert data["agent_name"] == "OSU Expert (RAG)"
-    chat_id = data["chat_id"]
-    assert chat_id is not None
-
-    # Verify database persistence
-    chat = test_db.get(Chat, chat_id)
-    assert chat is not None
-    assert chat.agent_id == "osu-rag-agent"
-
-    messages = (
-        test_db.query(Message)
-        .filter(Message.chat_id == chat_id)
-        .order_by(Message.created_at.asc())
-        .all()
-    )
-    assert len(messages) == 2
-    assert messages[0].sender_type == "user"
-    assert messages[1].sender_type == "agent"
-    assert messages[1].meta["routing_confidence"] == 0.92
-    assert messages[0].created_at < messages[1].created_at
-
-
 def test_health_check_endpoint():
     """Verify GET /health returns 200 OK status."""
     client = TestClient(app)
@@ -171,10 +126,8 @@ def test_health_check_endpoint():
 def test_chat_preserves_chris_error_responses(test_db, error, expected_status, detail):
     """Moving the HTTP layer preserves errors and avoids saving failed turns."""
     with (
-        patch("app.chat.service.choose_agent", new_callable=AsyncMock) as choose,
         patch("app.chris.service.generate", new_callable=AsyncMock) as generate,
     ):
-        choose.return_value = Selection()
         generate.side_effect = error
         response = TestClient(app).post("/chris/message", json={"message": "Hello"})
 
@@ -186,11 +139,11 @@ def test_chat_preserves_chris_error_responses(test_db, error, expected_status, d
 
 def test_chat_rejects_blank_message_before_calling_chris(test_db):
     """The extracted chat handler retains validation before model invocation."""
-    with patch("app.chat.service.choose_agent", new_callable=AsyncMock) as choose:
+    with patch("app.chat.service.answer_direct", new_callable=AsyncMock) as answer:
         response = TestClient(app).post("/chris/message", json={"message": "  "})
     assert response.status_code == 400
     assert response.json() == {"detail": "Message cannot be empty."}
-    choose.assert_not_awaited()
+    answer.assert_not_awaited()
     assert test_db.query(Message).count() == 0
 
 
@@ -207,20 +160,8 @@ def test_list_agents_endpoint(test_db: Session):
     assert data[0]["endpoint_url"] == "https://example.com/a2a"
 
 
-def test_chris_agent_card_endpoint():
-    """Verify GET /chris/.well-known/agent.json returns Chris's A2A discovery card."""
-    client = TestClient(app)
-    response = client.get("/chris/.well-known/agent.json")
-    assert response.status_code == 200
-    card = response.json()
-    assert card["id"] == "chris"
-    assert card["endpoint_url"] == "/chris/message"
-    assert card["card_url"] == "/chris/.well-known/agent.json"
-    assert card["trust_tier"] == "public"
-
-
 def test_installed_agents_empty_returns_empty_list(test_db: Session):
-    """Verify that an empty agents table returns [] without falling back to MOCK_AGENTS."""
+    """Verify that an empty agents table returns [] without inventing agent metadata."""
     test_db.query(Agent).delete()
     test_db.commit()
 
@@ -260,15 +201,11 @@ def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
     assert "grading-agent" not in agent_ids
 
 
-@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
 @patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_persist_turn_db_failure_still_returns_reply(
-    mock_generate, mock_choose_agent, test_db: Session
+    mock_generate, test_db: Session
 ):
     """Verify that a database error during persistence does not 500, but returns the reply with chat_id=None."""
-    mock_choose_agent.return_value = Selection(
-        agent=None, confidence=0.0, reason="No match"
-    )
     mock_generate.return_value = "Reply from Chris despite DB error"
     client = TestClient(app)
 
@@ -282,15 +219,11 @@ def test_persist_turn_db_failure_still_returns_reply(
         assert data["chat_id"] is None
 
 
-@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
 @patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_history_loaded_from_db_when_chat_id_provided(
-    mock_generate, mock_choose_agent, test_db: Session
+    mock_generate, test_db: Session
 ):
     """Verify that when chat_id is provided, messages are loaded from the DB rather than form.history."""
-    mock_choose_agent.return_value = Selection(
-        agent=None, confidence=0.0, reason="No match"
-    )
     mock_generate.return_value = "Second turn response"
     client = TestClient(app)
 
@@ -332,15 +265,11 @@ def test_history_loaded_from_db_when_chat_id_provided(
     assert "Spoofed message not in DB" not in message_contents
 
 
-@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
 @patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_authenticated_user_vs_unverified_guest(
-    mock_generate, mock_choose_agent, test_db: Session
+    mock_generate, test_db: Session
 ):
     """Verify that only users existing in the database are authenticated without TTL; unverified user_ids remain guest with TTL."""
-    mock_choose_agent.return_value = Selection(
-        agent=None, confidence=0.0, reason="No match"
-    )
     mock_generate.return_value = "Hello"
     client = TestClient(app)
 

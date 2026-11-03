@@ -1,17 +1,7 @@
-"""Chris routes only to agents an admin has reviewed.
-
-These tests replace the model calls (as the team's other Chris tests do) and
-inspect which agents Chris offers to the router.
-"""
-
-from unittest.mock import AsyncMock, patch
-
-import pytest
+"""The frontend directory exposes only reviewed, eligible external agents."""
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.chris.agent_selection import Selection
-from app.chris.agents import MOCK_AGENTS
 from app.models import Agent
 
 from .conftest import ADMIN_EMAIL, as_user
@@ -35,17 +25,10 @@ def add_agent(db: Session, agent_id: str, status: str, active: bool = True) -> N
 
 
 def offered_to_router(client: TestClient) -> list[str]:
-    """Send one message and return the agent ids Chris offered to the router."""
-    with (
-        patch("app.chat.service.choose_agent", new_callable=AsyncMock) as choose,
-        patch("app.chris.service.generate", new_callable=AsyncMock) as generate,
-    ):
-        choose.return_value = Selection()
-        generate.return_value = "Hello."
-        response = client.post("/chris/message", json={"message": "Hi"})
+    """Return the reviewed agents available in the frontend directory."""
+    response = client.get("/chris/agents")
     assert response.status_code == 200, response.text
-    return [agent.id for agent in choose.call_args.args[1]]
-
+    return [agent["id"] for agent in response.json()]
 
 def test_only_approved_and_provisional_agents_are_offered(
     client: TestClient, db: Session
@@ -87,14 +70,6 @@ def test_revoking_every_agent_does_not_bring_back_the_mock_agents(
 ) -> None:
     add_agent(db, "only", "revoked", active=True)
     assert offered_to_router(client) == []
-
-
-def test_mock_flag_still_forces_the_mock_list(
-    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    add_agent(db, "real", "approved")
-    monkeypatch.setenv("CHRIS_USE_MOCK_AGENTS", "true")
-    assert offered_to_router(client) == [a.id for a in MOCK_AGENTS]
 
 
 def test_agents_endpoint_lists_only_routable_agents(
