@@ -37,8 +37,8 @@ def add_agent(db: Session, agent_id: str, status: str, active: bool = True) -> N
 def offered_to_router(client: TestClient) -> list[str]:
     """Send one message and return the agent ids Chris offered to the router."""
     with (
-        patch("app.chris.router.choose_agent", new_callable=AsyncMock) as choose,
-        patch("app.chris.router.generate", new_callable=AsyncMock) as generate,
+        patch("app.chat.service.choose_agent", new_callable=AsyncMock) as choose,
+        patch("app.chris.service.generate", new_callable=AsyncMock) as generate,
     ):
         choose.return_value = Selection()
         generate.return_value = "Hello."

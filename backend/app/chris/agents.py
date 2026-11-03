@@ -1,8 +1,8 @@
 """Agent metadata Chris routes between, plus a mock list for testing.
 
-v2 has no agents database yet. ``MOCK_AGENTS`` uses the same fields as v1
+``MOCK_AGENTS`` uses the same fields as v1
 (id, name, description, skills) so routing can be tried before real agents
-exist. It is used only when ``CHRIS_USE_MOCK_AGENTS`` is set (see router.py).
+exist. It is used only when ``CHRIS_USE_MOCK_AGENTS`` is set (see app.chat.service).
 """
 
 from dataclasses import dataclass, field

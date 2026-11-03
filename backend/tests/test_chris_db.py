@@ -9,8 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.chat.service import _installed_agents, purge_expired_chats
 from app.chris.agent_selection import Selection
-from app.chris.router import _installed_agents, purge_expired_chats
+from app.chris.llm import LLMError
+from app.config import ConfigError
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -58,8 +60,8 @@ def test_db():
     Base.metadata.drop_all(bind=engine)
 
 
-@patch("app.chris.router.choose_agent", new_callable=AsyncMock)
-@patch("app.chris.router.generate", new_callable=AsyncMock)
+@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
+@patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_chris_direct_answer_persists_chat_and_messages(
     mock_generate, mock_choose_agent, test_db: Session
 ):
@@ -105,7 +107,7 @@ def test_chris_direct_answer_persists_chat_and_messages(
     assert messages[0].created_at < messages[1].created_at
 
 
-@patch("app.chris.router.choose_agent", new_callable=AsyncMock)
+@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
 def test_chris_routed_agent_persists_chat_and_messages(
     mock_choose_agent, test_db: Session
 ):
@@ -153,6 +155,43 @@ def test_health_check_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "app": "OpenBeavs v2"}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "detail"),
+    [
+        (ConfigError("Missing model configuration"), 500, "Missing model configuration"),
+        (
+            LLMError("Model unavailable"),
+            503,
+            "Chris is temporarily unavailable. Please try again shortly.",
+        ),
+    ],
+)
+def test_chat_preserves_chris_error_responses(test_db, error, expected_status, detail):
+    """Moving the HTTP layer preserves errors and avoids saving failed turns."""
+    with (
+        patch("app.chat.service.choose_agent", new_callable=AsyncMock) as choose,
+        patch("app.chris.service.generate", new_callable=AsyncMock) as generate,
+    ):
+        choose.return_value = Selection()
+        generate.side_effect = error
+        response = TestClient(app).post("/chris/message", json={"message": "Hello"})
+
+    assert response.status_code == expected_status
+    assert response.json() == {"detail": detail}
+    assert test_db.query(Chat).count() == 0
+    assert test_db.query(Message).count() == 0
+
+
+def test_chat_rejects_blank_message_before_calling_chris(test_db):
+    """The extracted chat handler retains validation before model invocation."""
+    with patch("app.chat.service.choose_agent", new_callable=AsyncMock) as choose:
+        response = TestClient(app).post("/chris/message", json={"message": "  "})
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Message cannot be empty."}
+    choose.assert_not_awaited()
+    assert test_db.query(Message).count() == 0
 
 
 def test_list_agents_endpoint(test_db: Session):
@@ -221,8 +260,8 @@ def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
     assert "grading-agent" not in agent_ids
 
 
-@patch("app.chris.router.choose_agent", new_callable=AsyncMock)
-@patch("app.chris.router.generate", new_callable=AsyncMock)
+@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
+@patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_persist_turn_db_failure_still_returns_reply(
     mock_generate, mock_choose_agent, test_db: Session
 ):
@@ -234,7 +273,7 @@ def test_persist_turn_db_failure_still_returns_reply(
     client = TestClient(app)
 
     # Force a database failure during _persist_turn
-    with patch("app.chris.router._persist_turn", return_value=None):
+    with patch("app.chat.service._persist_turn", return_value=None):
         payload = {"message": "Hello Chris"}
         response = client.post("/chris/message", json=payload)
         assert response.status_code == 200
@@ -243,8 +282,8 @@ def test_persist_turn_db_failure_still_returns_reply(
         assert data["chat_id"] is None
 
 
-@patch("app.chris.router.choose_agent", new_callable=AsyncMock)
-@patch("app.chris.router.generate", new_callable=AsyncMock)
+@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
+@patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_history_loaded_from_db_when_chat_id_provided(
     mock_generate, mock_choose_agent, test_db: Session
 ):
@@ -293,8 +332,8 @@ def test_history_loaded_from_db_when_chat_id_provided(
     assert "Spoofed message not in DB" not in message_contents
 
 
-@patch("app.chris.router.choose_agent", new_callable=AsyncMock)
-@patch("app.chris.router.generate", new_callable=AsyncMock)
+@patch("app.chat.service.choose_agent", new_callable=AsyncMock)
+@patch("app.chris.service.generate", new_callable=AsyncMock)
 def test_authenticated_user_vs_unverified_guest(
     mock_generate, mock_choose_agent, test_db: Session
 ):

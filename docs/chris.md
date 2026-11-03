@@ -85,13 +85,25 @@ backend/app/main.py             mounts routers
 backend/app/config.py           reads env vars (including DATABASE_URL)
 backend/app/db/                 SQLAlchemy 2.0 Base, engine, and get_db dependency
 backend/app/models/             declarative models: Agent, User, Chat, Message, Ticket
-backend/app/chris/router.py     HTTP route (queries DB agents, records turns)
+backend/app/chat/router.py      frontend message, agent-list and cleanup HTTP routes
+backend/app/chat/schemas.py     frontend request and response schemas
+backend/app/chat/service.py     chat access checks, history, persistence and agent lookup
+backend/app/chris/router.py     Chris discovery card HTTP route
+backend/app/chris/service.py    direct-answer prompt composition and model invocation
 backend/app/chris/llm.py        Gemini Interactions API call; provider-specific file
 backend/app/chris/agent_selection.py  validated agent choice
 backend/app/chris/agents.py     Agent type and mock agent fallback list
 backend/app/chris/prompts.py    direct-answer system prompt
 backend/alembic/                database migrations
 ```
+
+Chat routes remain mounted at `/chris` to preserve the frontend API, response
+schemas, status codes and discovery-card URLs. The chat service performs the
+existing access checks, asks Chris's selection code to choose an eligible agent,
+loads stored history for direct answers, and persists the resulting turn. Chris's
+direct-answer service accepts message text, history and agent metadata; it does
+not access the chat database. This separation does not introduce ADK execution
+or A2A dispatch.
 
 ## Agent Routing
 

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.chat.router import router as chat_router
 from app.chris.router import router as chris_router
 from app.registry.auth import check_dev_auth_config
 from app.registry.router import router as registry_router
@@ -28,5 +29,6 @@ def health_check() -> dict[str, str]:
 
 # Unversioned on purpose for the prototype. To version later, change the
 # prefix here (for example "/api/v1/chris").
+app.include_router(chat_router, prefix="/chris", tags=["chris"])
 app.include_router(chris_router, prefix="/chris", tags=["chris"])
 app.include_router(registry_router, prefix="/registry", tags=["registry"])
