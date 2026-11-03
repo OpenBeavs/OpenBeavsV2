@@ -1,4 +1,4 @@
-"""Frontend chat HTTP routes, mounted at /chris to preserve the existing API."""
+"""Frontend chat HTTP routes, separate from Chris's A2A protocol endpoint."""
 
 from typing import Annotated, Any
 

@@ -74,7 +74,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 
 /** Ordinary JSON request; v2 currently does not stream or verify bearer tokens. */
 export async function sendMessage(payload: ChrisRequest, signal?: AbortSignal): Promise<ChrisResponse> {
-  const data = await request('/chris/message', {
+  const data = await request('/chat/message', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -92,7 +92,7 @@ export async function sendMessage(payload: ChrisRequest, signal?: AbortSignal): 
 
 /** Agent URLs are metadata only; the browser never executes an external agent. */
 export async function listAgents(signal?: AbortSignal): Promise<AgentSummary[]> {
-  const data = await request('/chris/agents', { signal });
+  const data = await request('/chat/agents', { signal });
   if (!Array.isArray(data) || !data.every((agent: unknown) => isRecord(agent) &&
       typeof agent.id === 'string' && typeof agent.name === 'string' &&
       nullableString(agent.description) && typeof agent.endpoint_url === 'string' &&

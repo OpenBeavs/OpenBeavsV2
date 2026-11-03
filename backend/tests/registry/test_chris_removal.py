@@ -288,7 +288,7 @@ class TestChrisIsStillAvailableButNotRegistered:
         factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
         monkeypatch.setattr("app.db.seed_agents.SessionLocal", factory)
         seed_agents()
-        listed = client.get("/chris/agents").json()
+        listed = client.get("/chat/agents").json()
         ids = {agent["id"] for agent in listed}
         assert OSU_ID in ids
         assert "chris" not in ids

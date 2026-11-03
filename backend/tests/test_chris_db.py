@@ -3,14 +3,16 @@
 import time
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.chat.service import _installed_agents, purge_expired_chats
-from app.chris.llm import LLMError
+from app.chat.a2a_client import ChrisUnavailable
+from app.chat.service import list_active_agents, purge_expired_chats
+from app.chris.agent import ACKNOWLEDGMENT
 from app.config import ConfigError
 from app.db.base import Base
 from app.db.session import get_db
@@ -59,12 +61,10 @@ def test_db():
     Base.metadata.drop_all(bind=engine)
 
 
-@patch("app.chris.service.generate", new_callable=AsyncMock)
-def test_chris_direct_answer_persists_chat_and_messages(
-    mock_generate, test_db: Session
-):
-    """Verify that a direct answer from Chris creates chat and message records."""
-    mock_generate.return_value = "Hello! I am Chris, how can I help you today?"
+@patch("app.chat.service.send_message", new_callable=AsyncMock)
+def test_chris_a2a_answer_persists_chat_and_messages(mock_send, test_db: Session):
+    """Verify that an A2A answer from Chris creates chat and message records."""
+    mock_send.return_value = "Hello! I am Chris, how can I help you today?"
     client = TestClient(app)
 
     payload = {
@@ -72,7 +72,7 @@ def test_chris_direct_answer_persists_chat_and_messages(
         "guest_session_id": "iframe_guest_123",
         "source_domain": "library.oregonstate.edu",
     }
-    response = client.post("/chris/message", json=payload)
+    response = client.post("/chat/message", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["response"] == "Hello! I am Chris, how can I help you today?"
@@ -112,12 +112,55 @@ def test_health_check_endpoint():
     assert response.json() == {"status": "ok", "app": "OpenBeavs v2"}
 
 
+def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
+    """The frontend API calls the real A2A agent and persists its response."""
+    monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
+    monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
+    requests = []
+
+    def http_client():
+        async def record(request):
+            requests.append(request)
+
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            event_hooks={"request": [record]},
+        )
+
+    with (
+        TestClient(app) as client,
+        patch("app.chat.a2a_client._http_client", side_effect=http_client),
+    ):
+        response = client.post(
+            "/chat/message",
+            json={
+                "message": "Hello Chris",
+                "guest_session_id": "test-guest",
+            },
+        )
+        assert (
+            client.post("/chris/message", json={"message": "Hello"}).status_code == 404
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["response"] == ACKNOWLEDGMENT
+    assert data["routed_to"] is None
+    assert [request.url.path for request in requests] == ["/chris/a2a/"]
+    assert test_db.get(Chat, data["chat_id"]).guest_session_id == "test-guest"
+    messages = test_db.query(Message).order_by(Message.created_at).all()
+    assert [message.content for message in messages] == ["Hello Chris", ACKNOWLEDGMENT]
+
+
 @pytest.mark.parametrize(
     ("error", "expected_status", "detail"),
     [
-        (ConfigError("Missing model configuration"), 500, "Missing model configuration"),
         (
-            LLMError("Model unavailable"),
+            ConfigError("Missing Chris endpoint configuration"),
+            500,
+            "Missing Chris endpoint configuration",
+        ),
+        (
+            ChrisUnavailable("Chris unavailable"),
             503,
             "Chris is temporarily unavailable. Please try again shortly.",
         ),
@@ -126,10 +169,10 @@ def test_health_check_endpoint():
 def test_chat_preserves_chris_error_responses(test_db, error, expected_status, detail):
     """Moving the HTTP layer preserves errors and avoids saving failed turns."""
     with (
-        patch("app.chris.service.generate", new_callable=AsyncMock) as generate,
+        patch("app.chat.service.send_message", new_callable=AsyncMock) as generate,
     ):
         generate.side_effect = error
-        response = TestClient(app).post("/chris/message", json={"message": "Hello"})
+        response = TestClient(app).post("/chat/message", json={"message": "Hello"})
 
     assert response.status_code == expected_status
     assert response.json() == {"detail": detail}
@@ -138,9 +181,9 @@ def test_chat_preserves_chris_error_responses(test_db, error, expected_status, d
 
 
 def test_chat_rejects_blank_message_before_calling_chris(test_db):
-    """The extracted chat handler retains validation before model invocation."""
-    with patch("app.chat.service.answer_direct", new_callable=AsyncMock) as answer:
-        response = TestClient(app).post("/chris/message", json={"message": "  "})
+    """The extracted chat handler retains validation before A2A invocation."""
+    with patch("app.chat.service.send_message", new_callable=AsyncMock) as answer:
+        response = TestClient(app).post("/chat/message", json={"message": "  "})
     assert response.status_code == 400
     assert response.json() == {"detail": "Message cannot be empty."}
     answer.assert_not_awaited()
@@ -148,9 +191,9 @@ def test_chat_rejects_blank_message_before_calling_chris(test_db):
 
 
 def test_list_agents_endpoint(test_db: Session):
-    """Verify GET /chris/agents returns active registered agents."""
+    """Verify GET /chat/agents returns active registered agents."""
     client = TestClient(app)
-    response = client.get("/chris/agents")
+    response = client.get("/chat/agents")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -166,7 +209,7 @@ def test_installed_agents_empty_returns_empty_list(test_db: Session):
     test_db.commit()
 
     with patch.dict("os.environ", {}, clear=True):
-        agents = _installed_agents(test_db)
+        agents = list_active_agents(test_db)
         assert agents == []
 
 
@@ -194,37 +237,33 @@ def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
     test_db.add_all([priv_agent, faculty_agent])
     test_db.commit()
 
-    agents = _installed_agents(test_db)
-    agent_ids = [a.id for a in agents]
+    agents = list_active_agents(test_db)
+    agent_ids = [a["id"] for a in agents]
     assert "osu-rag-agent" in agent_ids
     assert "internal-admin-agent" not in agent_ids
     assert "grading-agent" not in agent_ids
 
 
-@patch("app.chris.service.generate", new_callable=AsyncMock)
-def test_persist_turn_db_failure_still_returns_reply(
-    mock_generate, test_db: Session
-):
+@patch("app.chat.service.send_message", new_callable=AsyncMock)
+def test_persist_turn_db_failure_still_returns_reply(mock_send, test_db: Session):
     """Verify that a database error during persistence does not 500, but returns the reply with chat_id=None."""
-    mock_generate.return_value = "Reply from Chris despite DB error"
+    mock_send.return_value = "Reply from Chris despite DB error"
     client = TestClient(app)
 
     # Force a database failure during _persist_turn
     with patch("app.chat.service._persist_turn", return_value=None):
         payload = {"message": "Hello Chris"}
-        response = client.post("/chris/message", json=payload)
+        response = client.post("/chat/message", json=payload)
         assert response.status_code == 200
         data = response.json()
         assert data["response"] == "Reply from Chris despite DB error"
         assert data["chat_id"] is None
 
 
-@patch("app.chris.service.generate", new_callable=AsyncMock)
-def test_history_loaded_from_db_when_chat_id_provided(
-    mock_generate, test_db: Session
-):
+@patch("app.chat.service.send_message", new_callable=AsyncMock)
+def test_history_loaded_from_db_when_chat_id_provided(mock_send, test_db: Session):
     """Verify that when chat_id is provided, messages are loaded from the DB rather than form.history."""
-    mock_generate.return_value = "Second turn response"
+    mock_send.return_value = "Second turn response"
     client = TestClient(app)
 
     # 1. Create existing chat with 2 stored turns
@@ -254,23 +293,21 @@ def test_history_loaded_from_db_when_chat_id_provided(
         "message": "Second question",
         "history": [{"role": "user", "content": "Spoofed message not in DB"}],
     }
-    response = client.post("/chris/message", json=payload)
+    response = client.post("/chat/message", json=payload)
     assert response.status_code == 200
 
-    # Verify that generate was called with DB messages, not the spoofed history
-    call_args = mock_generate.call_args[0][0]
+    # Verify that A2A was called with DB messages, not the spoofed history
+    call_args = mock_send.call_args.args[1]
     message_contents = [m["content"] for m in call_args]
     assert "First question" in message_contents
     assert "First answer" in message_contents
     assert "Spoofed message not in DB" not in message_contents
 
 
-@patch("app.chris.service.generate", new_callable=AsyncMock)
-def test_authenticated_user_vs_unverified_guest(
-    mock_generate, test_db: Session
-):
+@patch("app.chat.service.send_message", new_callable=AsyncMock)
+def test_authenticated_user_vs_unverified_guest(mock_send, test_db: Session):
     """Verify that only users existing in the database are authenticated without TTL; unverified user_ids remain guest with TTL."""
-    mock_generate.return_value = "Hello"
+    mock_send.return_value = "Hello"
     client = TestClient(app)
 
     # 1. Real user in DB
@@ -285,7 +322,7 @@ def test_authenticated_user_vs_unverified_guest(
 
     # Chat with verified user_id
     res1 = client.post(
-        "/chris/message",
+        "/chat/message",
         json={"message": "Hi", "user_id": "real-student"},
     )
     assert res1.status_code == 200
@@ -296,7 +333,7 @@ def test_authenticated_user_vs_unverified_guest(
 
     # Chat with unverified user_id
     res2 = client.post(
-        "/chris/message",
+        "/chat/message",
         json={"message": "Hi", "user_id": "fake-student-id"},
     )
     assert res2.status_code == 200
@@ -332,7 +369,7 @@ def test_purge_expired_chats(test_db: Session):
     test_db.commit()
 
     client = TestClient(app)
-    response = client.delete("/chris/chats/expired")
+    response = client.delete("/chat/chats/expired")
     assert response.status_code == 200
     assert response.json() == {"purged": 1}
 
@@ -378,7 +415,7 @@ def test_idor_prevention_on_chat_access(test_db: Session):
     test_db.commit()
 
     res1 = client.post(
-        "/chris/message",
+        "/chat/message",
         json={
             "message": "Can I read Alice's chat?",
             "chat_id": "alice-secret-chat",
@@ -389,7 +426,7 @@ def test_idor_prevention_on_chat_access(test_db: Session):
 
     # An anonymous caller tries to access guest chat with wrong token -> 403
     res2 = client.post(
-        "/chris/message",
+        "/chat/message",
         json={
             "message": "Can I append to guest chat?",
             "chat_id": "guest-chat-1",

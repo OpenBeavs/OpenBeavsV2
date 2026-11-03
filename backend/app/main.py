@@ -37,6 +37,6 @@ def health_check() -> dict[str, str]:
 
 
 # Unversioned on purpose for the prototype. To version later, change the
-# prefix here (for example "/api/v1/chris").
-app.include_router(chat_router, prefix="/chris", tags=["chris"])
+# prefix here (for example "/api/v1/chat").
+app.include_router(chat_router, prefix="/chat", tags=["chat"])
 app.include_router(registry_router, prefix="/registry", tags=["registry"])

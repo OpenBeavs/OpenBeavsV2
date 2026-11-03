@@ -13,7 +13,7 @@ class HistoryMessage(BaseModel):
 
 
 class ChrisMessageForm(BaseModel):
-    """Request body for POST /chris/message."""
+    """Request body for POST /chat/message."""
 
     message: str
     history: list[HistoryMessage] = []
@@ -26,9 +26,8 @@ class ChrisMessageForm(BaseModel):
 class ChrisMessageResponse(BaseModel):
     """Response body.
 
-    ``routed_to`` and ``agent_name`` are set when Chris picked an agent. The
-    ``routing_*`` fields show the model's decision (when routing ran), which
-    helps tune routing even when the answer came directly from Chris.
+    Routing fields remain for frontend compatibility and are currently null;
+    the acknowledgment agent does not select or delegate to specialists.
     """
 
     response: str

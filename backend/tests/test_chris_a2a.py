@@ -77,12 +77,10 @@ def test_sdk_discovery_and_message(text):
                 await agent_client.close()
 
     with (
-        patch("app.chris.service.generate", new_callable=AsyncMock) as model,
         patch("app.chat.service.handle_message", new_callable=AsyncMock) as chat,
         TestClient(app) as client,
     ):
         responses = client.portal.call(send)
-    model.assert_not_awaited()
     chat.assert_not_awaited()
     assert len(responses) == 1
     task = responses[0].task

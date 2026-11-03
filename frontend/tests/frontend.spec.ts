@@ -8,8 +8,8 @@ const agents = [
 
 async function mockBackend(page: Page) {
   await page.route('**/health', (route) => route.fulfill({ json: { status: 'ok' } }));
-  await page.route('**/chris/agents', (route) => route.fulfill({ json: agents }));
-  await page.route('**/chris/message', (route) => route.fulfill({ json: response }));
+  await page.route('**/chat/agents', (route) => route.fulfill({ json: agents }));
+  await page.route('**/chat/message', (route) => route.fulfill({ json: response }));
 }
 async function send(page: Page, text: string) {
   await page.getByLabel('Message Chris', { exact: true }).fill(text);
@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => { await mockBackend(page); });
 
 test('talks to Chris, carries the chat ID, and preserves the conversation across navigation', async ({ page }) => {
   const requests: Record<string, unknown>[] = [];
-  page.on('request', (request) => { if (request.url().endsWith('/chris/message')) requests.push(request.postDataJSON()); });
+  page.on('request', (request) => { if (request.url().endsWith('/chat/message')) requests.push(request.postDataJSON()); });
   await page.goto('/');
   await send(page, 'Hello');
   await expect(page.getByTestId('message')).toHaveCount(2);
@@ -55,12 +55,12 @@ test('searches the read-only directory and labels restricted agents', async ({ p
 });
 
 test('restores failed input and recovers without adding failed turns', async ({ page }) => {
-  await page.route('**/chris/message', (route) => route.fulfill({ status: 503, json: { detail: 'Unavailable' } }));
+  await page.route('**/chat/message', (route) => route.fulfill({ status: 503, json: { detail: 'Unavailable' } }));
   await page.goto('/'); await send(page, 'Keep this input');
   await expect(page.getByRole('alert')).toContainText('temporarily unavailable');
   await expect(page.getByLabel('Message Chris', { exact: true })).toHaveValue('Keep this input');
   await expect(page.getByTestId('message')).toHaveCount(0);
-  await page.route('**/chris/message', async (route) => {
+  await page.route('**/chat/message', async (route) => {
     expect(route.request().postDataJSON().history).toEqual([]);
     await route.fulfill({ json: response });
   });
@@ -70,7 +70,7 @@ test('restores failed input and recovers without adding failed turns', async ({ 
 
 test('supports keyboard input and escapes HTML-like message content', async ({ page }) => {
   const html = '<img src=x onerror=alert(1)><script>alert(1)</script>';
-  await page.route('**/chris/message', (route) => route.fulfill({ json: { ...response, response: html } }));
+  await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, response: html } }));
   await page.goto('/');
   const input = page.getByLabel('Message Chris', { exact: true });
   await input.fill('First line'); await input.press('Shift+Enter'); await input.press('a');
@@ -96,17 +96,17 @@ test('opens, traps focus, and closes the mobile sidebar with Escape', async ({ p
 });
 
 test('shows routing previews and persistence fallback without direct agent calls', async ({ page }) => {
-  await page.route('**/chris/message', (route) => route.fulfill({ json: { ...response, chat_id: null, routed_to: 'library', agent_name: 'Library' } }));
+  await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, chat_id: null, routed_to: 'library', agent_name: 'Library' } }));
   await page.goto('/'); await send(page, 'Find research');
   await expect(page.getByText('Routing preview · Library')).toBeVisible();
   await expect(page.getByText(/Conversation storage is unavailable/)).toBeVisible();
 });
 
 test('retries agent-list failures independently and handles an empty list', async ({ page }) => {
-  await page.route('**/chris/agents', (route) => route.fulfill({ status: 500, json: {} }));
+  await page.route('**/chat/agents', (route) => route.fulfill({ status: 500, json: {} }));
   await page.goto('/agents');
   await expect(page.getByRole('alert')).toBeVisible();
-  await page.route('**/chris/agents', (route) => route.fulfill({ json: [] }));
+  await page.route('**/chat/agents', (route) => route.fulfill({ json: [] }));
   await page.getByRole('button', { name: 'Retry loading agents' }).click();
   await expect(page.getByText(/No agents are registered yet/)).toBeVisible();
   await page.getByRole('link', { name: 'Chris', exact: true }).click();
@@ -126,5 +126,5 @@ test('calls only supported backend endpoints and never restores legacy auth', as
   await expect(page.getByTestId('message')).toHaveCount(2);
   await page.getByRole('link', { name: 'Agents', exact: true }).click();
   await expect(page.getByRole('article')).toHaveCount(2);
-  expect(apiPaths.sort()).toEqual(['/chris/agents', '/chris/message', '/health']);
+  expect(apiPaths.sort()).toEqual(['/chat/agents', '/chat/message', '/health']);
 });

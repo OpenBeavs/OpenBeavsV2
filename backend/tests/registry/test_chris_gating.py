@@ -26,7 +26,7 @@ def add_agent(db: Session, agent_id: str, status: str, active: bool = True) -> N
 
 def offered_to_router(client: TestClient) -> list[str]:
     """Return the reviewed agents available in the frontend directory."""
-    response = client.get("/chris/agents")
+    response = client.get("/chat/agents")
     assert response.status_code == 200, response.text
     return [agent["id"] for agent in response.json()]
 
@@ -77,7 +77,7 @@ def test_agents_endpoint_lists_only_routable_agents(
 ) -> None:
     add_agent(db, "approved", "approved")
     add_agent(db, "pending", "pending", active=True)
-    listed = client.get("/chris/agents").json()
+    listed = client.get("/chat/agents").json()
     assert [a["id"] for a in listed] == ["approved"]
 
 

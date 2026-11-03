@@ -1,6 +1,6 @@
 """Chat application workflow: authorize, load history, ask Chris, and persist turns.
 
-Model access remains in Chris; this module owns the application's chat state.
+Chris is called over A2A; this module owns the application's chat state.
 """
 
 import logging
@@ -12,11 +12,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.chat.a2a_client import ChrisUnavailable, send_message
 from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
-from app.chris.llm import LLMError
-from app.chris.service import answer_direct
 from app.config import ConfigError
-from app.models import Agent
 from app.models import Chat as DBChat
 from app.models import Message as DBMessage
 from app.models import User as DBUser
@@ -24,13 +22,6 @@ from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
 
-def _installed_agents(db: Session) -> list[Agent]:
-    """Load reviewed public agent metadata for the direct-answer prompt only."""
-    try:
-        return routable_agents(db)
-    except SQLAlchemyError as e:
-        log.error("Failed to query installed agents from database: %s", e)
-        return []
 
 def purge_expired_chats(db: Session) -> int:
     """Delete expired guest chats whose TTL has elapsed.
@@ -135,11 +126,7 @@ async def handle_message(
     form: ChrisMessageForm,
     db: Session,
 ) -> ChrisMessageResponse:
-    """Route a message to an agent or answer it directly via the configured model.
-
-    Agent calling is not implemented yet: when an agent is chosen, the reply
-    says so instead of calling it.
-    """
+    """Authorize a chat turn, send it to Chris over A2A, and save its answer."""
     message = form.message.strip()
     if not message:
         raise HTTPException(
@@ -171,8 +158,6 @@ async def handle_message(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied: You are not authorized to access or modify this chat session.",
                 )
-
-    agents = _installed_agents(db)
 
     try:
         # Single source of truth for history: load from DB if chat_id exists,
@@ -207,21 +192,21 @@ async def handle_message(
                 {"role": m.role, "content": m.content} for m in form.history
             ]
 
-        reply = await answer_direct(message, history_entries, agents)
+        reply = await send_message(message, history_entries)
 
     except ConfigError as e:
         log.error("Chris configuration error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    except LLMError as e:
-        log.error("Chris model call failed: %s", e)
+    except ChrisUnavailable:
+        log.warning("Chris A2A call did not produce a completed answer.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chris is temporarily unavailable. Please try again shortly.",
         )
 
-    # Persist turn outside LLM try block; catch DB errors without failing response
+    # Persist after A2A succeeds; catch DB errors without failing the response.
     chat_id = _persist_turn(
         db,
         form,
@@ -237,7 +222,7 @@ async def handle_message(
 
 
 def list_active_agents(db: Session) -> list[dict[str, Any]]:
-    """List the active, reviewed agents Chris can route to."""
+    """List active, reviewed agents for the frontend directory."""
     db_agents = routable_agents(db)
     return [
         {
