@@ -103,9 +103,17 @@ two-hour expiry timestamp; expiry does not itself reject turns or trigger deleti
 - `POST /chris/a2a/`: JSON-RPC A2A 1.0 endpoint; use the SDK's `SendMessageRequest`.
 
 The old handwritten `/chris/.well-known/agent.json` route is removed. The mounted
-card advertises text input/output, protocol 1.0 and no streaming. The parent
-application explicitly enters the ADK app's lifespan so protocol routes are ready
-before requests arrive. Tasks and ADK sessions are in memory, not the chat database.
+card advertises text input/output, protocol 1.0 and no streaming. Discovery is
+shared, but each RPC initializes a separate ADK application with its own in-memory
+task store, executor, and session service. These stores have no application-wide
+references after execution finishes; completed turns do not accumulate in Chris.
+The SDK continues to handle protocol validation, execution, and responses.
+
+`ListTasks` is rejected. Retrieval, subscription, cancellation, and resuming a
+previous task cannot access other requests' stores and return SDK errors. Supplying
+a previous context ID starts with a fresh session rather than loading earlier
+events. These restrictions also apply to the standalone runner. Task polling and
+cross-request continuation are unsupported until caller isolation is implemented.
 
 Chat calls a configured Chris endpoint without fetching its card. It sends the
 message as a text part and previous turns in request-level `metadata.history`.
@@ -189,13 +197,13 @@ The backend calls its own Chris endpoint over HTTP/A2A. Two access-log entries
 (`/chat/message` and `/chris/a2a/`) are expected for one browser message.
 
 `python -m app.chris.run` starts only Chris, without chat or its database routes.
-That runner currently binds `127.0.0.1:8000` and advertises localhost. It does not
-use `PORT` or `CHRIS_PUBLIC_URL`; do not run it alongside the main app on the same
+That runner currently binds `127.0.0.1:8000` and uses the same card builder and
+request isolation as the mounted agent, including `CHRIS_PUBLIC_URL`. It does not
+use `PORT`; do not run it alongside the main app on the same
 port. Cloud-ready startup, a container definition, and service-to-service token
 authentication are not implemented by this branch. No A2A client attaches an IAM
 ID token, and the mounted Chris endpoint has no caller-authentication middleware.
-The standalone runner uses ADK's default generated card capabilities, while the
-mounted app explicitly disables streaming; both clients use non-streaming calls.
+Both entrypoints advertise no streaming; both clients use non-streaming calls.
 
 ## Layout and remaining work
 
@@ -208,6 +216,7 @@ app/chris/agent.py          registry-first flow and Gemini fallback
 app/chris/registry_client.py SDK discovery, selection request and response validation
 app/chris/gemini.py         direct Gemini generation
 app/chris/a2a.py            generated card and mounted A2A app
+app/chris/transport.py      request-scoped SDK stores; task enumeration denied
 app/chris/run.py            local standalone entrypoint
 ```
 

@@ -14,11 +14,11 @@ from app.registry.router import router as registry_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Check registry auth and initialize the mounted ADK application's routes."""
+    """Check registry auth and initialize Chris's isolated A2A endpoint."""
     check_dev_auth_config()
     chris_app = await build_chris_a2a_app()
     mount = Mount(MOUNT_PATH, app=chris_app)
-    # Mounted sub-app lifespans are not entered automatically by FastAPI.
+    # Keep the mounted app's lifespan aligned with the parent application's.
     async with chris_app.router.lifespan_context(chris_app):
         app.router.routes.append(mount)
         try:
