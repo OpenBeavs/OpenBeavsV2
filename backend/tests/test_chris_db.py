@@ -115,6 +115,12 @@ def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
     """The frontend API calls the real A2A agent and persists its response."""
     selection = AsyncMock(return_value='{"agent":"none"}')
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
+    answer = AsyncMock(return_value="Gemini answer.")
+    monkeypatch.setattr("app.chris.gemini.answer", answer)
+    history = [
+        {"role": "user", "content": "Earlier question"},
+        {"role": "assistant", "content": "Earlier answer"},
+    ]
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     requests = []
@@ -137,6 +143,7 @@ def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
             json={
                 "message": "Hello Chris",
                 "guest_session_id": "test-guest",
+                "history": history,
             },
         )
         assert (
@@ -144,20 +151,25 @@ def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
         )
     assert response.status_code == 200
     data = response.json()
-    assert data["response"] == '{"agent":"none"}'
-    selection.assert_awaited_once_with("Hello Chris", [])
+    assert data["response"] == "Gemini answer."
+    selection.assert_awaited_once_with("Hello Chris", history)
+    answer.assert_awaited_once_with("Hello Chris", history)
     assert data["routed_to"] is None
     assert [request.url.path for request in requests] == ["/chris/a2a/"]
     assert test_db.get(Chat, data["chat_id"]).guest_session_id == "test-guest"
     messages = test_db.query(Message).order_by(Message.created_at).all()
     assert [message.content for message in messages] == [
         "Hello Chris",
-        '{"agent":"none"}',
+        "Gemini answer.",
     ]
 
 
-def test_unavailable_registry_returns_503_without_saving_turn(test_db, monkeypatch):
-    """A missing registry service fails chat instead of returning a no-match reply."""
+def test_unavailable_registry_gemini_reply_is_saved_as_a_chat_turn(
+    test_db, monkeypatch
+):
+    """A missing registry uses Gemini's answer, which chat persists normally."""
+    answer = AsyncMock(return_value="Gemini answer.")
+    monkeypatch.setattr("app.chris.gemini.answer", answer)
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setenv("REGISTRY_A2A_URL", "http://registry.example.test/")
     monkeypatch.setattr(
@@ -174,9 +186,15 @@ def test_unavailable_registry_returns_503_without_saving_turn(test_db, monkeypat
     )
     with TestClient(app) as client:
         response = client.post("/chat/message", json={"message": "Hello"})
-    assert response.status_code == 503
-    assert test_db.query(Chat).count() == 0
-    assert test_db.query(Message).count() == 0
+    assert response.status_code == 200
+    assert response.json()["response"] == "Gemini answer."
+    answer.assert_awaited_once_with("Hello", [])
+    assert test_db.query(Chat).count() == 1
+    messages = test_db.query(Message).order_by(Message.created_at).all()
+    assert [message.content for message in messages] == [
+        "Hello",
+        "Gemini answer.",
+    ]
 
 
 @pytest.mark.parametrize(

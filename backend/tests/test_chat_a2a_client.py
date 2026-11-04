@@ -17,6 +17,8 @@ def test_chat_client_calls_real_chris(monkeypatch):
     """Chat's production client speaks to the actual mounted ADK agent."""
     selection = AsyncMock(return_value='{"agent":"none"}')
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
+    answer = AsyncMock(return_value="Gemini answer.")
+    monkeypatch.setattr("app.chris.gemini.answer", answer)
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
 
@@ -30,8 +32,11 @@ def test_chat_client_calls_real_chris(monkeypatch):
         reply = client.portal.call(
             send_message, "Hello Chris", [{"role": "user", "content": "Earlier"}]
         )
-    assert reply == '{"agent":"none"}'
+    assert reply == "Gemini answer."
     selection.assert_awaited_once_with(
+        "Hello Chris", [{"role": "user", "content": "Earlier"}]
+    )
+    answer.assert_awaited_once_with(
         "Hello Chris", [{"role": "user", "content": "Earlier"}]
     )
 

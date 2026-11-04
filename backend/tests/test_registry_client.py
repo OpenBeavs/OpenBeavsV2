@@ -8,13 +8,20 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.chat.a2a_client import ChrisUnavailable, send_message
-from app.chris import registry_client
+from app.chat.a2a_client import send_message
+from app.chris import gemini, registry_client
 from app.config import ConfigError
 from app.main import app
 
 
-def test_registry_request_sends_message_and_history(monkeypatch):
+@pytest.mark.parametrize(
+    "registry_reply",
+    [
+        {"agent": "none"},
+        {"agent": {"id": "library-agent", "endpoint_url": "https://example.com/a2a/"}},
+    ],
+)
+def test_registry_request_sends_message_and_history(monkeypatch, registry_reply):
     """The SDK discovers the configured card and sends the selection contract."""
     requests = []
     monkeypatch.setenv("REGISTRY_A2A_URL", "http://registry.example.test/")
@@ -45,7 +52,7 @@ def test_registry_request_sends_message_and_history(monkeypatch):
                     "message": {
                         "messageId": "selection",
                         "role": "ROLE_AGENT",
-                        "parts": [{"text": '{"agent":"none"}'}],
+                        "parts": [{"text": json.dumps(registry_reply)}],
                     }
                 },
             },
@@ -58,7 +65,7 @@ def test_registry_request_sends_message_and_history(monkeypatch):
     )
     history = [{"role": "user", "content": "Earlier question"}]
     result = asyncio.run(registry_client.select_agent("Choose an agent", history))
-    assert json.loads(result) == {"agent": "none"}
+    assert json.loads(result) == registry_reply
     assert [request.method for request in requests] == ["GET", "POST"]
     assert (
         str(requests[0].url)
@@ -70,10 +77,26 @@ def test_registry_request_sends_message_and_history(monkeypatch):
     assert body["params"]["metadata"] == {"history": history}
 
 
-def test_chris_always_calls_registry_and_relays_reply(monkeypatch):
-    """Even greetings invoke selection once; only conversational history is passed."""
-    selection = AsyncMock(return_value='{"agent":"none"}')
+@pytest.mark.parametrize(
+    "registry_reply",
+    [
+        '{"agent":"none"}',
+        '{"agent":{"id":"library-agent","endpoint_url":"https://example.com/a2a/"}}',
+    ],
+)
+def test_chris_calls_registry_before_optional_gemini_fallback(
+    monkeypatch, registry_reply
+):
+    """No match triggers Gemini; a real selection does not call the model."""
+    selection = AsyncMock(return_value=registry_reply)
+
+    async def model_answer(message, history):
+        selection.assert_awaited_once_with(message, history)
+        return "Gemini answer."
+
+    answer = AsyncMock(side_effect=model_answer)
     monkeypatch.setattr(registry_client, "select_agent", selection)
+    monkeypatch.setattr(gemini, "answer", answer)
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setattr(
@@ -83,25 +106,58 @@ def test_chris_always_calls_registry_and_relays_reply(monkeypatch):
     history = [{"role": "assistant", "content": "Earlier answer"}]
     with TestClient(app) as client:
         result = client.portal.call(send_message, "Hi", history)
-    assert result == '{"agent":"none"}'
     selection.assert_awaited_once_with("Hi", history)
+    if json.loads(registry_reply)["agent"] == "none":
+        assert result == "Gemini answer."
+        answer.assert_awaited_once_with("Hi", history)
+    else:
+        assert result == registry_reply
+        answer.assert_not_awaited()
 
 
-def test_registry_failure_fails_chris_without_fallback(monkeypatch):
-    """No fake success or model answer can hide a failed mandatory registry call."""
-    selection = AsyncMock(
-        side_effect=registry_client.RegistryUnavailable("private error")
-    )
+@pytest.mark.parametrize(
+    "failure",
+    [
+        None,
+        registry_client.RegistryUnavailable("private error"),
+        ConfigError("private config"),
+    ],
+)
+@pytest.mark.parametrize(
+    "model_failure",
+    [
+        None,
+        ConfigError("private model config"),
+        gemini.GeminiUnavailable("private details"),
+    ],
+)
+def test_registry_error_or_no_match_uses_gemini(monkeypatch, failure, model_failure):
+    """Every fallback trigger uses Gemini; model failures stay caller-safe."""
+    selection = AsyncMock(return_value='{"agent":"none"}', side_effect=failure)
+
+    async def model_answer(message, history):
+        selection.assert_awaited_once_with(message, history)
+        if model_failure:
+            raise model_failure
+        return "Gemini answer."
+
+    answer = AsyncMock(side_effect=model_answer)
     monkeypatch.setattr(registry_client, "select_agent", selection)
+    monkeypatch.setattr(gemini, "answer", answer)
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setattr(
         "app.chat.a2a_client._http_client",
         lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=app)),
     )
-    with TestClient(app) as client, pytest.raises(ChrisUnavailable) as error:
-        client.portal.call(send_message, "Hello", [])
+    with TestClient(app) as client:
+        reply = client.portal.call(send_message, "Hello", [])
     selection.assert_awaited_once_with("Hello", [])
-    assert "private" not in str(error.value)
+    answer.assert_awaited_once_with("Hello", [])
+    assert reply == (
+        "Chris is temporarily unavailable. Please try again shortly."
+        if model_failure
+        else "Gemini answer."
+    )
 
 
 @pytest.mark.parametrize(

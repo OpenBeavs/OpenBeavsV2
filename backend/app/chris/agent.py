@@ -1,5 +1,6 @@
-"""Chris always asks the registry over A2A and relays its selection text."""
+"""Chris asks the registry first and answers with Gemini when selection fails."""
 
+import json
 import logging
 from collections.abc import AsyncGenerator
 
@@ -8,7 +9,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from google.genai import types
 
-from app.chris import registry_client
+from app.chris import gemini, registry_client
 from app.config import ConfigError
 
 log = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class ChrisAgent(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        """Call the registry once for every valid message; failures fail the task."""
+        """Call the registry once, then use Gemini on error or an explicit no-match."""
         parts = ctx.user_content.parts if ctx.user_content else []
         message = "\n".join(p.text for p in parts or [] if p.text).strip()
         if not message:
@@ -42,9 +43,13 @@ class ChrisAgent(BaseAgent):
             reply = await registry_client.select_agent(message, history)
         except (ConfigError, registry_client.RegistryUnavailable):
             log.warning("Chris could not obtain a registry selection.")
-            raise RuntimeError(
-                "Registry selection is unavailable. Please try again."
-            ) from None
+            reply = None
+        if reply is None or json.loads(reply)["agent"] == "none":
+            try:
+                reply = await gemini.answer(message, history)
+            except (ConfigError, gemini.GeminiUnavailable):
+                log.warning("Chris could not obtain a Gemini answer.")
+                reply = "Chris is temporarily unavailable. Please try again shortly."
         yield Event(
             author=self.name,
             content=types.Content(role="model", parts=[types.Part(text=reply)]),
@@ -53,5 +58,8 @@ class ChrisAgent(BaseAgent):
 
 chris_agent = ChrisAgent(
     name="chris",
-    description="Asks the registry to select an agent and returns its selection.",
+    description=(
+        "Asks the registry to select an agent; answers directly with Gemini "
+        "when the registry is unavailable or finds no match."
+    ),
 )
