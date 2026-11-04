@@ -1,13 +1,16 @@
 # Agent Registry
 
-The registry is how an A2A agent gets into OpenBeavs and how Chris decides it may
-route to it. An agent is submitted by URL and must pass a set of automated checks.
+Registry management is how an A2A agent gets into OpenBeavs and becomes eligible
+for the frontend directory and future execution. An agent is submitted by URL and
+must pass a set of automated checks.
 In the default **auto** mode an agent that passes goes live as `provisional`;
 in **manual** mode it waits for an admin to approve it.
 
 It is a module of the backend (`backend/app/registry/`) that writes to the unified
 `agents` table described in `docs/db_docs/database-architecture.md`. There is no
-separate registry database or service.
+separate management database. Chris calls a separately configured A2A registry
+selection service; this module does not implement that service or choose agents
+for individual messages.
 
 ## How an agent gets in
 
@@ -17,7 +20,7 @@ submit URL -> safe-address check -> fetch + clean + validate card -> wording che
         auto mode (default): clean card -> "provisional" (live)   flagged card -> "pending"
         manual mode:         every card -> "pending" (waits for an admin)
                                                                                         |
-                              Chris routes only to "approved" and "provisional"
+                              directory eligibility: "approved" or "provisional"
 ```
 
 1. **Submit.** `POST /registry/agents` with `{"url": "..."}`. Nothing else is accepted.
@@ -25,22 +28,22 @@ submit URL -> safe-address check -> fetch + clean + validate card -> wording che
    after checking the address is safe (see Security). The card is validated.
 3. **Decision** (`REGISTRY_APPROVAL_MODE`, see Approval mode below).
    - **auto** (default): a card that passed every check, with no warning flag, is
-     stored as `provisional` and active, so Chris can route to it at once. It is
+     stored as `provisional` and active, making it eligible for the directory. It is
      recorded as reviewed by `system:auto`. A card flagged for steering wording is
      held as `pending`.
    - **manual**: the agent is stored with `status = pending` and `is_active = false`.
-     Only the submitter and admins can see it. Chris cannot route to it.
+     Only the submitter and admins can see it; it is excluded from the directory.
 4. **Review.** An admin calls `POST /registry/agents/{id}/review`. `approve` and
    `provisional` make the agent active and visible; `revoke` and `reject` make it
    inactive and hidden. The reviewer and time are recorded. This still works on
    auto-approved agents, so any of them can be revoked.
-5. **Routing.** Chris offers the router only active agents whose status is
+5. **Directory eligibility.** Chat lists only active agents whose status is
    `approved` or `provisional`, with public access and no required role
    (`service.routable_agents`). This is a conservative filter, not a new tier system.
 
 ## Statuses
 
-| Status | Routable by Chris | Visible to other users | Meaning |
+| Status | Eligible review status | Visible to other users | Meaning |
 |---|---|---|---|
 | `pending` | no | no (submitter and admins only) | Submitted, awaiting review (manual mode, or a card held by the wording check) |
 | `approved` | yes | yes | Reviewed and accepted |
@@ -86,7 +89,9 @@ submission is open to people you do not trust.
 Submitter and review details (`submitted_by`, `reviewed_by`, `reviewed_at`,
 `review_note`) are returned only to admins and to the submitter.
 
-Chris's own listing, `GET /chris/agents`, returns the routable agents.
+The chat directory, `GET /chat/agents`, returns the routable agents. This database
+list is separate from the A2A registry selection service that Chris calls through
+`REGISTRY_A2A_URL`; the management routes in this module do not implement selection.
 
 ## Where each stored field comes from
 
@@ -148,12 +153,15 @@ validated address (IP pinning) or to use an egress proxy; it is not part of this
 
 Restrictions this creates for the MVP:
 
-- Nothing in a production deployment can trigger a card fetch: submission needs
+- Registry management cannot trigger a card fetch in production: submission needs
   authentication, which is not implemented, so the registry routes answer 501 there
   (see Authentication). This is a property of the current MVP configuration, not a
-  permanent guarantee.
-- Nothing calls a stored agent endpoint yet (Chris's A2A client is a stub). The
-  endpoint is validated only when the agent is submitted. **Before any code calls
+  permanent guarantee. Chris's separate registry-selection client can still fetch
+  the card of its operator-configured A2A registry service.
+- Nothing calls a selected specialist endpoint yet. Chris now uses the official
+  A2A SDK to contact an operator-configured registry service, but returns a selected
+  specialist's JSON without invoking it. Stored specialist endpoints are validated
+  only when submitted. **Before any code calls
   `endpoint_url`** (the A2A client), it must re-validate the address and connect to
   the validated IP, otherwise a rebinding agent could redirect the call to an internal
   service. Seeded agents are trusted and were not fetched by the registry.
@@ -216,8 +224,9 @@ Take a Cloud SQL backup first. The SQL file ends with its rollback statements.
 
 ### Chris is not a registered agent (revision `d4f1b8a2c967`)
 
-Chris is the orchestrator. His discovery card (`GET /chris/.well-known/agent.json`) is
-served by code and he is never offered to the router, so he has no row in `agents`.
+Chris is the orchestrator. His discovery card
+(`GET /chris/a2a/.well-known/agent-card.json`) is generated by ADK, and he has no
+row in `agents`. The old handwritten `/chris/.well-known/agent.json` route is gone.
 Neither seed (`seed_agents.py`, `seed_agents.sql`) inserts him any more, and the new
 migration `d4f1b8a2c967` (after `a7c3e91d5b02`) removes the row the early seed created:
 it sets `chats.agent_id` to NULL for Chris, then deletes `id = 'chris'`. Chats and
@@ -234,7 +243,7 @@ his row after the upgrade.
 takes a backup, then runs `alembic upgrade head` from `backend/` (after the
 `alembic_version` check above; if the database was built from the SQL files, stamp
 `a7c3e91d5b02` first). Verify read-only: `SELECT id FROM agents WHERE id = 'chris';`
-returns no rows and `GET /chris/agents` does not list Chris. Do not delete the row by
+returns no rows and `GET /chat/agents` does not list Chris. Do not delete the row by
 hand. To preview the SQL for PostgreSQL:
 `alembic upgrade a7c3e91d5b02:d4f1b8a2c967 --sql`.
 
@@ -267,7 +276,7 @@ POST http://127.0.0.1:8100/registry/agents/<id>/review
   X-User-Id: admin            X-User-Email: admin@example.test
   {"action": "approve"}
 
-GET  http://127.0.0.1:8100/chris/agents
+GET  http://127.0.0.1:8100/chat/agents
 ```
 
 ## Tests
@@ -280,15 +289,19 @@ cd backend
 
 `backend/tests/registry/` covers the safe-URL check, card fetching and validation
 (including compression, size, deadline and metadata cleaning), the development-auth
-guard, the API (submission, visibility, review, authentication), Chris's routing gate,
+guard, the API (submission, visibility, review, authentication), the chat directory's eligibility filter,
 and the migrations (existing agents stay routable, Chris removal with and without
 foreign-key enforcement, round trip, and valid Postgres SQL).
 
 ## Not done yet
 
-- **Chris cannot call agents.** Routing picks an agent, but the A2A client call is
-  still a stub in `chris/router.py`. The registry only decides *which* agents Chris may
-  choose.
+- **Specialist execution is not implemented.** Chris calls a configured registry
+  agent over A2A, validates its selection, and returns selected-agent JSON as text.
+  No match or a failed selection triggers Gemini. This repo's registry management
+  API is not the A2A selection agent. See [Chris's contract](chris.md).
+- **A2A service authentication is not implemented.** The Chris and registry A2A
+  clients do not attach service identity tokens; registry management's development
+  user headers are a different mechanism.
 - **No real authentication, so no production approval** (see above).
 - **No DNS-rebinding protection** and no re-validation of stored endpoints (see Security).
 - **Cards are copied once.** There is no refresh when an agent changes its card.
