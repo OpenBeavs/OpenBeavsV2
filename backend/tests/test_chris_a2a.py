@@ -9,7 +9,6 @@ from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import Message, Part, Role, SendMessageRequest, TaskState
 from fastapi.testclient import TestClient
 
-from app.chris.agent import ACKNOWLEDGMENT
 from app.main import app
 
 CARD_PATH = "/chris/a2a/.well-known/agent-card.json"
@@ -48,8 +47,11 @@ def test_generated_card_and_repeated_startup():
 
 
 @pytest.mark.parametrize("text", ["Hello Chris", "   "])
-def test_sdk_discovery_and_message(text):
+def test_sdk_discovery_and_message(text, monkeypatch):
     """A real SDK client discovers the mounted endpoint and receives its result."""
+    selection = AsyncMock(return_value='{"agent":"none"}')
+    monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
+
     async def send():
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://testserver"
@@ -86,9 +88,11 @@ def test_sdk_discovery_and_message(text):
     task = responses[0].task
     if text.strip():
         assert task.status.state == TaskState.TASK_STATE_COMPLETED
-        assert [p.text for a in task.artifacts for p in a.parts] == [ACKNOWLEDGMENT]
+        assert [p.text for a in task.artifacts for p in a.parts] == ['{"agent":"none"}']
+        selection.assert_awaited_once_with(text, [])
     else:
         assert task.status.state == TaskState.TASK_STATE_FAILED
+        selection.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -112,4 +116,6 @@ def test_public_url_configuration(monkeypatch):
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "https://hub.example.test")
     with TestClient(app) as client:
         card = client.get(CARD_PATH).json()
-    assert card["supportedInterfaces"][0]["url"] == "https://hub.example.test/chris/a2a/"
+    assert (
+        card["supportedInterfaces"][0]["url"] == "https://hub.example.test/chris/a2a/"
+    )

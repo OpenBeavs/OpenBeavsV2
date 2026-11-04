@@ -2,20 +2,21 @@
 
 import asyncio
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.chat.a2a_client import ChrisUnavailable, send_message
-from app.chris.agent import ACKNOWLEDGMENT
 from app.config import ConfigError
 from app.main import app
 
 
 def test_chat_client_calls_real_chris(monkeypatch):
     """Chat's production client speaks to the actual mounted ADK agent."""
+    selection = AsyncMock(return_value='{"agent":"none"}')
+    monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
 
@@ -29,7 +30,10 @@ def test_chat_client_calls_real_chris(monkeypatch):
         reply = client.portal.call(
             send_message, "Hello Chris", [{"role": "user", "content": "Earlier"}]
         )
-    assert reply == ACKNOWLEDGMENT
+    assert reply == '{"agent":"none"}'
+    selection.assert_awaited_once_with(
+        "Hello Chris", [{"role": "user", "content": "Earlier"}]
+    )
 
 
 def test_wire_request_contains_history_without_identity(monkeypatch):
