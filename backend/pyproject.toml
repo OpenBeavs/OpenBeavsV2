@@ -22,6 +22,8 @@ dependencies = [
     # marked experimental by Google, so pin the ADK and A2A SDK versions together.
     "google-adk[a2a]==2.13.0",
     "a2a-sdk[http-server]==1.3.0",
+    # Chris calls Gemini directly when registry selection/delegation is unavailable.
+    "google-genai>=2.30,<3",
 ]
 
 
