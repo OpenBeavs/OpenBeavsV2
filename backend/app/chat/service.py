@@ -1,128 +1,26 @@
-"""Chris HTTP routes.
+"""Chat application workflow: authorize, load history, ask Chris, and persist turns.
 
-POST /chris/message: route a message to an agent, or answer it directly.
-Kept thin; model access lives in ``llm.py`` and routing in ``agent_selection.py``.
+Chris is called over A2A; this module owns the application's chat state.
 """
 
 import logging
 import time
 import uuid
-from typing import Annotated, Any, Literal
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.chris.agent_selection import choose_agent
-from app.chris.agents import MOCK_AGENTS, Agent
-from app.chris.llm import LLMError, generate
-from app.chris.prompts import build_direct_prompt
-from app.config import ConfigError, env_flag
-from app.db import get_db
+from app.chat.a2a_client import ChrisUnavailable, send_message
+from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
+from app.config import ConfigError
 from app.models import Chat as DBChat
 from app.models import Message as DBMessage
 from app.models import User as DBUser
 from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-class HistoryMessage(BaseModel):
-    """One earlier turn in the conversation."""
-
-    role: Literal["user", "assistant"]
-    content: str
-
-
-class ChrisMessageForm(BaseModel):
-    """Request body for POST /chris/message."""
-
-    message: str
-    history: list[HistoryMessage] = []
-    chat_id: str | None = None
-    user_id: str | None = None
-    guest_session_id: str | None = None
-    source_domain: str | None = None
-
-
-class ChrisMessageResponse(BaseModel):
-    """Response body.
-
-    ``routed_to`` and ``agent_name`` are set when Chris picked an agent. The
-    ``routing_*`` fields show the model's decision (when routing ran), which
-    helps tune routing even when the answer came directly from Chris.
-    """
-
-    response: str
-    chat_id: str | None = None
-    routed_to: str | None = None
-    agent_name: str | None = None
-    routing_confidence: float | None = None
-    routing_reason: str | None = None
-
-
-class AgentSummary(BaseModel):
-    """Public summary of an active registered agent."""
-
-    id: str
-    name: str
-    description: str | None = None
-    endpoint_url: str
-    card_url: str | None = None
-    trust_tier: str
-    required_role: str | None = None
-    skills: list[Any] | None = None
-    capabilities: dict[str, Any] | None = None
-    is_featured: bool = False
-
-
-def _extract_skills(raw_skills: Any) -> list[str]:
-    """Extract list of skill strings/tags from database JSON."""
-    if not raw_skills:
-        return []
-    if isinstance(raw_skills, list):
-        result = []
-        for s in raw_skills:
-            if isinstance(s, str):
-                result.append(s)
-            elif isinstance(s, dict):
-                if "name" in s and isinstance(s["name"], str):
-                    result.append(s["name"])
-                if "tags" in s and isinstance(s["tags"], list):
-                    result.extend(t for t in s["tags"] if isinstance(t, str))
-        return result
-    return []
-
-
-def _installed_agents(db: Session) -> list[Agent]:
-    """Return the agents Chris can route to.
-
-    Uses MOCK_AGENTS if CHRIS_USE_MOCK_AGENTS is set. Otherwise, queries the
-    registry for active agents an admin has approved (or marked provisional).
-    Pending and revoked agents are never routable. If the table is empty or
-    the query fails, returns an empty list so Chris answers directly.
-    """
-    if env_flag("CHRIS_USE_MOCK_AGENTS"):
-        return MOCK_AGENTS
-
-    try:
-        db_agents = routable_agents(db)
-    except SQLAlchemyError as e:
-        log.error("Failed to query installed agents from database: %s", e)
-        return []
-
-    return [
-        Agent(
-            id=a.id,
-            name=a.name,
-            description=a.description or "",
-            skills=_extract_skills(a.skills),
-        )
-        for a in db_agents
-    ]
 
 
 def purge_expired_chats(db: Session) -> int:
@@ -224,16 +122,11 @@ def _persist_turn(
         return None
 
 
-@router.post("/message", response_model=ChrisMessageResponse)
-async def chris_message(
+async def handle_message(
     form: ChrisMessageForm,
-    db: Annotated[Session, Depends(get_db)],
+    db: Session,
 ) -> ChrisMessageResponse:
-    """Route a message to an agent or answer it directly via the configured model.
-
-    Agent calling is not implemented yet: when an agent is chosen, the reply
-    says so instead of calling it.
-    """
+    """Authorize a chat turn, send it to Chris over A2A, and save its answer."""
     message = form.message.strip()
     if not message:
         raise HTTPException(
@@ -266,36 +159,7 @@ async def chris_message(
                     detail="Access denied: You are not authorized to access or modify this chat session.",
                 )
 
-    agents = _installed_agents(db)
-
     try:
-        selection = await choose_agent(message, agents)
-
-        if selection.agent:
-            response_text = (
-                f"Chris would route this to {selection.agent.name}. "
-                "Calling agents is not implemented yet."
-            )
-            chat_id = _persist_turn(
-                db,
-                form,
-                message,
-                response_text,
-                routed_agent_id=selection.agent.id,
-                meta={
-                    "routing_confidence": selection.confidence,
-                    "routing_reason": selection.reason,
-                },
-            )
-            return ChrisMessageResponse(
-                response=response_text,
-                chat_id=chat_id,
-                routed_to=selection.agent.id,
-                agent_name=selection.agent.name,
-                routing_confidence=selection.confidence,
-                routing_reason=selection.reason,
-            )
-
         # Single source of truth for history: load from DB if chat_id exists,
         # otherwise use client-provided history.
         if form.chat_id:
@@ -328,49 +192,37 @@ async def chris_message(
                 {"role": m.role, "content": m.content} for m in form.history
             ]
 
-        messages = [
-            {"role": "system", "content": build_direct_prompt(agents)},
-            *history_entries,
-            {"role": "user", "content": message},
-        ]
-        reply = await generate(messages)
+        reply = await send_message(message, history_entries)
 
     except ConfigError as e:
         log.error("Chris configuration error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    except LLMError as e:
-        log.error("Chris model call failed: %s", e)
+    except ChrisUnavailable:
+        log.warning("Chris A2A call did not produce a completed answer.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chris is temporarily unavailable. Please try again shortly.",
         )
 
-    # Persist turn outside LLM try block; catch DB errors without failing response
+    # Persist after A2A succeeds; catch DB errors without failing the response.
     chat_id = _persist_turn(
         db,
         form,
         message,
         reply,
         routed_agent_id=None,
-        meta={
-            "routing_confidence": selection.confidence,
-            "routing_reason": selection.reason,
-        },
     )
 
     return ChrisMessageResponse(
         response=reply,
         chat_id=chat_id,
-        routing_confidence=selection.confidence,
-        routing_reason=selection.reason,
     )
 
 
-@router.get("/agents", response_model=list[AgentSummary])
-def list_active_agents(db: Annotated[Session, Depends(get_db)]) -> list[dict[str, Any]]:
-    """List the active, reviewed agents Chris can route to."""
+def list_active_agents(db: Session) -> list[dict[str, Any]]:
+    """List active, reviewed agents for the frontend directory."""
     db_agents = routable_agents(db)
     return [
         {
@@ -387,32 +239,3 @@ def list_active_agents(db: Annotated[Session, Depends(get_db)]) -> list[dict[str
         }
         for a in db_agents
     ]
-
-
-@router.get("/.well-known/agent.json")
-def chris_agent_card() -> dict[str, Any]:
-    """Return Chris orchestrator A2A discovery card."""
-    return {
-        "id": "chris",
-        "name": "Chris",
-        "description": "OpenBeavs orchestrator. Routes your queries to installed agents and answers directly when no agent matches.",
-        "endpoint_url": "/chris/message",
-        "card_url": "/chris/.well-known/agent.json",
-        "trust_tier": "public",
-        "capabilities": {"streaming": True},
-        "skills": [
-            {
-                "id": "route",
-                "name": "Route Query",
-                "description": "Classify a user query and delegate to the best installed agent.",
-                "tags": ["orchestration", "routing"],
-            }
-        ],
-    }
-
-
-@router.delete("/chats/expired")
-def delete_expired_chats(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
-    """Purge expired guest chats past their TTL (scheduled maintenance)."""
-    count = purge_expired_chats(db)
-    return {"purged": count}

@@ -2,13 +2,15 @@
 
 _Oct 29, 2026 · @Jiya_
 
-You do not need Cloud SQL to develop locally. The backend reads one setting, `DATABASE_URL`, and if it is unset it uses a SQLite file on your machine. That file is a real database with the same tables, so you can run the app and the real agents without any cloud setup.
+You do not need Cloud SQL to develop locally. `DATABASE_URL` defaults to a local
+SQLite file. You can run chat, Chris's A2A endpoint, and the directory locally;
+Gemini fallback still requires working model configuration and network access.
 
 ## Prerequisites
 
 - Python (version pinned in `.python-version`)
 - [uv](https://docs.astral.sh/uv/). If `uv` is not recognized, install it with `pip install uv`.
-- A Gemini API key (see step 3)
+- A Gemini API key and model configuration for fallback answers (see step 4)
 
 ## Setup
 
@@ -56,6 +58,10 @@ Then open `backend/.env` and set:
 | Variable | What to do |
 | --- | --- |
 | `GEMINI_API_KEY` | Your key. Get it from a teammate through a private channel. |
+| `CHRIS_MODEL` | Set a Gemini model ID available to your project; required for fallback answers. |
+| `CHRIS_A2A_URL` | Normally leave unset: chat calls `http://127.0.0.1:8000/chris/a2a/` in the same server. |
+| `CHRIS_PUBLIC_URL` | Normally leave unset: the mounted card advertises `http://localhost:8000`. |
+| `REGISTRY_A2A_URL` | Registry A2A base URL; defaults to `http://127.0.0.1:8001/`. With no registry running, Chris falls back to Gemini. |
 | `DATABASE_URL` | Leave unset (or commented out) to use the local SQLite file. The default is `sqlite:///./openbeavs.db`. |
 | Anything else in `.env.example` | Fill in any value that has no default. |
 
@@ -77,16 +83,26 @@ It creates the file `openbeavs.db` in `backend/`. That file is your local databa
 uvicorn app.main:app --reload
 ```
 
+This starts the chat API, registry management routes, and Chris's A2A endpoint.
+Chat calls Chris over HTTP even though both run in this process. Chris always
+attempts registry selection, then uses Gemini if the registry is unavailable or
+returns `{"agent":"none"}`. A selected specialist is not called yet; its selection
+JSON is returned as text. The stored-agent directory is separate from the A2A
+registry selection service. See [Chris's API and workflow](../docs/chris.md).
+
 ### 7. Check that it works
 
 In a second terminal:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
-Invoke-RestMethod http://127.0.0.1:8000/chris/agents
+Invoke-RestMethod http://127.0.0.1:8000/chat/agents
+Invoke-RestMethod http://127.0.0.1:8000/chris/a2a/.well-known/agent-card.json
 ```
 
-`/chris/agents` should list the seeded agents.
+`/chat/agents` should list the seeded eligible agents. The second request fetches
+Chris's generated card. `/health` does not check Gemini, registry availability or
+database tables.
 
 To try the API in your browser, open the Swagger docs at http://127.0.0.1:8000/docs. It lists every endpoint and lets you run requests from the page.
 
