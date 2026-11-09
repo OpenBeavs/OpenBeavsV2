@@ -1,0 +1,170 @@
+"""OpenBeavs v2 Development Orchestrator.
+
+Starts backend (FastAPI, port 8000) and frontend (SvelteKit, port 5173) concurrently
+in a single terminal with colored output prefixes, graceful Ctrl+C handling, and a
+'stop' command that terminates all lingering processes by port.
+"""
+
+import os
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+# Paths relative to repository root
+ROOT_DIR = Path(__file__).resolve().parent.parent
+BACKEND_DIR = ROOT_DIR / "backend"
+FRONTEND_DIR = ROOT_DIR / "frontend"
+
+DEFAULT_PORTS = [8000, 5173]
+
+# ANSI colors for nice terminal output
+COLORS = {
+    "backend": "\033[94m",   # Blue
+    "frontend": "\033[92m",  # Green
+    "system": "\033[95m",    # Magenta
+    "reset": "\033[0m",
+}
+
+
+def stop_processes_on_ports(ports=None):
+    """Find and kill any processes listening on the development ports."""
+    if ports is None:
+        ports = DEFAULT_PORTS
+
+    print(f"{COLORS['system']}[system] Stopping processes listening on ports {ports}...{COLORS['reset']}")
+    killed_pids = set()
+
+    try:
+        output = subprocess.check_output("netstat -ano -p tcp", shell=True).decode("utf-8", errors="ignore")
+        for line in output.splitlines():
+            for port in ports:
+                # Match e.g. " 127.0.0.1:8000 " or " 0.0.0.0:8000 " or " [::]:8000 "
+                if f":{port} " in line and "LISTENING" in line:
+                    parts = line.strip().split()
+                    if len(parts) >= 5:
+                        pid = parts[-1]
+                        if pid.isdigit() and pid not in ("0", str(os.getpid())):
+                            killed_pids.add(pid)
+    except Exception as e:
+        print(f"Error querying netstat: {e}")
+
+    if not killed_pids:
+        print(f"{COLORS['system']}[system] No lingering processes found on ports {ports}. Ports are clean!{COLORS['reset']}")
+        return
+
+    for pid in killed_pids:
+        try:
+            # /T terminates process and all child processes, /F forces termination
+            subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, capture_output=True)
+            print(f"{COLORS['system']}[system] Killed PID {pid}{COLORS['reset']}")
+        except Exception as e:
+            print(f"{COLORS['system']}[system] Failed to kill PID {pid}: {e}{COLORS['reset']}")
+
+    print(f"{COLORS['system']}[system] Development ports are now clean.{COLORS['reset']}")
+
+
+def stream_output(pipe, prefix, color):
+    """Read lines from process pipe and print with colored prefix."""
+    try:
+        for line in iter(pipe.readline, ""):
+            if not line:
+                break
+            sys.stdout.write(f"{color}[{prefix}]{COLORS['reset']} {line}")
+            sys.stdout.flush()
+    except Exception:
+        pass
+
+
+def start_services():
+    """Start frontend and backend concurrently in one terminal."""
+    # First ensure ports are clear
+    stop_processes_on_ports()
+
+    py_exec = sys.executable
+
+    services = [
+        {
+            "name": "backend",
+            "cmd": [py_exec, "-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+            "cwd": str(BACKEND_DIR),
+            "color": COLORS["backend"],
+        },
+        {
+            "name": "frontend",
+            "cmd": "npm run dev",
+            "cwd": str(FRONTEND_DIR),
+            "color": COLORS["frontend"],
+            "shell": True,
+        },
+    ]
+
+    print(f"\n{COLORS['system']}════════════════════════════════════════════════════════════════")
+    print("  🚀 Starting OpenBeavs v2 Development Environment")
+    print("  - Backend:  http://127.0.0.1:8000 (FastAPI + Chris A2A + Registry)")
+    print("  - Frontend: http://127.0.0.1:5173 (SvelteKit Chat UI)")
+    print("  Press Ctrl+C to stop both services.")
+    print(f"════════════════════════════════════════════════════════════════{COLORS['reset']}\n")
+
+    processes = []
+    threads = []
+
+    try:
+        for s in services:
+            is_shell = s.get("shell", False)
+            cmd = s["cmd"]
+            # On Windows, using CREATE_NEW_PROCESS_GROUP allows clean signal management
+            p = subprocess.Popen(
+                cmd,
+                cwd=s["cwd"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                shell=is_shell,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+            )
+            processes.append((s["name"], p))
+
+            t = threading.Thread(target=stream_output, args=(p.stdout, s["name"], s["color"]), daemon=True)
+            t.start()
+            threads.append(t)
+
+        # Wait while processes run
+        while True:
+            time.sleep(0.5)
+            for name, p in processes:
+                ret = p.poll()
+                if ret is not None and ret != 0:
+                    print(f"\n{COLORS['system']}[system] Service '{name}' exited with code {ret}.{COLORS['reset']}")
+
+    except KeyboardInterrupt:
+        print(f"\n{COLORS['system']}[system] Received shutdown signal. Terminating services...{COLORS['reset']}")
+    finally:
+        for name, p in processes:
+            try:
+                if sys.platform == "win32":
+                    subprocess.run(f"taskkill /F /T /PID {p.pid}", shell=True, capture_output=True)
+                else:
+                    p.terminate()
+            except Exception:
+                pass
+        stop_processes_on_ports()
+        print(f"{COLORS['system']}[system] All services stopped.{COLORS['reset']}")
+
+
+def main():
+    if len(sys.argv) > 1 and sys.argv[1].lower() in ("stop", "kill", "down"):
+        stop_processes_on_ports()
+    elif len(sys.argv) > 1 and sys.argv[1].lower() in ("start", "run", "dev", "up"):
+        start_services()
+    else:
+        # Default action: start
+        start_services()
+
+
+if __name__ == "__main__":
+    main()
+
+
