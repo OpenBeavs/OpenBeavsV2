@@ -5,9 +5,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_optional_user
 from app.chat import service
 from app.chat.schemas import AgentSummary, ChrisMessageForm, ChrisMessageResponse
 from app.db import get_db
+from app.models import User as DBUser
 
 router = APIRouter()
 
@@ -16,9 +18,10 @@ router = APIRouter()
 async def chris_message(
     form: ChrisMessageForm,
     db: Annotated[Session, Depends(get_db)],
+    caller: Annotated[DBUser | None, Depends(get_optional_user)] = None,
 ) -> ChrisMessageResponse:
     """Handle a chat turn using the existing Chris response contract."""
-    return await service.handle_message(form, db)
+    return await service.handle_message(form, db, caller=caller)
 
 
 @router.get("/agents", response_model=list[AgentSummary])

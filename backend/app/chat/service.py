@@ -53,6 +53,7 @@ def _persist_turn(
     user_text: str,
     response_text: str,
     routed_agent_id: str | None,
+    caller: DBUser | None = None,
     meta: dict[str, Any] | None = None,
 ) -> str | None:
     """Save or update chat session and record user/agent turns.
@@ -67,8 +68,8 @@ def _persist_turn(
 
         chat = db.get(DBChat, chat_id)
         if not chat:
-            # Only treat as authenticated if a verified user exists in the database
-            verified_user = db.get(DBUser, form.user_id) if form.user_id else None
+            # Use authenticated caller if present, or verified DB user from form.user_id
+            verified_user = caller or (db.get(DBUser, form.user_id) if form.user_id else None)
             if verified_user:
                 session_type = "authenticated"
                 user_id = verified_user.id
@@ -125,6 +126,7 @@ def _persist_turn(
 async def handle_message(
     form: ChrisMessageForm,
     db: Session,
+    caller: DBUser | None = None,
 ) -> ChrisMessageResponse:
     """Authorize a chat turn, send it to Chris over A2A, and save its answer."""
     message = form.message.strip()
@@ -140,9 +142,12 @@ async def handle_message(
             is_authorized = False
             if existing_chat.user_id:
                 # Authenticated session: caller must be the verified owner
-                verified_user = db.get(DBUser, form.user_id) if form.user_id else None
-                if verified_user and verified_user.id == existing_chat.user_id:
+                if caller and caller.id == existing_chat.user_id:
                     is_authorized = True
+                else:
+                    verified_user = db.get(DBUser, form.user_id) if form.user_id else None
+                    if verified_user and verified_user.id == existing_chat.user_id:
+                        is_authorized = True
             elif existing_chat.guest_session_id:
                 # Guest session: caller must provide matching guest token
                 if (
@@ -213,6 +218,7 @@ async def handle_message(
         message,
         reply,
         routed_agent_id=None,
+        caller=caller,
     )
 
     return ChrisMessageResponse(
