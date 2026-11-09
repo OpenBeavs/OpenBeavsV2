@@ -18,6 +18,12 @@ from app.main import app
 from app.models import Chat, User
 
 
+@pytest.fixture(autouse=True)
+def setup_auth_env(monkeypatch):
+    """Enable dev bypass for auth tests by default so tests run deterministically in CI."""
+    monkeypatch.setenv("AUTH_BYPASS_DEV", "true")
+
+
 @pytest.fixture
 def test_db():
     """Create isolated in-memory SQLite database for auth tests."""
@@ -55,6 +61,18 @@ def test_state_token_generation_and_verification():
 
     # Mismatched purpose should fail
     assert verify_state_token(state, expected_purpose="stepup") is None
+
+
+def test_dev_bypass_disabled_returns_403(monkeypatch, test_db: Session):
+    """Verify POST /auth/dev/login fails with 403 when dev bypass is disabled."""
+    monkeypatch.setenv("AUTH_BYPASS_DEV", "false")
+    client = TestClient(app)
+    response = client.post(
+        "/auth/dev/login",
+        json={"email": "test.student@oregonstate.edu"},
+    )
+    assert response.status_code == 403
+    assert "Dev login is disabled in this environment" in response.json()["detail"]
 
 
 def test_dev_login_provisions_user(test_db: Session):
