@@ -113,8 +113,8 @@ test('offers a retry when the agent list stalls', async ({ page }) => {
       return deadline.signal;
     };
   });
-  await page.route('**/chris/agents', () => {}, { times: 1 });
-  const requested = page.waitForRequest('**/chris/agents');
+  await page.route('**/chat/agents', () => {}, { times: 1 });
+  const requested = page.waitForRequest('**/chat/agents');
   await page.goto('/agents');
   await requested;
   await expect(page.getByText('Loading agents…')).toBeVisible();
