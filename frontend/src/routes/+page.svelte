@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { getContext, tick } from 'svelte';
+  import { afterUpdate, getContext, tick } from 'svelte';
   import { conversationKey, type ConversationStore } from '$lib/context';
   import Icon from '$lib/components/Icon.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
 
   const conversation = getContext<ConversationStore>(conversationKey);
   let transcript: HTMLDivElement;
+  let composer: HTMLFormElement;
   let input: HTMLTextAreaElement;
+  let measuredDraft: string | undefined;
+  let pulse: Animation | undefined;
   let atBottom = true;
 
   async function scrollToBottom() {
@@ -16,7 +19,9 @@
   $: if ($conversation.messages.length || $conversation.pending) void scrollToBottom();
 
   function send() {
+    if ($conversation.pending !== null || !$conversation.draft.trim()) return;
     atBottom = true;
+    input.focus({ preventScroll: true });
     void conversation.send(window.location.hostname);
   }
   function handleKey(event: KeyboardEvent) {
@@ -24,9 +29,20 @@
       event.preventDefault(); send();
     }
   }
-  function resize() {
+  afterUpdate(() => {
+    if (!input || input.value === measuredDraft) return;
+    measuredDraft = input.value;
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+  });
+
+  function pulseComposer() {
+    pulse?.cancel();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    pulse = composer.animate(
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.008)' }, { transform: 'scale(1)' }],
+      { duration: 180, easing: 'ease-in-out' }
+    );
   }
 </script>
 
@@ -51,11 +67,21 @@
       <div class="message-row"><div class="thinking" role="status"><Spinner /><span>Chris is thinking…</span></div></div>
     {/if}
   </div>
-  {#if $conversation.error}<div class="notice error" role="alert">{$conversation.error}</div>{/if}
+  {#if $conversation.error}
+    <div class="notice error">
+      <p role="alert">{$conversation.error}</p>
+      {#if $conversation.failedDraft !== null}
+        <details class="failed-draft">
+          <summary>View failed message</summary>
+          <p>{$conversation.failedDraft}</p>
+        </details>
+      {/if}
+    </div>
+  {/if}
   {#if $conversation.storageUnavailable}<div class="notice" role="status">Conversation storage is unavailable. You can continue here until you refresh.</div>{/if}
-  <form class="composer" on:submit|preventDefault={send} aria-label="Chat composer">
+  <form class="composer" bind:this={composer} on:submit|preventDefault={send} aria-label="Chat composer">
     <label class="sr-only" for="chat-input">Message Chris</label>
-    <textarea id="chat-input" bind:this={input} rows="1" placeholder="Message Chris…" value={$conversation.draft} disabled={$conversation.pending !== null} on:input={(event) => { conversation.setDraft(event.currentTarget.value); resize(); }} on:keydown={handleKey}></textarea>
+    <textarea id="chat-input" bind:this={input} rows="1" placeholder="Message Chris…" value={$conversation.draft} on:input={(event) => conversation.setDraft(event.currentTarget.value)} on:keydown={handleKey} on:click={pulseComposer}></textarea>
     <button class="send-button" type="submit" disabled={!$conversation.draft.trim() || $conversation.pending !== null} aria-label="Send message"><Icon name="send" size={29} /></button>
   </form>
   <p class="chat-footnote">Refreshing or starting a new chat clears this view, not records already stored by the backend. Chris can make mistakes.</p>

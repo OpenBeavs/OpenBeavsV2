@@ -23,6 +23,7 @@ test('talks to Chris, carries the chat ID, and preserves the conversation across
   page.on('request', (request) => { if (request.url().endsWith('/chris/message')) requests.push(request.postDataJSON()); });
   await page.goto('/');
   await send(page, 'Hello');
+  await expect(page.getByRole('textbox', { name: 'Message Chris' })).toBeFocused();
   await expect(page.getByTestId('message')).toHaveCount(2);
   await page.getByRole('link', { name: 'Agents', exact: true }).click();
   await expect(page.getByRole('article')).toHaveCount(2);

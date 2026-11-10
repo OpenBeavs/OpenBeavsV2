@@ -7,13 +7,14 @@ export type Conversation = {
   draft: string;
   pending: string | null;
   error: string | null;
+  failedDraft: string | null;
   chatId: string | null;
   guestId: string | null;
   storageUnavailable: boolean;
 };
 
 const empty = (): Conversation => ({
-  messages: [], draft: '', pending: null, error: null,
+  messages: [], draft: '', pending: null, error: null, failedDraft: null,
   chatId: null, guestId: null, storageUnavailable: false
 });
 
@@ -78,7 +79,7 @@ export function createConversation(
         source_domain: sourceDomain,
         ...(before.chatId && !before.storageUnavailable ? { chat_id: before.chatId } : {})
       };
-      state.set({ ...before, guestId, draft: '', pending: message, error: null });
+      state.set({ ...before, guestId, draft: '', pending: message, error: null, failedDraft: null });
       try {
         const reply = await transport(request, controller.signal);
         if (generation !== currentGeneration) return;
@@ -97,7 +98,9 @@ export function createConversation(
         state.update((current) => ({
           ...current,
           pending: null,
-          draft: before.draft,
+          // The textarea stays editable while this request is in flight.
+          draft: current.draft || before.draft,
+          failedDraft: current.draft ? before.draft : null,
           error: controllerForRequest.signal.aborted || (error instanceof Error && error.name === 'TimeoutError')
             ? 'The request timed out. Chris may still finish on the server; retrying can duplicate a turn.'
             : error instanceof Error ? error.message : 'The request failed. Please try again.'

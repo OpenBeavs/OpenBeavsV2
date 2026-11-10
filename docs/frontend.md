@@ -50,7 +50,8 @@ as a browser API URL.
 
 - `/`: Chris chat with plain-text message bubbles, loading/error states, and
   New Chat. Enter sends; Shift+Enter inserts a newline. IME composition does not
-  submit. Only one request runs at a time.
+  submit. You can type the next draft while Chris replies. Send stays disabled
+  until the current request finishes.
 - `/agents`: case-insensitive name/description search, featured flags, and access
   tiers. Restricted and role-gated agents are marked unavailable to guests.
 - Collapsible desktop sidebar, keyboard-accessible mobile drawer, and theme
@@ -78,7 +79,9 @@ frontend does not promise automatic deletion or expose the maintenance route.
 If a response has no persisted chat ID, its reply is still displayed. The rest
 of that conversation sends complete client history without a chat ID, even if
 storage later recovers, avoiding a switch to an incomplete stored history.
-Failures restore the input and remain outside conversation history. POSTs are
+Failures restore the sent text if the composer is empty. If you've started
+another draft, the failed text is available in the error notice and your draft
+stays in the composer. Failed messages stay outside conversation history. POSTs are
 never retried automatically. Requests time out after 90 seconds; a backend may
 still finish after the browser stops waiting, so a manual retry can duplicate a
 turn. New Chat ignores any late response from the previous conversation.
