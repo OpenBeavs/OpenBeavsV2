@@ -52,7 +52,7 @@ describe('v2 API contract', () => {
     vi.stubGlobal('fetch', fetch);
     expect(await sendMessage(payload)).toEqual(reply);
     const [url, init] = fetch.mock.calls[0];
-    expect(url).toBe('/chris/message');
+    expect(url).toBe('/chat/message');
     expect(JSON.parse(init.body)).toEqual(payload);
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
     expect(init.body).not.toContain('user_id');
@@ -84,6 +84,6 @@ describe('v2 API contract', () => {
     await checkHealth();
     expect(await listAgents()).toEqual([]);
     await expect(listAgents()).rejects.toThrow('invalid agent list');
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/health', '/chris/agents', '/chris/agents']);
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/health', '/chat/agents', '/chat/agents']);
   });
 });

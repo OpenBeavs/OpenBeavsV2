@@ -10,7 +10,8 @@ do not implement those flows. Current behavior is described below and in
 The legacy repository was built as a direct fork of **Open WebUI**, inheriting over 20 tables, dual ORMs (`Peewee` and `SQLAlchemy`), embedded vector databases (`ChromaDB`), and local password authentication. Because OpenBeavs is fundamentally an **A2A (Agent-to-Agent) protocol discovery hub and orchestrator for Oregon State University**, more than 80% of the inherited schema was dead weight.
 
 OpenBeavs v2 has **5 core tables** managed by **SQLAlchemy 2.0** and **Alembic**.
-Chris records relational conversation turns. Streaming, history pagination,
+The chat service records relational conversation turns; Chris receives message
+text/history over A2A and does not access these tables. Streaming, history pagination,
 verified Microsoft SSO, and envelope encryption are not implemented by the
 current API. Cold-start and capacity benefits have not been measured here.
 
@@ -92,6 +93,11 @@ erDiagram
         json capabilities "Streaming, input/output modes, etc."
         boolean is_active "Whether agent is active for routing"
         boolean is_featured "Showcased in UI"
+        string status "Review status: pending | approved | provisional | revoked"
+        string submitted_by "Email of the submitter (NULL for seeded agents)"
+        string reviewed_by "Email of the admin who last reviewed it"
+        bigint reviewed_at "Epoch timestamp of the last review"
+        string review_note "Reviewer note or automatic flag from submission"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
     }
@@ -143,7 +149,7 @@ Unified table replacing legacy `agent` and `registry_agent`.
 - **`name`** (`String`, NOT NULL): Display name of the agent.
 - **`description`** (`Text`): Description of what the agent does.
 - **`endpoint_url`** (`String`, NOT NULL): The A2A JSON-RPC URL (`/message/send`).
-- **`card_url`** (`String`): URL to the agent's hosted `/.well-known/agent.json`.
+- **`card_url`** (`String`, UNIQUE): URL to the agent's hosted `/.well-known/agent.json`. One registry entry per card URL.
 - **`trust_tier`** (`String`, NOT NULL, default `'public'`): Access tier required:
   - `public`: Accessible to all users including unauthenticated guests.
   - `authenticated`: Requires active OSU OIDC session.
@@ -153,6 +159,11 @@ Unified table replacing legacy `agent` and `registry_agent`.
 - **`capabilities`** (`JSON`): Supported modes (streaming, audio, multimodal).
 - **`is_active`** (`Boolean`, default `True`): Allows soft deactivation.
 - **`is_featured`** (`Boolean`, default `False`): Curated agent highlight on the homepage.
+- **`status`** (`String`, NOT NULL, no database default): Registry review status. `pending` (submitted, not routable), `approved` or `provisional` (routable), `revoked` (not routable). The registry creates new rows as `pending`; only an admin review changes it. The chat directory lists only active public agents that are `approved` or `provisional` and have no required role. Chris uses the external A2A registry service for selection. See `docs/registry.md`.
+- **`submitted_by`** (`String`, NULL): Email of the submitter; NULL for seeded agents.
+- **`reviewed_by`** (`String`, NULL): Email of the admin who last reviewed the agent.
+- **`reviewed_at`** (`BigInteger`, NULL): Epoch seconds of the last review.
+- **`review_note`** (`Text`, NULL): Reviewer note, or an automatic flag raised when the card was submitted.
 - **`created_at`** (`BigInteger`): Creation timestamp (epoch seconds).
 - **`updated_at`** (`BigInteger`): Last card synchronization/update timestamp.
 
@@ -207,7 +218,7 @@ Support and bug feedback tracking.
 ## 5. Security, Privacy & Retention Architecture
 
 1. **Guest sessions and cleanup:** The frontend creates an in-memory random
-   `guest_session_id`. Chris sets `expires_at` to creation time plus two hours.
+   `guest_session_id`. Chat sets `expires_at` to creation time plus two hours.
    `purge_expired_chats()` deletes expired chats and related messages when
    invoked by the maintenance endpoint. No scheduler is installed; expiry is
    not checked when accepting a subsequent message.
@@ -216,7 +227,7 @@ Support and bug feedback tracking.
    this does not verify identity. The frontend never supplies one. SSO and
    automatic guest-to-user promotion remain unimplemented.
 3. **Encryption fields:** `kms_key_ref` and `encrypted_dek` are schema fields for
-   future work. The current Chris route persists plaintext content and does
+   future work. The current chat service persists plaintext content and does
    not perform envelope encryption.
 
 ---
@@ -241,7 +252,10 @@ Support and bug feedback tracking.
 ## 7. Implementation status
 
 SQLAlchemy's synchronous engine, all five models, Alembic migrations, agent
-queries, and Chris conversation persistence exist. The frontend integrates the
-existing API without adding migrations. A2A execution, verified SSO, user
+queries, and chat conversation persistence exist. The frontend integrates the
+existing API without adding migrations. Chat now calls Chris over A2A, and Chris
+calls the configured registry and falls back to Gemini on error or no match.
+Chris's ADK sessions/tasks are in memory and do not change these tables.
+Selected-specialist execution, A2A service authentication, verified SSO, user
 provisioning/promotion, encryption, streaming, saved-chat retrieval, and a
 scheduled cleanup service remain future backend work.

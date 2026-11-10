@@ -1,10 +1,33 @@
 """FastAPI entrypoint. Mounts routers only; contains no feature logic."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+from starlette.routing import Mount
 
-from app.chris.router import router as chris_router
+from app.chat.router import router as chat_router
+from app.chris.a2a import MOUNT_PATH, build_chris_a2a_app
+from app.registry.auth import check_dev_auth_config
+from app.registry.router import router as registry_router
 
-app = FastAPI(title="OpenBeavs v2 (prototype)")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Check registry auth and initialize Chris's isolated A2A endpoint."""
+    check_dev_auth_config()
+    chris_app = await build_chris_a2a_app()
+    mount = Mount(MOUNT_PATH, app=chris_app)
+    # Keep the mounted app's lifespan aligned with the parent application's.
+    async with chris_app.router.lifespan_context(chris_app):
+        app.router.routes.append(mount)
+        try:
+            yield
+        finally:
+            app.router.routes.remove(mount)
+
+
+app = FastAPI(title="OpenBeavs v2 (prototype)", lifespan=lifespan)
 
 
 @app.get("/health", tags=["health"])
@@ -14,5 +37,6 @@ def health_check() -> dict[str, str]:
 
 
 # Unversioned on purpose for the prototype. To version later, change the
-# prefix here (for example "/api/v1/chris").
-app.include_router(chris_router, prefix="/chris", tags=["chris"])
+# prefix here (for example "/api/v1/chat").
+app.include_router(chat_router, prefix="/chat", tags=["chat"])
+app.include_router(registry_router, prefix="/registry", tags=["registry"])

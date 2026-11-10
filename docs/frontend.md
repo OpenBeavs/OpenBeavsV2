@@ -22,7 +22,11 @@ Configure `GEMINI_API_KEY` and `CHRIS_MODEL` privately in the backend environmen
 or its ignored `.env` file before sending messages. Do not put model keys,
 database credentials, or login tokens in frontend configuration. Backend startup
 and `/health` can succeed even if model configuration or database tables are
-missing. An empty agent table is valid: Chris answers directly.
+missing. The directory's agent table is separate from Chris's routing service.
+Chris always calls `REGISTRY_A2A_URL` (default `http://127.0.0.1:8001/`); if it is
+unavailable or returns no match, Chris answers with Gemini. No local registry agent
+is required to exercise fallback. `CHRIS_A2A_URL` defaults to the mounted Chris
+endpoint in the same backend process. See [Chris's workflow](chris.md).
 
 In a second terminal, from the repository root:
 
@@ -34,6 +38,7 @@ npm run dev
 
 Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
 calls `/health`, `/chris/message`, and `/chris/agents`. Vite proxies those requests to
+calls relative `/health` and `/chat/*` paths. Vite proxies those requests to
 `http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
 requests. To use another backend, set the **non-secret server-side**
 `BACKEND_ORIGIN` when starting Vite:
@@ -57,11 +62,13 @@ as a browser API URL.
 - Collapsible desktop sidebar, keyboard-accessible mobile drawer, and theme
   toggle. The system theme is used until the user chooses one.
 
-The typed client uses only `GET /health`, `GET /chris/agents`, and
-`POST /chris/message`. Agent endpoint URLs remain metadata, never browser call
-targets. Responses are complete JSON, not streams. Routing labels say **routing
-preview** because Chris chooses an agent but does not yet invoke it. The agent
-discovery card's streaming flag is not evidence of streaming support.
+The typed client uses only `GET /health`, `GET /chat/agents`, and
+`POST /chat/message`. Agent endpoint URLs remain metadata, never browser call
+targets. Responses are complete JSON, not streams. Routing attribution fields
+remain null. Chris's Gemini answer is displayed normally; if the registry selects
+a specialist, its selection JSON is currently displayed as text because specialist
+invocation is not implemented. The UI retains routing-preview rendering for
+responses with routing fields, but the current backend does not populate them.
 
 The layout owns the in-memory conversation, so moving between Chris and Agents
 preserves it. Requests include prior successful turns, a random guest session
@@ -103,6 +110,9 @@ fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy mus
 send only the exact paths `/chris/message`, `/chris/agents`, and `/health` to FastAPI
 **before** applying the SPA fallback. Vite's proxy configuration does not ship
 inside the static files. Keep `/chris/chats/expired` outside public proxy access.
+send `/chat/*` and `/health` to FastAPI **before** applying the SPA fallback.
+Vite's proxy configuration does not ship inside the static files. Keep the
+maintenance DELETE route outside public proxy access in a real deployment.
 This change does not deploy a cloud service or establish production auth.
 
 ## Checks
@@ -140,6 +150,9 @@ separate team work; this workflow does not claim to implement them.
 
 For live acceptance, start the actual backend with initialized tables and model
 configuration, send a greeting, receive a direct answer, then send a follow-up.
+With the registry unavailable or returning `{"agent":"none"}`, confirm Gemini
+provides the answer. If Gemini also fails, the backend returns a normal availability
+message, which is displayed and saved rather than treated as an HTTP error.
 Confirm the second request reuses the returned chat ID and guest identifier, and
 that the directory loads from the real database. This is separate from the
 fixture-based browser suite and requires a working model service.
