@@ -4,6 +4,7 @@ Readiness must never make a paid model request and must never echo settings or
 connection details.
 """
 
+import os
 from collections.abc import Callable
 
 import httpx
@@ -14,7 +15,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.registry import llm
+from app.registry import a2a_app, llm
 from app.registry.a2a_app import create_standalone_app
 
 SECRET_KEY = "SECRET-KEY-VALUE-5521"
@@ -270,10 +271,32 @@ MALFORMED_ORIGINS = [
 class TestMalformedPublicUrl:
     """A bad REGISTRY_PUBLIC_URL used to pass readiness and ship a broken card."""
 
+    @pytest.fixture(autouse=True)
+    def posix_environment_rules(self, monkeypatch):
+        """Catch invalid environment injection on Windows as well as Linux CI."""
+        putenv = os.putenv
+
+        def reject_null(key, value):
+            if (b"\x00" if isinstance(value, bytes) else "\x00") in value:
+                raise ValueError("embedded null byte")
+            return putenv(key, value)
+
+        monkeypatch.setattr(os, "putenv", reject_null)
+
     @pytest.mark.parametrize("probe", ["ready", "a2a"])
     @pytest.mark.parametrize("bad", MALFORMED_ORIGINS)
     def test_malformed_origin_fails_closed(self, factory, monkeypatch, bad, probe):
-        monkeypatch.setenv("REGISTRY_PUBLIC_URL", bad)
+        # Linux rejects NUL in os.environ before our URL validator can inspect it.
+        # Inject at the configuration boundary to exercise the same failure path
+        # on every platform, including values the OS cannot represent.
+        get_env = a2a_app.get_env
+        monkeypatch.setattr(
+            a2a_app,
+            "get_env",
+            lambda name, default="": bad
+            if name == "REGISTRY_PUBLIC_URL"
+            else get_env(name, default),
+        )
         client = client_for(factory)
         if probe == "ready":
             response = client.get("/ready")
