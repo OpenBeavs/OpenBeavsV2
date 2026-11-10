@@ -7,17 +7,15 @@ The old Open WebUI Python backend is not required.
 
 ## Run locally
 
-Use Python 3.12 and Node.js 22 or newer. From the repository root:
+Use Python 3.12, uv, and Node.js 22 or newer. From the repository root:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install ./backend -r backend/requirements-dev.txt
 cd backend
-alembic upgrade head
+uv sync
+uv run alembic upgrade head
 # Optional: populate the registered-agent directory.
-python -m app.db.seed_agents
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run python -m app.db.seed_agents
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Configure `GEMINI_API_KEY` and `CHRIS_MODEL` privately in the backend environment
@@ -35,7 +33,7 @@ npm run dev
 ```
 
 Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls relative `/health` and `/chris/*` paths. Vite proxies those requests to
+calls `/health`, `/chris/message`, and `/chris/agents`. Vite proxies those requests to
 `http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
 requests. To use another backend, set the **non-secret server-side**
 `BACKEND_ORIGIN` when starting Vite:
@@ -99,9 +97,9 @@ npm run preview
 The static application is emitted into `frontend/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy must
-send `/chris/*` and `/health` to FastAPI **before** applying the SPA fallback.
-Vite's proxy configuration does not ship inside the static files. Keep the
-maintenance DELETE route outside public proxy access in a real deployment.
+send only the exact paths `/chris/message`, `/chris/agents`, and `/health` to FastAPI
+**before** applying the SPA fallback. Vite's proxy configuration does not ship
+inside the static files. Keep `/chris/chats/expired` outside public proxy access.
 This change does not deploy a cloud service or establish production auth.
 
 ## Checks
@@ -118,16 +116,18 @@ npm run test:e2e
 Browser tests run the built app against intercepted API fixtures, without model
 keys or a live backend. On a machine with Chrome already installed,
 `PLAYWRIGHT_CHANNEL=chrome npm run test:e2e` uses that browser instead. Vitest
-covers the actual typed client and conversation transitions. Playwright covers
+covers the typed client and conversation transitions and tests the dev and preview
+proxy against a loopback stub. Playwright covers
 navigation, rendering safety, input, errors, refresh, mobile keyboard behavior,
 and the absence of unsupported API calls. These test dependencies are retained
 only for development; no browser AI or Open WebUI runtime packages are needed.
 
-From `backend/`, with the project virtual environment active:
+From `backend/`:
 
 ```bash
-PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: pytest
-ruff check .
+uv sync --locked
+uv run ruff check .
+PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
 ```
 
 `.github/workflows/checks.yml` runs the backend suite (including security-related

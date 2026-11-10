@@ -102,6 +102,27 @@ test('shows routing previews and persistence fallback without direct agent calls
   await expect(page.getByText(/Conversation storage is unavailable/)).toBeVisible();
 });
 
+test('offers a retry when the agent list stalls', async ({ page }) => {
+  await page.addInitScript(() => {
+    AbortSignal.timeout = () => {
+      const deadline = new AbortController();
+      window.addEventListener('test-deadline', () => {
+        deadline.abort(new DOMException('Deadline exceeded', 'TimeoutError'));
+      }, { once: true });
+      return deadline.signal;
+    };
+  });
+  await page.route('**/chris/agents', () => {}, { times: 1 });
+  const requested = page.waitForRequest('**/chris/agents');
+  await page.goto('/agents');
+  await requested;
+  await expect(page.getByText('Loading agents…')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('test-deadline')));
+  await expect(page.getByRole('alert')).toContainText('timed out');
+  await page.getByRole('button', { name: 'Retry loading agents' }).click();
+  await expect(page.getByRole('article')).toHaveCount(2);
+});
+
 test('retries agent-list failures independently and handles an empty list', async ({ page }) => {
   await page.route('**/chris/agents', (route) => route.fulfill({ status: 500, json: {} }));
   await page.goto('/agents');
