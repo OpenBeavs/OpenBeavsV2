@@ -37,8 +37,7 @@ npm run dev
 ```
 
 Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls `/health`, `/chris/message`, and `/chris/agents`. Vite proxies those requests to
-calls relative `/health` and `/chat/*` paths. Vite proxies those requests to
+calls `/health`, `/chat/message`, and `/chat/agents`. Vite proxies those requests to
 `http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
 requests. To use another backend, set the **non-secret server-side**
 `BACKEND_ORIGIN` when starting Vite:
@@ -107,12 +106,9 @@ npm run preview
 The static application is emitted into `frontend/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy must
-send only the exact paths `/chris/message`, `/chris/agents`, and `/health` to FastAPI
+send only the exact paths `/chat/message`, `/chat/agents`, and `/health` to FastAPI
 **before** applying the SPA fallback. Vite's proxy configuration does not ship
-inside the static files. Keep `/chris/chats/expired` outside public proxy access.
-send `/chat/*` and `/health` to FastAPI **before** applying the SPA fallback.
-Vite's proxy configuration does not ship inside the static files. Keep the
-maintenance DELETE route outside public proxy access in a real deployment.
+inside the static files. Keep `/chat/chats/expired` outside public proxy access.
 This change does not deploy a cloud service or establish production auth.
 
 ## Checks
