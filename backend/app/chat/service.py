@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.chat.a2a_client import ChrisUnavailable, send_message
 from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
 from app.config import ConfigError
+from app.history import MAX_HISTORY_TURNS, bounded_history
+from app.models import Agent as DBAgent
 from app.models import Chat as DBChat
 from app.models import Message as DBMessage
 from app.models import User as DBUser
@@ -167,7 +169,8 @@ async def handle_message(
                 stored_messages = (
                     db.query(DBMessage)
                     .filter(DBMessage.chat_id == form.chat_id)
-                    .order_by(DBMessage.created_at.asc())
+                    .order_by(DBMessage.created_at.desc(), DBMessage.id.desc())
+                    .limit(MAX_HISTORY_TURNS)
                     .all()
                 )
                 history_entries = [
@@ -177,7 +180,7 @@ async def handle_message(
                         else m.sender_type,
                         "content": m.content,
                     }
-                    for m in stored_messages
+                    for m in reversed(stored_messages)
                     if m.sender_type in ("user", "agent", "assistant")
                 ]
             except SQLAlchemyError as e:
@@ -192,7 +195,7 @@ async def handle_message(
                 {"role": m.role, "content": m.content} for m in form.history
             ]
 
-        reply = await send_message(message, history_entries)
+        reply = await send_message(message, bounded_history(history_entries))
 
     except ConfigError as e:
         log.error("Chris configuration error: %s", e)
@@ -206,18 +209,43 @@ async def handle_message(
             detail="Chris is temporarily unavailable. Please try again shortly.",
         )
 
+    routing, text = reply.routing, reply.text
+    if routing is not None and routing.status == "selected" and routing.agent:
+        # Chris reports only the selected agent's id; the display name and description
+        # come from this application's own agents table.
+        try:
+            record = db.get(DBAgent, routing.agent.id)
+        except SQLAlchemyError:
+            db.rollback()
+            log.warning("Could not load selected expert display details.")
+            record = None
+        if record is not None:
+            routing.agent.name = record.name
+            routing.agent.description = record.description
+            text = (
+                f"The registry selected {record.name} for this question. "
+                "No expert has been called yet, so this is not an answer."
+            )
     # Persist after A2A succeeds; catch DB errors without failing the response.
+    # The decision is kept in the message's meta. ``chats.agent_id`` is not set: a
+    # selection is not a conversation with that expert (none has been called), and the
+    # selected id comes from the registry's database, not necessarily this one.
     chat_id = _persist_turn(
         db,
         form,
         message,
-        reply,
+        text,
         routed_agent_id=None,
+        meta={"routing": routing.model_dump()} if routing else None,
     )
 
+    selected = routing is not None and routing.status == "selected" and routing.agent
     return ChrisMessageResponse(
-        response=reply,
+        response=text,
         chat_id=chat_id,
+        routing=routing,
+        routed_to=routing.agent.id if selected else None,
+        agent_name=routing.agent.name if selected else None,
     )
 
 

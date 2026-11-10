@@ -9,6 +9,15 @@ export type ChrisRequest = {
   chat_id?: string;
 };
 
+/** Chris's routing decision. A selection is a decision only: no expert has been called. */
+export type RoutingInfo = {
+  status: 'selected' | 'no_match' | 'error';
+  agent: { id: string; name: string; description: string | null } | null;
+  confidence: number | null;
+  reason: string | null;
+  error: { code: string; retryable: boolean; source: 'registry' | 'chris' } | null;
+};
+
 export type ChrisResponse = {
   response: string;
   chat_id: string | null;
@@ -16,6 +25,8 @@ export type ChrisResponse = {
   agent_name: string | null;
   routing_confidence: number | null;
   routing_reason: string | null;
+  /** Structured routing result; absent or null for plain replies. */
+  routing?: RoutingInfo | null;
 };
 
 export type AgentSummary = {
@@ -44,6 +55,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function nullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
+}
+
+/** True only for a routing result that is complete and consistent with its status. */
+export function isRoutingInfo(value: unknown): value is RoutingInfo {
+  if (!isRecord(value)) return false;
+  const { status, agent, confidence, reason, error } = value;
+  if (status !== 'selected' && status !== 'no_match' && status !== 'error') return false;
+  if (!(confidence === null || (typeof confidence === 'number' && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1))) return false;
+  if (!nullableString(reason)) return false;
+  const validAgent = isRecord(agent) && typeof agent.id === 'string' && typeof agent.name === 'string' &&
+    nullableString(agent.description);
+  const validError = isRecord(error) && typeof error.code === 'string' && typeof error.retryable === 'boolean' &&
+    (error.source === 'registry' || error.source === 'chris');
+  if (status === 'selected') return validAgent && error === null;
+  if (status === 'no_match') return agent === null && error === null;
+  return agent === null && validError;
 }
 
 /** Use fixed errors rather than echoing arbitrary server bodies into the UI/logs. */
@@ -84,7 +111,8 @@ export async function sendMessage(payload: ChrisRequest, signal?: AbortSignal): 
       !nullableString(data.chat_id) || !nullableString(data.routed_to) ||
       !nullableString(data.agent_name) || !nullableString(data.routing_reason) ||
       !(data.routing_confidence === null ||
-        (typeof data.routing_confidence === 'number' && Number.isFinite(data.routing_confidence)))) {
+        (typeof data.routing_confidence === 'number' && Number.isFinite(data.routing_confidence))) ||
+      !(data.routing === undefined || data.routing === null || isRoutingInfo(data.routing))) {
     throw new ApiError('The backend returned an invalid response. Please try again.');
   }
   return data as ChrisResponse;

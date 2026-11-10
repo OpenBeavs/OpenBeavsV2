@@ -764,3 +764,205 @@ class TestWorkerCapacity:
             fetch_card(HOST)
         for _ in range(cards._MAX_FETCH_WORKERS):
             assert slots.acquire(blocking=False)
+
+
+V1_ENDPOINT = "https://agent.example.test/a2a/v1"
+V03_ENDPOINT = "https://agent.example.test/a2a/v03"
+
+
+def card_without_url(**extra):
+    """A card in the A2A 1.0 shape: no top-level ``url``."""
+    return {k: v for k, v in GOOD_CARD.items() if k != "url"} | extra
+
+
+def interface(url: str, binding: str = "JSONRPC", version: str | None = "1.0"):
+    entry = {"url": url, "protocolBinding": binding}
+    if version is not None:
+        entry["protocolVersion"] = version
+    return entry
+
+
+class TestEndpointSelection:
+    """Cards come in two formats; the endpoint is chosen explicitly, then checked."""
+
+    def parse(self, raw: dict):
+        return parse_card(raw, CARD_URL, resolver=PUBLIC_DNS)
+
+    def parse_interfaces(self, *entries):
+        """Build a URL-free card so interface tests exercise the same parser path."""
+        return self.parse(card_without_url(supportedInterfaces=list(entries)))
+
+    def test_a_1_0_card_uses_its_jsonrpc_interface(self) -> None:
+        card = self.parse_interfaces(interface(V1_ENDPOINT))
+        assert card.endpoint_url == V1_ENDPOINT
+
+    def test_the_older_top_level_url_still_works(self) -> None:
+        assert self.parse(GOOD_CARD).endpoint_url == HOST
+
+    def test_the_newest_supported_version_wins_regardless_of_order(self) -> None:
+        card = self.parse_interfaces(
+            interface(V03_ENDPOINT, version="0.3.0"),
+            interface(V1_ENDPOINT, version="1.0"),
+        )
+        assert card.endpoint_url == V1_ENDPOINT
+
+    def test_listed_order_breaks_ties(self) -> None:
+        first, second = f"{HOST}/first", f"{HOST}/second"
+        card = self.parse_interfaces(interface(first), interface(second))
+        assert card.endpoint_url == first
+
+    def test_other_bindings_are_skipped_not_chosen(self) -> None:
+        card = self.parse_interfaces(
+            interface("https://agent.example.test:50051", "GRPC", "1.0"),
+            interface(f"{HOST}/rest", "HTTP+JSON", "1.0"),
+            interface(V1_ENDPOINT, "jsonrpc", "1.0"),
+        )
+        assert card.endpoint_url == V1_ENDPOINT
+
+    @pytest.mark.parametrize("version", ["1.0", "1.2", "1", "0.3", "0.3.0"])
+    def test_supported_protocol_versions(self, version: str) -> None:
+        card = self.parse_interfaces(interface(V1_ENDPOINT, version=version))
+        assert card.endpoint_url == V1_ENDPOINT
+
+    @pytest.mark.parametrize("version", ["0.2.5", "2.0", "0.4", "", "v1", None, 1.0])
+    def test_unsupported_protocol_versions_are_rejected(self, version) -> None:
+        with pytest.raises(CardError, match="no supported interface"):
+            self.parse_interfaces(interface(V1_ENDPOINT, version=version))
+
+    def test_only_unsupported_bindings_means_rejection(self) -> None:
+        with pytest.raises(CardError, match="no supported interface"):
+            self.parse_interfaces(interface(V1_ENDPOINT, "GRPC", "1.0"))
+
+    def test_a_listed_but_unusable_interface_does_not_fall_back_to_url(self) -> None:
+        """The explicit list wins: a stray top-level url must not be picked instead."""
+        raw = {
+            **GOOD_CARD,
+            "supportedInterfaces": [interface(V1_ENDPOINT, "GRPC", "1.0")],
+        }
+        with pytest.raises(CardError, match="no supported interface"):
+            self.parse(raw)
+
+    def test_the_list_beats_a_conflicting_top_level_url(self) -> None:
+        raw = {**GOOD_CARD, "supportedInterfaces": [interface(V1_ENDPOINT)]}
+        assert self.parse(raw).endpoint_url == V1_ENDPOINT
+
+    def test_an_empty_list_falls_back_to_the_older_format(self) -> None:
+        raw = {**GOOD_CARD, "supportedInterfaces": []}
+        assert self.parse(raw).endpoint_url == HOST
+
+    @pytest.mark.parametrize(
+        "listed",
+        ["https://agent.example.test", {"url": V1_ENDPOINT}, 7, [None, "x", 3]],
+    )
+    def test_malformed_lists_are_rejected(self, listed) -> None:
+        with pytest.raises(CardError):
+            self.parse(card_without_url(supportedInterfaces=listed))
+
+    @pytest.mark.parametrize("url", [None, "", "  ", 12, [], {}])
+    def test_an_interface_without_a_usable_url_is_skipped(self, url) -> None:
+        broken = {"url": url, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
+        card = self.parse_interfaces(broken, interface(V1_ENDPOINT))
+        assert card.endpoint_url == V1_ENDPOINT
+
+    def test_a_non_jsonrpc_preferred_transport_uses_the_jsonrpc_alternative(
+        self,
+    ) -> None:
+        card = self.parse(
+            {
+                **GOOD_CARD,
+                "url": "https://agent.example.test:50051",
+                "preferredTransport": "GRPC",
+                "additionalInterfaces": [{"url": V03_ENDPOINT, "transport": "JSONRPC"}],
+            }
+        )
+        assert card.endpoint_url == V03_ENDPOINT
+
+    def test_a_non_jsonrpc_card_with_no_alternative_is_rejected(self) -> None:
+        with pytest.raises(CardError, match="JSON-RPC"):
+            self.parse({**GOOD_CARD, "preferredTransport": "GRPC"})
+
+    def test_a_jsonrpc_preferred_transport_is_fine(self) -> None:
+        raw = {**GOOD_CARD, "preferredTransport": "JSONRPC", "protocolVersion": "0.3.0"}
+        assert self.parse(raw).endpoint_url == HOST
+
+
+class TestSelectedInterfaceIsSafetyChecked:
+    """Every check that applies to a top-level url applies to a chosen interface."""
+
+    def parse(self, endpoint: str, **kwargs):
+        raw = card_without_url(supportedInterfaces=[interface(endpoint)])
+        return parse_card(raw, CARD_URL, resolver=PUBLIC_DNS, **kwargs)
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "http://agent.example.test/rpc",
+            "https://localhost/rpc",
+            "https://127.0.0.1/rpc",
+            "https://10.0.0.1/rpc",
+            "https://169.254.169.254/rpc",
+            "https://metadata.google.internal/rpc",
+            "https://[::1]/rpc",
+            "https://user:password@agent.example.test/rpc",
+            "/rpc",
+        ],
+    )
+    def test_unsafe_addresses_are_rejected(self, endpoint: str) -> None:
+        with pytest.raises(UnsafeURLError):
+            self.parse(endpoint)
+
+    @pytest.mark.parametrize(
+        "endpoint",
+        [f"{HOST}/r pc", f"{HOST}/rpc#frag", HOST + "/rpc" + chr(92) + "x"],
+    )
+    def test_ambiguous_urls_are_rejected(self, endpoint: str) -> None:
+        with pytest.raises(CardError, match="endpoint url"):
+            self.parse(endpoint)
+
+    def test_length_is_bounded(self) -> None:
+        with pytest.raises(CardError, match="URLs must"):
+            self.parse(HOST + "/" * 512)
+
+    def test_the_interface_dns_is_resolved_and_checked(self) -> None:
+        def resolver(host):
+            return ["10.0.0.1"] if host == "internal.example.test" else PUBLIC_DNS(host)
+
+        raw = card_without_url(
+            supportedInterfaces=[interface("https://internal.example.test/rpc")]
+        )
+        with pytest.raises(UnsafeURLError):
+            parse_card(raw, CARD_URL, resolver=resolver)
+
+    def test_only_the_chosen_interface_is_checked(self) -> None:
+        """An unsupported (gRPC) entry at a private address is not what gets stored."""
+        raw = card_without_url(
+            supportedInterfaces=[
+                interface("https://10.0.0.1:50051", "GRPC", "1.0"),
+                interface(V1_ENDPOINT),
+            ]
+        )
+        card = parse_card(raw, CARD_URL, resolver=PUBLIC_DNS)
+        assert card.endpoint_url == V1_ENDPOINT
+
+    def test_an_unsafe_best_interface_is_not_swapped_for_a_safe_older_one(
+        self,
+    ) -> None:
+        raw = card_without_url(
+            supportedInterfaces=[
+                interface("https://10.0.0.1/rpc", version="1.0"),
+                interface(V03_ENDPOINT, version="0.3.0"),
+            ]
+        )
+        with pytest.raises(UnsafeURLError):
+            parse_card(raw, CARD_URL, resolver=PUBLIC_DNS)
+
+    def test_http_is_allowed_only_with_the_local_opt_in(self) -> None:
+        endpoint = "http://other.example.test/rpc"
+        with pytest.raises(UnsafeURLError):
+            self.parse(endpoint)
+        assert self.parse(endpoint, allow_http=True).endpoint_url == endpoint
+
+    def test_a_1_0_card_is_accepted_through_a_real_fetch(self) -> None:
+        raw = card_without_url(supportedInterfaces=[interface(V1_ENDPOINT)])
+        card = fetch_with(lambda request: json_response(raw))
+        assert card.endpoint_url == V1_ENDPOINT and card.card_url == CARD_URL

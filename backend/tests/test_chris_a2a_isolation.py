@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from google.adk.sessions import InMemorySessionService
 
+from app.chris.routing import RoutingResult
 from app.chris.transport import MessageOnlyTaskStore
 from app.main import app
 
@@ -22,7 +23,7 @@ def local_chris(monkeypatch):
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(
         "app.chris.registry_client.select_agent",
-        AsyncMock(return_value='{"agent":"none"}'),
+        AsyncMock(return_value=RoutingResult(status="no_match")),
     )
     monkeypatch.setattr(
         "app.chris.gemini.answer", AsyncMock(return_value="Private answer")

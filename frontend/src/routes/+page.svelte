@@ -3,6 +3,11 @@
   import { conversationKey, type ConversationStore } from '$lib/context';
   import Icon from '$lib/components/Icon.svelte';
   import Spinner from '$lib/components/Spinner.svelte';
+  import RoutingResult from '$lib/components/RoutingResult.svelte';
+
+  // Shown under `npm run dev` (or when VITE_LOCAL_PIPELINE=true): the local demo runs the
+  // registry without authentication and calls no expert.
+  const localDemo = import.meta.env.DEV || import.meta.env.VITE_LOCAL_PIPELINE === 'true';
 
   const conversation = getContext<ConversationStore>(conversationKey);
   let transcript: HTMLDivElement;
@@ -31,18 +36,27 @@
 </script>
 
 <div class="chat-page">
+  {#if localDemo}
+    <div class="notice dev-banner" role="note" data-testid="local-dev-banner">
+      <strong>Local development mode.</strong> Chris asks the registry to pick an expert and shows the selection. The registry runs without authentication here, so this does not verify production authentication. No expert is called.
+    </div>
+  {/if}
   <div class="chat-heading"><span class="accent"><Icon name="sparkles" size={25} /></span><h1>Chris</h1><span class="muted">OpenBeavs AI Hub</span><span class="badge">Guest</span></div>
   <div class="transcript" bind:this={transcript} role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions" on:scroll={() => { atBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80; }}>
     {#if $conversation.messages.length === 0 && !$conversation.pending}
-      <div class="empty-chat"><span class="accent"><Icon name="sparkles" size={44} /></span><h2>How can Chris help?</h2><p>Ask a question about OSU or anything on your mind.</p><p class="routing-note">Chris can answer directly and preview which registered agent fits your question. Agent calls are coming later.</p></div>
+      <div class="empty-chat"><span class="accent"><Icon name="sparkles" size={44} /></span><h2>How can Chris help?</h2><p>Ask a question about OSU or anything on your mind.</p><p class="routing-note">Chris asks the registry which registered expert fits your question and shows its choice. Experts are not called yet, so you will see a selection, not an answer.</p></div>
     {/if}
     {#each $conversation.messages as message (message.id)}
       <div class="message-row" class:user={message.role === 'user'}>
         <div class="message-wrapper">
-          {#if message.role === 'assistant' && message.routing?.routed_to}
-            <span class="badge routing-badge" title={message.routing.routing_reason ?? undefined}>Routing preview · {message.routing.agent_name ?? message.routing.routed_to}</span>
+          {#if message.role === 'assistant' && message.routing?.routing}
+            <RoutingResult routing={message.routing.routing} />
+          {:else}
+            {#if message.role === 'assistant' && message.routing?.routed_to}
+              <span class="badge routing-badge" title={message.routing.routing_reason ?? undefined}>Routing preview · {message.routing.agent_name ?? message.routing.routed_to}</span>
+            {/if}
+            <div class="message-bubble" data-testid="message" aria-label={message.role === 'user' ? 'You' : 'Chris'}>{message.content}</div>
           {/if}
-          <div class="message-bubble" data-testid="message" aria-label={message.role === 'user' ? 'You' : 'Chris'}>{message.content}</div>
         </div>
       </div>
     {/each}

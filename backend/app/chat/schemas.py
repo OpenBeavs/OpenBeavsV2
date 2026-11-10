@@ -2,7 +2,9 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+from app.history import MAX_QUESTION_BYTES
 
 
 class HistoryMessage(BaseModel):
@@ -15,7 +17,15 @@ class HistoryMessage(BaseModel):
 class ChrisMessageForm(BaseModel):
     """Request body for POST /chat/message."""
 
-    message: str
+    message: str = Field(max_length=MAX_QUESTION_BYTES)
+
+    @field_validator("message")
+    @classmethod
+    def question_fits_transport(cls, value: str) -> str:
+        """Reject oversized questions before forwarding them to another service."""
+        if len(value.encode("utf-8", errors="replace")) > MAX_QUESTION_BYTES:
+            raise ValueError("Message must be at most 4,000 UTF-8 bytes.")
+        return value
     history: list[HistoryMessage] = []
     chat_id: str | None = None
     user_id: str | None = None
@@ -23,11 +33,43 @@ class ChrisMessageForm(BaseModel):
     source_domain: str | None = None
 
 
+class RoutedAgent(BaseModel):
+    """The expert the registry selected. Endpoints are not exposed to the browser."""
+
+    id: str
+    name: str
+    description: str | None = None
+
+
+class RoutingError(BaseModel):
+    """Why no selection was produced. ``source`` says who reported it."""
+
+    code: str
+    retryable: bool
+    source: Literal["registry", "chris"]
+
+
+class RoutingInfo(BaseModel):
+    """Chris's routing decision, kept structured for the frontend to display.
+
+    ``status`` is ``selected``, ``no_match`` or ``error``. A selection is a routing
+    decision only: no expert has been called, so it is never an answer.
+    """
+
+    status: Literal["selected", "no_match", "error"]
+    agent: RoutedAgent | None = None
+    confidence: float | None = None
+    reason: str | None = None
+    error: RoutingError | None = None
+
+
 class ChrisMessageResponse(BaseModel):
     """Response body.
 
-    Routing fields remain for frontend compatibility and are currently null;
-    the acknowledgment agent does not select or delegate to specialists.
+    ``response`` is a short plain-language statement of the routing result (for
+    history and for clients that ignore ``routing``). ``routing`` carries the structure.
+    The older flat routing fields mirror a *selected* result for frontend compatibility
+    and are null otherwise.
     """
 
     response: str
@@ -36,6 +78,7 @@ class ChrisMessageResponse(BaseModel):
     agent_name: str | None = None
     routing_confidence: float | None = None
     routing_reason: str | None = None
+    routing: RoutingInfo | None = None
 
 
 class AgentSummary(BaseModel):

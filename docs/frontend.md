@@ -7,46 +7,22 @@ The old Open WebUI Python backend is not required.
 
 ## Run locally
 
-Use Python 3.12 and Node.js 22 or newer. From the repository root:
+Follow [the registry setup guide](registry.md#local-development-setup) for backend dependencies,
+migrations, model configuration, and all three terminals. It runs Chat/Chris at
+`http://127.0.0.1:8010` and the standalone registry at `http://127.0.0.1:8001`.
+Use Python 3.12 and Node 22 or newer.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install ./backend -r backend/requirements-dev.txt
-cd backend
-alembic upgrade head
-# Optional: populate the registered-agent directory.
-python -m app.db.seed_agents
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+In `frontend/`, after `npm ci`, start Vite with the backend proxy origin:
 
-Configure `GEMINI_API_KEY` and `CHRIS_MODEL` privately in the backend environment
-or its ignored `.env` file before sending messages. Do not put model keys,
-database credentials, or login tokens in frontend configuration. Backend startup
-and `/health` can succeed even if model configuration or database tables are
-missing. The directory's agent table is separate from Chris's routing service.
-Chris always calls `REGISTRY_A2A_URL` (default `http://127.0.0.1:8001/`); if it is
-unavailable or returns no match, Chris answers with Gemini. No local registry agent
-is required to exercise fallback. `CHRIS_A2A_URL` defaults to the mounted Chris
-endpoint in the same backend process. See [Chris's workflow](chris.md).
-
-In a second terminal, from the repository root:
-
-```bash
-cd frontend
-npm ci
+```powershell
+$env:BACKEND_ORIGIN='http://127.0.0.1:8010'
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls relative `/health` and `/chat/*` paths. Vite proxies those requests to
-`http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
-requests. To use another backend, set the **non-secret server-side**
-`BACKEND_ORIGIN` when starting Vite:
-
-```bash
-BACKEND_ORIGIN=http://127.0.0.1:9000 npm run dev
-```
+Open the Local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
+calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`,
+which defaults to port 8000 if unset. It is a server-side setting, not a browser secret.
+Do not put model keys, database credentials, or login tokens in frontend configuration.
 
 No backend API routes, CORS configuration, or database migrations are added by
 this frontend. `BACKEND_ORIGIN` must be an origin you control; it is not embedded
@@ -64,11 +40,12 @@ as a browser API URL.
 
 The typed client uses only `GET /health`, `GET /chat/agents`, and
 `POST /chat/message`. Agent endpoint URLs remain metadata, never browser call
-targets. Responses are complete JSON, not streams. Routing attribution fields
-remain null. Chris's Gemini answer is displayed normally; if the registry selects
-a specialist, its selection JSON is currently displayed as text because specialist
-invocation is not implemented. The UI retains routing-preview rendering for
-responses with routing fields, but the current backend does not populate them.
+targets. Responses are complete JSON, not streams. The backend returns a structured
+`routing` result, which is rendered as a selected-expert, no-match, or error card.
+Selected-expert display fields come from Chat's agents table; expert endpoints are
+not exposed by the routing response. No expert is called. Optional Gemini fallback
+answers are displayed as text when `CHRIS_SELECTION_ONLY=false`. Development mode
+shows a banner explaining the local demo's authentication and selection boundaries.
 
 The layout owns the in-memory conversation, so moving between Chris and Agents
 preserves it. Requests include prior successful turns, a random guest session
@@ -119,9 +96,10 @@ npm run test
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:pipeline
 ```
 
-Browser tests run the built app against intercepted API fixtures, without model
+The original browser tests run the built app against intercepted API fixtures, without model
 keys or a live backend. On a machine with Chrome already installed,
 `PLAYWRIGHT_CHANNEL=chrome npm run test:e2e` uses that browser instead. Vitest
 covers the actual typed client and conversation transitions. Playwright covers
@@ -141,14 +119,15 @@ authorization cases), Ruff, frontend lint/type checks, unit tests, build, and
 browser tests. Secret scanning and production dependency-policy gates remain
 separate team work; this workflow does not claim to implement them.
 
-For live acceptance, start the actual backend with initialized tables and model
-configuration, send a greeting, receive a direct answer, then send a follow-up.
-With the registry unavailable or returning `{"agent":"none"}`, confirm Gemini
-provides the answer. If Gemini also fails, the backend returns a normal availability
-message, which is displayed and saved rather than treated as an HTTP error.
-Confirm the second request reuses the returned chat ID and guest identifier, and
-that the directory loads from the real database. This is separate from the
-fixture-based browser suite and requires a working model service.
+`test:pipeline` additionally starts the real Chat/Chris/registry code with a scripted
+model and a temporary SQLite database. It exercises selection, history, no match,
+revocation, malformed model output, and timeout/error recovery through the browser.
+Both suites run in CI; neither requires a real model key.
+
+For live acceptance, follow the runbook and ask an OSU question followed by a related
+question in the same chat. Expect a selection card, not the expert's answer. Confirm
+the chat ID and guest identifier are reused and the directory loads from SQLite.
+This requires a working registry model/key and is distinct from deterministic tests.
 
 ## Attribution
 

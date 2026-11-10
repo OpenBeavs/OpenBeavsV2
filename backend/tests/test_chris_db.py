@@ -10,8 +10,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.chat.a2a_client import ChrisUnavailable
+from app.chat.a2a_client import ChrisReply, ChrisUnavailable
 from app.chat.service import list_active_agents, purge_expired_chats
+from app.chris.routing import RoutingResult
 from app.config import ConfigError
 from app.db.base import Base
 from app.db.session import get_db
@@ -63,7 +64,7 @@ def test_db():
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_chris_a2a_answer_persists_chat_and_messages(mock_send, test_db: Session):
     """Verify that an A2A answer from Chris creates chat and message records."""
-    mock_send.return_value = "Hello! I am Chris, how can I help you today?"
+    mock_send.return_value = ChrisReply("Hello! I am Chris, how can I help you today?")
     client = TestClient(app)
 
     payload = {
@@ -113,7 +114,7 @@ def test_health_check_endpoint():
 
 def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
     """The frontend API calls the real A2A agent and persists its response."""
-    selection = AsyncMock(return_value='{"agent":"none"}')
+    selection = AsyncMock(return_value=RoutingResult(status="no_match"))
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
     monkeypatch.setattr("app.chris.gemini.answer", answer)
@@ -182,7 +183,9 @@ def test_unavailable_registry_gemini_reply_is_saved_as_a_chat_turn(
 
     monkeypatch.setattr(
         "app.chris.registry_client._http_client",
-        lambda: httpx.AsyncClient(transport=httpx.MockTransport(unavailable)),
+        lambda timeout: httpx.AsyncClient(
+            transport=httpx.MockTransport(unavailable)
+        ),
     )
     with TestClient(app) as client:
         response = client.post("/chat/message", json={"message": "Hello"})
@@ -293,7 +296,7 @@ def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_persist_turn_db_failure_still_returns_reply(mock_send, test_db: Session):
     """Verify that a database error during persistence does not 500, but returns the reply with chat_id=None."""
-    mock_send.return_value = "Reply from Chris despite DB error"
+    mock_send.return_value = ChrisReply("Reply from Chris despite DB error")
     client = TestClient(app)
 
     # Force a database failure during _persist_turn
@@ -309,7 +312,7 @@ def test_persist_turn_db_failure_still_returns_reply(mock_send, test_db: Session
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_history_loaded_from_db_when_chat_id_provided(mock_send, test_db: Session):
     """Verify that when chat_id is provided, messages are loaded from the DB rather than form.history."""
-    mock_send.return_value = "Second turn response"
+    mock_send.return_value = ChrisReply("Second turn response")
     client = TestClient(app)
 
     # 1. Create existing chat with 2 stored turns
@@ -353,7 +356,7 @@ def test_history_loaded_from_db_when_chat_id_provided(mock_send, test_db: Sessio
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_authenticated_user_vs_unverified_guest(mock_send, test_db: Session):
     """Verify that only users existing in the database are authenticated without TTL; unverified user_ids remain guest with TTL."""
-    mock_send.return_value = "Hello"
+    mock_send.return_value = ChrisReply("Hello")
     client = TestClient(app)
 
     # 1. Real user in DB

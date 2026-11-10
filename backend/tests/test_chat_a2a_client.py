@@ -9,13 +9,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.chat.a2a_client import ChrisUnavailable, send_message
+from app.chris.routing import RoutingResult
 from app.config import ConfigError
 from app.main import app
 
 
 def test_chat_client_calls_real_chris(monkeypatch):
     """Chat's production client speaks to the actual mounted ADK agent."""
-    selection = AsyncMock(return_value='{"agent":"none"}')
+    selection = AsyncMock(return_value=RoutingResult(status="no_match"))
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
     monkeypatch.setattr("app.chris.gemini.answer", answer)
@@ -32,7 +33,7 @@ def test_chat_client_calls_real_chris(monkeypatch):
         reply = client.portal.call(
             send_message, "Hello Chris", [{"role": "user", "content": "Earlier"}]
         )
-    assert reply == "Gemini answer."
+    assert reply.text == "Gemini answer."
     selection.assert_awaited_once_with(
         "Hello Chris", [{"role": "user", "content": "Earlier"}]
     )
@@ -69,7 +70,7 @@ def test_wire_request_contains_history_without_identity(monkeypatch):
         "app.chat.a2a_client._http_client",
         side_effect=lambda: httpx.AsyncClient(transport=httpx.MockTransport(respond)),
     ):
-        assert asyncio.run(send_message("New question", history)) == "Hello"
+        assert asyncio.run(send_message("New question", history)).text == "Hello"
     assert len(requests) == 1
     request = requests[0]
     body = json.loads(request.content)
@@ -158,7 +159,7 @@ def test_invalid_destination_is_configuration_error(monkeypatch):
 
 def test_whole_call_has_a_deadline(monkeypatch):
     """The overall deadline bounds slow transports as well as SDK processing."""
-    monkeypatch.setattr("app.chat.a2a_client.TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr("app.chat.a2a_client.timeout_seconds", lambda: 0.01)
 
     async def respond(request):
         await asyncio.sleep(1)
