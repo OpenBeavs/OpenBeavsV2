@@ -30,7 +30,7 @@ function createId(): string {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
 }
 
-/** One in-memory conversation per app instance, shared by both routes.
+/** One in-memory conversation with its own request and transcript.
  * Generation checks discard responses after reset even if cancellation is ignored.
  */
 export function createConversation(
