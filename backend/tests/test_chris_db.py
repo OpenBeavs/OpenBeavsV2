@@ -206,7 +206,7 @@ def test_unavailable_registry_gemini_reply_is_saved_as_a_chat_turn(
         (
             ConfigError("Missing Chris endpoint configuration"),
             500,
-            "Missing Chris endpoint configuration",
+            "Chris is temporarily unavailable. Please try again shortly.",
         ),
         (
             ChrisUnavailable("Chris unavailable"),

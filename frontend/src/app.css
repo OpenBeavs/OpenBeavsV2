@@ -105,6 +105,3 @@ nav a:hover, nav a.active { background: var(--hover); }
   .agents-page { padding: 20px 16px; }
   .agent-grid { grid-template-columns: 1fr; }
 }
-
-.dev-banner { border-color: #e0c36a; background: #fff8e1; color: #5f4b00; }
-.dark .dev-banner { background: #3a3220; border-color: #7a6a2f; color: #f2e2a8; }

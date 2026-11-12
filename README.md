@@ -8,9 +8,9 @@ The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
 Start with the [registry setup guide](docs/registry.md#local-development-setup), then see
 [Chris's API](docs/chris.md). Chat calls Chris over A2A; Chris asks the standalone
-registry to select an expert. By default the frontend shows the selection, no match,
-or a coded error. Set `CHRIS_SELECTION_ONLY=false` to enable Gemini fallback for no
-match or registry failures. No selected expert is invoked yet. Verified SSO and
+registry to select an expert. By default Chris answers with Gemini when no expert
+matches or the registry fails. Set `CHRIS_SELECTION_ONLY=true` to diagnose registry outcomes
+without fallback; failures remain in service logs. No selected expert is invoked yet. Verified SSO and
 service-to-service authentication remain future work.
 
 For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](docs/registry.md).

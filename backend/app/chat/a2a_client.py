@@ -65,9 +65,8 @@ class _Payload(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
     schema_: Literal["openbeavs.chris.routing.v1"] = Field(alias="schema")
-    status: Literal["selected", "no_match", "error"]
+    status: Literal["selected", "no_match"]
     agent: dict | None = None
-    error: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -105,9 +104,8 @@ def parse_routing(data: object) -> RoutingInfo:
         log.warning("Chris sent a routing result that is not valid.")
         raise ChrisUnavailable("Chris sent an invalid routing result.") from None
     consistent = (
-        (info.status == "selected" and info.agent and not info.error)
-        or (info.status == "no_match" and not info.agent and not info.error)
-        or (info.status == "error" and not info.agent and info.error)
+        (info.status == "selected" and info.agent)
+        or (info.status == "no_match" and not info.agent)
     )
     if not consistent:
         log.warning("Chris sent an inconsistent routing result.")

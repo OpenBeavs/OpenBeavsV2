@@ -9,9 +9,10 @@ private model configuration, migrations, seeding, and the three terminal command
 It uses ports 8010 (Chat/Chris), 8001 (registry), and normally 5173 (frontend).
 The registry A2A service must be started separately from `app.main:app`.
 
-The default workflow reports the registry's selection, no match, or coded error.
-It does not invoke the expert. `CHRIS_SELECTION_ONLY=false` enables Gemini fallback
-on no match or a registry failure, requiring `GEMINI_API_KEY` and `CHRIS_MODEL`.
+The default workflow reports a selected expert or answers with Gemini on no match
+or a registry failure, requiring `GEMINI_API_KEY` and `CHRIS_MODEL`. It does not invoke
+the expert. `CHRIS_SELECTION_ONLY=true` disables fallback for diagnostics. Failures are logged and return a generic
+availability notice without saving failed conversation turns.
 The registry uses its own `REGISTRY_MODEL` and `REGISTRY_GEMINI_API_KEY` configuration.
 
 ## Dependencies and checks

@@ -1,16 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isRoutingInfo, sendMessage, type ChrisRequest, type RoutingInfo } from './api';
-import { confidenceLabel, describeError, headline } from './routing';
 
 const selected: RoutingInfo = {
   status: 'selected',
   agent: { id: 'math', name: 'Math Expert', description: 'Arithmetic.' },
   confidence: 0.93,
-  reason: 'Arithmetic question.',
-  error: null
+  reason: 'Arithmetic question.'
 };
-const noMatch: RoutingInfo = { status: 'no_match', agent: null, confidence: 0.9, reason: 'A greeting.', error: null };
-const failure: RoutingInfo = {
+const noMatch: RoutingInfo = { status: 'no_match', agent: null, confidence: 0.9, reason: 'A greeting.' };
+const failure = {
   status: 'error',
   agent: null,
   confidence: null,
@@ -25,7 +23,7 @@ const reply = (routing: unknown) => ({
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('routing result validation', () => {
-  it.each([selected, noMatch, failure])('accepts a consistent %# result', (routing) => {
+  it.each([selected, noMatch])('accepts a consistent %# result', (routing) => {
     expect(isRoutingInfo(routing)).toBe(true);
   });
 
@@ -34,9 +32,9 @@ describe('routing result validation', () => {
     ['selected without an agent', { ...selected, agent: null }],
     ['selected with an error', { ...selected, error: failure.error }],
     ['no_match with an agent', { ...noMatch, agent: selected.agent }],
-    ['error without an error object', { ...failure, error: null }],
+    ['backend error payload', failure],
     ['error naming an agent', { ...failure, agent: selected.agent }],
-    ['bad error source', { ...failure, error: { code: 'x', retryable: true, source: 'browser' } }],
+    ['legacy error field', { ...selected, error: null }],
     ['confidence out of range', { ...selected, confidence: 4 }],
     ['confidence as text', { ...selected, confidence: '0.9' }],
     ['agent without a name', { ...selected, agent: { id: 'm' } }],
@@ -55,28 +53,9 @@ describe('routing result validation', () => {
     expect((await sendMessage(payload)).routing).toBeNull();
   });
 
-  it.each([{ ...selected, agent: null }, { ...failure, error: null }, 'selected', { status: 'selected' }])(
+  it.each([{ ...selected, agent: null }, { ...failure, error: {} }, 'selected', { status: 'selected' }])(
     'rejects a response whose routing is malformed', async (routing) => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(reply(routing))));
       await expect(sendMessage(payload)).rejects.toThrow('invalid response');
     });
-});
-
-describe('routing presentation', () => {
-  it('headlines each outcome without calling a selection an answer', () => {
-    expect(headline(selected)).toBe('Expert selected: Math Expert');
-    expect(headline(noMatch)).toBe('No matching expert');
-    expect(headline(failure)).toBe('Could not select an expert');
-  });
-
-  it('explains known error codes and falls back for unknown ones', () => {
-    expect(describeError('registry_timeout')).toContain('too long');
-    expect(describeError('agent_unavailable')).toContain('stopped being available');
-    expect(describeError('something_new')).toBe('The registry could not select an expert.');
-  });
-
-  it('formats confidence', () => {
-    expect(confidenceLabel(0.934)).toBe('93% confident');
-    expect(confidenceLabel(null)).toBeNull();
-  });
 });

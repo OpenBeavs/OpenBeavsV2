@@ -16,7 +16,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.chat.a2a_client import send_message
+from app.chat.a2a_client import ChrisUnavailable, send_message
 from app.chris import gemini, registry_client, routing
 from app.main import app
 
@@ -291,6 +291,7 @@ class TestTimeoutSetting:
         assert registry_client.timeout_seconds() == 14.0
 
 
+@pytest.mark.parametrize("mode", [None, "false"])
 @pytest.mark.parametrize(
     "result",
     [
@@ -303,9 +304,13 @@ class TestTimeoutSetting:
     [None, gemini.GeminiUnavailable("private details")],
 )
 def test_fallback_mode_answers_no_match_and_failures_with_gemini(
-    monkeypatch, result, model_failure
+    monkeypatch, result, model_failure, mode
 ) -> None:
-    """With CHRIS_SELECTION_ONLY=false (set by conftest) Gemini answers these."""
+    """The default and explicit fallback mode answer no-match and failures."""
+    if mode is None:
+        monkeypatch.delenv("CHRIS_SELECTION_ONLY", raising=False)
+    else:
+        monkeypatch.setenv("CHRIS_SELECTION_ONLY", mode)
     selection = AsyncMock(return_value=result)
 
     async def model_answer(message, history):
@@ -323,14 +328,14 @@ def test_fallback_mode_answers_no_match_and_failures_with_gemini(
         lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=app)),
     )
     with TestClient(app) as client:
-        reply = client.portal.call(send_message, "Hello", [])
+        if model_failure:
+            with pytest.raises(ChrisUnavailable):
+                client.portal.call(send_message, "Hello", [])
+        else:
+            reply = client.portal.call(send_message, "Hello", [])
+            assert reply.text == "Gemini answer."
+            assert reply.routing is None
     answer.assert_awaited_once_with("Hello", [])
-    assert reply.text == (
-        "Chris is temporarily unavailable. Please try again shortly."
-        if model_failure
-        else "Gemini answer."
-    )
-    assert reply.routing is None
 
 
 def test_a_selection_is_reported_and_never_answered_by_gemini(monkeypatch) -> None:
@@ -355,4 +360,4 @@ def test_a_selection_is_reported_and_never_answered_by_gemini(monkeypatch) -> No
     answer.assert_not_awaited()
     assert reply.routing.status == "selected"
     assert reply.routing.agent.id == "library-agent"
-    assert "not an answer" in reply.text
+    assert reply.text == "I found a specialist for your question."

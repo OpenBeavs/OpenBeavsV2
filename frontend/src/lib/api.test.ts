@@ -33,7 +33,7 @@ describe('v2 API contract', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>proxy error</html>')));
     await expect(sendMessage(payload)).rejects.toThrow('invalid response');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network failed')));
-    await expect(sendMessage(payload)).rejects.toThrow('Could not reach Chris');
+    await expect(sendMessage(payload)).rejects.toThrow('Chris is temporarily unavailable');
   });
 
   it('checks health and validates the agent list', async () => {

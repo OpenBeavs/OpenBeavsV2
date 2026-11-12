@@ -84,13 +84,14 @@ answers the question. It reads only agents that are currently routable
 (`routable_agents()`: active, `approved` or `provisional`, public, no required role).
 
 **Status.** The local frontend -> Chat -> Chris -> registry A2A selection flow is
-built and tested. Chris returns the selection, no match, or a coded error to the UI.
+built and tested. Chris returns a plain selection acknowledgement or a Gemini answer.
+Backend errors stay in terminal logs; if no answer is available the UI shows a generic notice.
 The selected expert is not called yet. See [Local development setup](#local-development-setup)
 for the complete setup and [Workflow validation](#workflow-validation) for testing.
 
 ```text
 Frontend --POST /chat/message--> Chat API --A2A--> Chris --A2A--> Registry
-Frontend <--routing card------- Chat API <------ Chris <------- selected ID + endpoint / none / error
+Frontend <--plain message------ Chat API <------ Chris <------- selected ID + endpoint / none / error
 ```
 
 It uses A2A **protocol 1.0** through the official `a2a-sdk`. The card's `version`
@@ -465,13 +466,18 @@ shapes and registry errors. Chris forwards only the chosen ID to Chat; Chat look
 the name/description for display. Confidence and reason remain inside the registry.
 Each receiver validates the contract rather than inferring a result from prose.
 
-The frontend shows a selected-expert card, a no-match card, or an error card with a
-code, source (`registry` or `chris`) and retry hint. A selection is not an expert answer.
-Chris's own transport/configuration errors are `registry_not_configured`,
-`registry_timeout`, `registry_unreachable`, `registry_auth_rejected`,
-`registry_protocol_error` and `registry_invalid_reply`. `CHRIS_SELECTION_ONLY=true`
-(the default) keeps these outcomes visible; `false` enables Gemini fallback for no
-match or failure. The selected expert is not called in either mode.
+The frontend uses normal message bubbles: for example, "I found the Math Expert
+specialist for your question." Selection details are logged, not shown as debug cards.
+The expert is not called yet. Backend failure codes, sources and retry diagnostics
+remain in service terminal logs. They are absent from Chris-to-Chat routing payloads
+and browser schemas.
+
+`CHRIS_SELECTION_ONLY=false` (the default) uses Gemini on no-match or registry failure.
+`true` disables fallback for diagnostics: no-match is plain text, failures are failed
+A2A calls. If Chris cannot answer, Chat returns a generic HTTP 503 notice and saves no
+turn. The frontend keeps this notice outside the conversation and excludes failed
+turns from subsequent history. Each service configures INFO-level console logging at
+its entrypoint, so selection details and failures can be inspected in its terminal.
 
 ### Timeouts and bounded history
 
@@ -521,7 +527,7 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 Edit the ignored `backend/.env` privately. Set `REGISTRY_MODEL` to your team's available Gemini model ID, and
 `REGISTRY_GEMINI_API_KEY` to your own key. Never commit or share the key. Set
 `REGISTRY_DEV_AUTH=true` only for this local SQLite setup. The example file configures
-selection-only mode; Gemini fallback needs its own `CHRIS_MODEL` and `GEMINI_API_KEY`.
+Gemini fallback; configure its own `CHRIS_MODEL` and `GEMINI_API_KEY`.
 Existing environment files are deliberately preserved by this integration; check these
 non-secret settings yourself if your file predates the runbook.
 
@@ -562,7 +568,7 @@ $env:CHRIS_A2A_URL='http://127.0.0.1:8010/chris/a2a/'
 $env:REGISTRY_A2A_URL='http://127.0.0.1:8001/a2a/registry'
 $env:REGISTRY_A2A_TIMEOUT_SECONDS='14'
 $env:CHRIS_A2A_TIMEOUT_SECONDS='35'
-$env:CHRIS_SELECTION_ONLY='true'
+$env:CHRIS_SELECTION_ONLY='false'
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 
@@ -577,8 +583,8 @@ Open the Local URL printed by Vite in Chrome (normally `http://127.0.0.1:5173`).
 Use plain `npm run dev`; the pipeline browser runner sets its own ports directly.
 
 Try an OSU question, then a related follow-up in the same conversation. If you added
-the demo agents, try `What is 15% of 240?`. Expect a selection card, not an expert
-answer. The real model can choose differently; use the deterministic tests below to
+the demo agents, try `What is 15% of 240?`. Expect a plain acknowledgement naming
+the selected specialist; expert dispatch is not implemented. The real model can choose differently; use the deterministic tests below to
 verify the plumbing without Gemini credentials.
 
 ### Submit and review an expert agent

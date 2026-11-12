@@ -4,13 +4,11 @@ Chris is a custom Google ADK `BaseAgent` exposed over A2A 1.0. The chat API owns
 conversation access and persistence; Chris owns the deterministic registry-first
 workflow.
 
-> **Current stage: selection only.** Chris asks the registry which expert fits and
-> reports the decision (selected expert, no match, or a coded error) as a structured
-> result. It does **not** call the selected expert and, by default, does **not** answer
-> with Gemini when the registry has no match or fails, so a registry failure stays
-> visible. The Gemini fallback described below is available only with
-> `CHRIS_SELECTION_ONLY=false`. The full description of the current flow, contracts and
-> deadlines is in [the registry workflow guide](registry.md#integrated-selection-workflow).
+> **Current stage: selection with Gemini fallback.** Chris asks the registry which
+> expert fits and reports a selected expert as a structured result. It does not call
+> that expert yet. By default, Chris answers with Gemini when no expert matches or
+> the registry fails. Set `CHRIS_SELECTION_ONLY=true` to inspect registry outcomes
+> without fallback. See [the registry workflow guide](registry.md#integrated-selection-workflow).
 
 ## Current request flow
 
@@ -25,8 +23,14 @@ sequenceDiagram
     Chat->>Chris: A2A SendMessage + history in metadata
     Chris->>Registry: Discover card, then SendMessage (text + history data part)
     Registry-->>Chris: text JSON: agent id + endpoint, or none (or a coded A2A error)
-    Chris-->>Chat: text + openbeavs.chris.routing.v1 data part (no expert call)
-    Chat->>Chat: Persist user turn and assistant turn (routing in meta)
+    alt Expert selected or selection-only diagnostics enabled
+        Chris-->>Chat: text + openbeavs.chris.routing.v1 data part (no expert call)
+    else No match or registry failure (default)
+        Chris->>Chris: Answer with Gemini using question and history
+        Chris-->>Chat: Plain answer text
+    end
+    Note over Chris,Chat: If no answer is available: failed A2A call, HTTP 503, no persistence
+    Chat->>Chat: Persist successful turns only (routing in meta)
     Chat-->>UI: JSON with response, chat_id and structured routing
 ```
 
@@ -38,11 +42,19 @@ The configured registry is a separate A2A service. The existing `/registry/*`
 FastAPI routes manage stored agents and reviews; they do not implement this A2A
 selection service (that is `app.registry.a2a_app`, run on its own).
 
-Chris reports one of three results and never presents any of them as an answer:
-`selected` (the registry's chosen expert), `no_match`, or `error` with a code and a
-source (`registry` if the registry reported it, `chris` if Chris could not get a usable
-reply). With `CHRIS_SELECTION_ONLY=false`, a no-match or error is answered by Gemini
-instead (the earlier behavior); a selected expert is still only reported.
+Chris logs selection details and backend failure codes in its terminal. Successful
+selections become a plain message such as "I found the Math Expert specialist for
+your question." This acknowledges the selection; it is not an expert answer.
+
+With `CHRIS_SELECTION_ONLY=false` (the default), no-match and registry failures use
+Gemini. With `true`, a diagnostic no-match remains a plain message and failures
+become failed A2A calls. If Gemini also fails, Chris likewise fails the A2A call.
+Chat returns a generic HTTP 503 notice before persistence. Failed turns are neither
+saved as user/assistant messages nor replayed as history. Backend configuration
+errors similarly return a generic HTTP 500 without saving a turn.
+
+Internal registry codes remain in Chris's client for classification and logging.
+They are not included in Chris-to-Chat routing data or browser-facing schemas.
 
 ## Frontend API
 
@@ -73,28 +85,27 @@ A response has this shape:
 
 ```json
 {
-  "response": "A one-sentence statement of the routing result (not an answer)",
+  "response": "I found the Math Expert specialist for your question.",
   "chat_id": "persisted-chat-id",
-  "routed_to": null,
-  "agent_name": null,
+  "routed_to": "math-expert",
+  "agent_name": "Math Expert",
   "routing_confidence": null,
   "routing_reason": null,
   "routing": {
     "status": "selected",
     "agent": {"id": "math-expert", "name": "Math Expert", "description": "..."},
     "confidence": null,
-    "reason": null,
-    "error": null
+    "reason": null
   }
 }
 ```
 
-`routing` is the structured decision: `status` is `selected`, `no_match` or `error`;
-`agent` is set only when selected (the expert's endpoint is never sent to the browser);
-`error` is `{"code", "retryable", "source"}` and set only for `error`. It is null for a
-plain reply (fallback mode). The older flat fields mirror a *selected* result and are
-null otherwise. `chat_id` may be null if persistence fails after Chris
-has answered. Existing chats use stored history; a database history-read failure
+`routing` retains successful selection metadata: `status` is `selected` or diagnostic
+`no_match`. Only selected agents have an `agent`; endpoints are never sent to the
+browser. There is no error field. The UI renders `response` in a normal bubble and
+does not display routing metadata. `routing` is null for Gemini answers. The older
+flat fields mirror a selected result and are null otherwise. `chat_id` may be null
+if persistence fails after Chris has answered. Existing chats use stored history; a database history-read failure
 falls back to the client-provided history. The client should omit the current
 message from `history`, because it is supplied separately.
 
@@ -152,7 +163,7 @@ never guesses. There is no name, description, confidence or reason on the wire; 
 the display name and description up in its own `agents` table (so `routing.agent` has them,
 and `confidence` and `reason` stay null). A registry that cannot select answers with an
 A2A error whose message is a short code (`selection_unavailable`, `agent_unavailable`,
-...); Chris reports it with that code and `source = "registry"`.
+...); Chris classifies it internally with `source = "registry"` for terminal logging.
 
 Failures Chris itself observes become coded `error` results: `registry_not_configured`,
 `registry_timeout`, `registry_unreachable`, `registry_auth_rejected` (401/403),
@@ -162,7 +173,7 @@ application retry or task polling. Chris sends **no credential**: that is correc
 for the registry's local-development mode, and attaching a Google identity token for a
 deployed registry is not implemented.
 
-## Gemini fallback (only with `CHRIS_SELECTION_ONLY=false`)
+## Gemini fallback (enabled by default)
 
 `app/chris/gemini.py` uses the asynchronous `google-genai` SDK's `generate_content`
 API. It supplies Chris's system instruction, maps assistant history to the model
@@ -189,7 +200,7 @@ Set these privately in the process environment or ignored `backend/.env`:
 | `REGISTRY_A2A_URL` | `http://127.0.0.1:8001/a2a/registry`; registry base URL for SDK discovery. |
 | `REGISTRY_A2A_TIMEOUT_SECONDS` | `14`; one deadline for registry discovery plus selection. |
 | `CHRIS_A2A_TIMEOUT_SECONDS` | `35`; chat's deadline for Chris (must exceed the registry deadline). |
-| `CHRIS_SELECTION_ONLY` | `true`; set `false` to answer a no-match or registry failure with Gemini. |
+| `CHRIS_SELECTION_ONLY` | `false`; set `true` to report registry outcomes without Gemini fallback. |
 | `GEMINI_API_KEY` | Needed only when `CHRIS_SELECTION_ONLY=false`; never put its value in docs, logs or commits. |
 | `CHRIS_MODEL` | Gemini model ID, needed only when `CHRIS_SELECTION_ONLY=false`. |
 | `DATABASE_URL` | Chat/registry database; defaults to `sqlite:///./openbeavs.db`. |

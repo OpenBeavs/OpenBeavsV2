@@ -1,20 +1,15 @@
-"""Chris asks the registry which expert fits and reports the decision.
+"""Chris asks the registry first and reports a selected expert.
 
-Current stage: **selection only.** Chris relays the registry's decision (selected
-expert, no match, or a coded error) as a structured result and stops. It does not call
-the selected expert, and it does not turn a registry failure or a no-match into a
-Gemini answer, because that would hide whether the registry path worked.
-
-``CHRIS_SELECTION_ONLY`` (default ``true``) controls this. Setting it to ``false``
-restores the earlier behavior for a no-match or registry failure: answer directly with
-Gemini (``gemini.py``, which needs ``GEMINI_API_KEY`` and ``CHRIS_MODEL``). A selected
-expert is still only reported; expert dispatch does not exist yet.
+By default, a no-match or registry failure is answered directly with Gemini,
+which needs GEMINI_API_KEY and CHRIS_MODEL. Set CHRIS_SELECTION_ONLY=true to
+inspect registry outcomes without fallback. Selected experts are not called yet.
 """
 
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
 
+from a2a.utils.errors import InternalError
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
@@ -27,8 +22,8 @@ log = logging.getLogger(__name__)
 
 
 def selection_only() -> bool:
-    """True unless ``CHRIS_SELECTION_ONLY`` is explicitly false/0/no."""
-    return get_env("CHRIS_SELECTION_ONLY", "true").lower() not in ("false", "0", "no")
+    """Whether diagnostic selection-only mode is explicitly enabled."""
+    return get_env("CHRIS_SELECTION_ONLY", "false").lower() not in ("false", "0", "no")
 
 
 def _history(ctx: InvocationContext) -> list[dict[str, str]]:
@@ -60,6 +55,13 @@ class ChrisAgent(BaseAgent):
         history = _history(ctx)
 
         result = await registry_client.select_agent(message, history)
+        if result.status == routing.ERROR:
+            log.warning(
+                "Registry selection failed: code=%s source=%s retryable=%s",
+                result.error_code, result.source, result.retryable,
+            )
+            if selection_only():
+                raise InternalError("Chris is temporarily unavailable.")
         if result.status != routing.SELECTED and not selection_only():
             answer = await self._gemini_answer(message, history)
             yield Event(
@@ -67,6 +69,8 @@ class ChrisAgent(BaseAgent):
                 content=types.Content(role="model", parts=[types.Part(text=answer)]),
             )
             return
+        log.info("Registry selection: status=%s agent=%s", result.status,
+                 result.agent.id if result.agent else None)
         yield Event(
             author=self.name,
             content=types.Content(role="model", parts=routing.to_event_parts(result)),
@@ -80,7 +84,8 @@ class ChrisAgent(BaseAgent):
                 return await gemini.answer(message, history)
         except (ConfigError, gemini.GeminiUnavailable, TimeoutError):
             log.warning("Chris could not obtain a Gemini answer.")
-            return "Chris is temporarily unavailable. Please try again shortly."
+            # A failed A2A call lets Chat show a notice without saving a fake answer.
+            raise InternalError("Chris is temporarily unavailable.") from None
 
 
 chris_agent = ChrisAgent(

@@ -27,6 +27,12 @@ def routing_of(response: httpx.Response) -> dict:
     return response.json()["routing"]
 
 
+def assert_unavailable(response: httpx.Response) -> None:
+    """A failure is a notice, never a successful or persisted assistant reply."""
+    assert response.status_code == 503, response.text
+    assert response.json() == {"detail": "Chris is temporarily unavailable. Please try again shortly."}
+
+
 class TestSuccessfulSelection:
     def test_the_selected_expert_comes_back_structured(self, experts: Pipeline) -> None:
         experts.choose("math-expert", 0.93, "Arithmetic question.")
@@ -41,14 +47,12 @@ class TestSuccessfulSelection:
             },
             "confidence": None,
             "reason": None,
-            "error": None,
         }
 
     def test_it_is_a_selection_not_an_answer(self, experts: Pipeline) -> None:
         experts.choose("math-expert")
         body = experts.ask("What is 15% of 240?").json()
-        assert "not an answer" in body["response"]
-        assert "No expert has been called" in body["response"]
+        assert body["response"] == "I found the Math Expert specialist for your question."
         assert "36" not in body["response"]  # nothing pretends to be the expert's work
 
     def test_the_older_flat_fields_mirror_the_selection(
@@ -200,8 +204,8 @@ class TestRegistryErrorsAreVisible:
             ("garbage", "invalid_model_reply", True),
         ],
     )
-    def test_registry_reported_errors_keep_their_code_and_source(
-        self, experts: Pipeline, raises: str, code: str, retryable: bool
+    def test_registry_reported_errors_are_logged_without_exposing_diagnostics(
+        self, experts: Pipeline, raises: str, code: str, retryable: bool, caplog
     ) -> None:
         from app.config import ConfigError
         from app.registry.llm import LLMError
@@ -214,15 +218,12 @@ class TestRegistryErrorsAreVisible:
             return "this is not json"
 
         experts.set_model(model)
-        body = experts.ask("question").json()
-        assert body["routing"]["status"] == "error"
-        assert body["routing"]["error"] == {
-            "code": code,
-            "retryable": retryable,
-            "source": "registry",
-        }
-        assert body["routing"]["agent"] is None and body["routed_to"] is None
-        assert code in body["response"]
+        response = experts.ask("question")
+        assert_unavailable(response)
+        assert code not in response.text
+        assert f"code={code} source=registry retryable={retryable}" in caplog.text
+        with experts.factory() as db:
+            assert db.query(Message).count() == 0
 
     def test_errors_are_not_turned_into_a_gemini_answer(
         self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
@@ -236,8 +237,7 @@ class TestRegistryErrorsAreVisible:
             raise RuntimeError("model blew up")
 
         experts.set_model(failing)
-        error = routing_of(experts.ask("q"))["error"]
-        assert error["code"] == "internal_error" and error["source"] == "registry"
+        assert_unavailable(experts.ask("q"))
 
     def test_the_model_error_text_never_reaches_the_browser(
         self, experts: Pipeline
@@ -259,22 +259,29 @@ class TestRegistryErrorsAreVisible:
             raise OperationalError("select", {}, Exception("db down"))
 
         monkeypatch.setattr(a2a, "load_candidates", broken)
-        error = routing_of(experts.ask("q"))["error"]
-        assert error == {
-            "code": "registry_unavailable",
-            "retryable": True,
-            "source": "registry",
-        }
+        assert_unavailable(experts.ask("q"))
 
     def test_too_many_experts_is_a_visible_non_retryable_error(
         self, pipeline: Pipeline
     ) -> None:
         for i in range(51):
             pipeline.add_agent(f"expert-{i:02}")
-        error = routing_of(pipeline.ask("q"))["error"]
-        assert error["code"] == "registry_capacity_exceeded"
-        assert error["retryable"] is False and error["source"] == "registry"
+        assert_unavailable(pipeline.ask("q"))
         assert pipeline.prompts == []
+
+    def test_chris_configuration_details_are_only_logged(self, experts, monkeypatch, caplog):
+        from app.chat import service
+        from app.config import ConfigError
+
+        async def misconfigured(*args):
+            raise ConfigError("INTERNAL-CONFIGURATION-DETAIL")
+
+        monkeypatch.setattr(service, "send_message", misconfigured)
+        response = experts.ask("hello")
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Chris is temporarily unavailable. Please try again shortly."
+        assert "INTERNAL-CONFIGURATION-DETAIL" not in response.text
+        assert "INTERNAL-CONFIGURATION-DETAIL" in caplog.text
 
 
 class TestAnAgentBecomingIneligibleDuringSelection:
@@ -294,15 +301,9 @@ class TestAnAgentBecomingIneligibleDuringSelection:
             return reply("math-expert", 0.97, "Arithmetic.")
 
         experts.set_model(model)
-        body = experts.ask("What is 2+2?").json()
-        assert body["routing"]["status"] == "error"
-        assert body["routing"]["error"] == {
-            "code": "agent_unavailable",
-            "retryable": True,
-            "source": "registry",
-        }
-        assert body["routing"]["agent"] is None and body["routed_to"] is None
-        assert "Math Expert" not in body["response"]
+        response = experts.ask("What is 2+2?")
+        assert_unavailable(response)
+        assert "Math Expert" not in response.text
 
     def test_a_later_question_no_longer_offers_the_revoked_expert(
         self, experts: Pipeline
@@ -319,13 +320,9 @@ class TestRegistryTimeouts:
         monkeypatch.setenv("REGISTRY_A2A_TIMEOUT_SECONDS", "1")
         experts.registry_delay = 3  # the registry's reply takes 3 s; Chris waits 1 s
         started = time.monotonic()
-        error = routing_of(experts.ask("q"))["error"]
+        response = experts.ask("q")
         assert time.monotonic() - started < 2.5  # Chris gave up at its own deadline
-        assert error == {
-            "code": "registry_timeout",
-            "retryable": True,
-            "source": "chris",
-        }
+        assert_unavailable(response)
 
     def test_slow_but_within_the_deadline_still_succeeds(
         self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
@@ -345,12 +342,7 @@ class TestRegistryTimeouts:
             raise ModelBusyError
 
         experts.set_model(busy)
-        error = routing_of(experts.ask("q"))["error"]
-        assert error == {
-            "code": "selection_busy",
-            "retryable": True,
-            "source": "registry",
-        }
+        assert_unavailable(experts.ask("q"))
 
 
 class TestChatDeadline:
@@ -400,7 +392,7 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
             "name": "Math Wizard",
             "description": "Numbers.",
         }
-        assert "Math Wizard" in body["response"] and "not an answer" in body["response"]
+        assert body["response"] == "I found the Math Wizard specialist for your question."
         assert body["agent_name"] == "Math Wizard"
 
     def test_the_stored_assistant_turn_uses_the_looked_up_name(
@@ -463,7 +455,7 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
 
 @pytest.mark.parametrize(
     "content",
-    ["x" * 4000, "😀" * 4000, "\x00" * 4000],
+    ["x" * 4000, "Ã°Å¸Ëœâ‚¬" * 4000, "\x00" * 4000],
     ids=["ascii", "unicode", "controls"],
 )
 def test_large_history_fits_registry_before_it_is_parsed(experts, monkeypatch, content):
@@ -486,14 +478,14 @@ def test_large_history_fits_registry_before_it_is_parsed(experts, monkeypatch, c
 
 
 def test_history_truncation_keeps_valid_utf8_and_recent_turns():
-    history = [{"role": "user", "content": str(i) + "😀" * 1000} for i in range(12)]
+    history = [{"role": "user", "content": str(i) + "Ã°Å¸Ëœâ‚¬" * 1000} for i in range(12)]
     bounded = bounded_history(history)
     assert len(bounded) == 6 and bounded[0]["content"].startswith("6")
     assert all(len(t["content"].encode("utf-8")) <= 1000 for t in bounded)
 
 
 def test_oversized_question_is_rejected_before_a2a(experts):
-    response = experts.ask("😀" * 1001)
+    response = experts.ask("Ã°Å¸Ëœâ‚¬" * 1001)
     assert response.status_code == 422
     assert not experts.prompts
 
@@ -530,3 +522,31 @@ def test_cli_reads_the_registry_text_contract(experts, monkeypatch):
         registry_a2a_client.ask("http://registry.test/a2a/registry", "hi", None)
     )
     assert json.dumps(result) == '{"agent": "none"}'
+
+
+def test_failed_gemini_turn_is_not_saved_or_replayed(experts, monkeypatch, caplog):
+    """A failed fallback is a notice; only successful turns become model history."""
+    monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
+    experts.choose("none")
+    histories = []
+
+    async def answer(message, history):
+        histories.append(history)
+        if message == "failed question":
+            raise gemini.GeminiUnavailable("provider unavailable")
+        return "A successful answer."
+
+    monkeypatch.setattr(gemini, "answer", answer)
+    first = experts.ask("first question", guest_session_id="fallback-guest")
+    assert first.status_code == 200
+    chat_id = first.json()["chat_id"]
+    assert_unavailable(experts.ask("failed question", chat_id=chat_id, guest_session_id="fallback-guest"))
+    with experts.factory() as db:
+        assert db.query(Message).filter_by(chat_id=chat_id).count() == 2
+    recovered = experts.ask("next question", chat_id=chat_id, guest_session_id="fallback-guest")
+    assert recovered.status_code == 200
+    assert histories[-1] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "A successful answer."},
+    ]
+    assert "Chris could not obtain a Gemini answer." in caplog.text

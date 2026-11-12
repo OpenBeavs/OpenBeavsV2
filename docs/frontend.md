@@ -41,11 +41,10 @@ as a browser API URL.
 The typed client uses only `GET /health`, `GET /chat/agents`, and
 `POST /chat/message`. Agent endpoint URLs remain metadata, never browser call
 targets. Responses are complete JSON, not streams. The backend returns a structured
-`routing` result, which is rendered as a selected-expert, no-match, or error card.
-Selected-expert display fields come from Chat's agents table; expert endpoints are
-not exposed by the routing response. No expert is called. Optional Gemini fallback
-answers are displayed as text when `CHRIS_SELECTION_ONLY=false`. Development mode
-shows a banner explaining the local demo's authentication and selection boundaries.
+`routing` metadata, but the UI renders all successful replies as plain message bubbles.
+It shows no expert IDs, confidence, routing cards or diagnostic explanations. Backend
+failures use a generic notice outside the transcript; failed turns are not added to
+browser history or replayed on the next request. No expert is called yet.
 
 The layout owns the in-memory conversation, so moving between Chris and Agents
 preserves it. Requests include prior successful turns, a random guest session
@@ -125,7 +124,7 @@ revocation, malformed model output, and timeout/error recovery through the brows
 Both suites run in CI; neither requires a real model key.
 
 For live acceptance, follow the runbook and ask an OSU question followed by a related
-question in the same chat. Expect a selection card, not the expert's answer. Confirm
+question in the same chat. Expect a plain acknowledgement naming the selected specialist; expert dispatch is not implemented. Confirm
 the chat ID and guest identifier are reused and the directory loads from SQLite.
 This requires a working registry model/key and is distinct from deterministic tests.
 

@@ -41,26 +41,18 @@ class RoutedAgent(BaseModel):
     description: str | None = None
 
 
-class RoutingError(BaseModel):
-    """Why no selection was produced. ``source`` says who reported it."""
-
-    code: str
-    retryable: bool
-    source: Literal["registry", "chris"]
-
-
 class RoutingInfo(BaseModel):
     """Chris's routing decision, kept structured for the frontend to display.
 
-    ``status`` is ``selected``, ``no_match`` or ``error``. A selection is a routing
+    Failures are not routing messages: they use HTTP errors without persistence.
+    ``status`` is ``selected`` or diagnostic ``no_match``. A selection is a routing
     decision only: no expert has been called, so it is never an answer.
     """
 
-    status: Literal["selected", "no_match", "error"]
+    status: Literal["selected", "no_match"]
     agent: RoutedAgent | None = None
     confidence: float | None = None
     reason: str | None = None
-    error: RoutingError | None = None
 
 
 class ChrisMessageResponse(BaseModel):

@@ -16,12 +16,10 @@ an ``error`` result. The reply carries no name, description, confidence or reaso
 record's id is the key, and anything else is looked up from the database by whoever
 needs it (Chat does, for display).
 
-**Chris -> Chat** (``openbeavs.chris.routing.v1``, defined here): Chris's reply carries a
-human-readable text part *and* a data part with the same decision, so Chat can keep the
-structure (selected agent id, no match, error and who reported it) instead of parsing
-prose. ``error.source`` says whether the registry reported the failure (``registry``) or
-Chris could not get a usable answer from it (``chris``). The selected agent's endpoint is
-deliberately not forwarded to Chat; only Chris will need it, later.
+**Chris -> Chat** (``openbeavs.chris.routing.v1``): successful replies contain
+selected-agent or diagnostic no-match data. Backend failures are logged and use
+A2A failure handling; they are never serialized as chat messages or routing data.
+Selected endpoints are never forwarded to Chat.
 
 Nothing here calls an expert. A ``selected`` result is a routing decision, not an answer.
 """
@@ -136,34 +134,22 @@ def parse_registry_text(text: str) -> RoutingResult:
 
 def to_chat_payload(result: RoutingResult) -> dict[str, Any]:
     """The ``openbeavs.chris.routing.v1`` data part Chris sends to Chat."""
-    error = None
-    if result.status == ERROR:
-        error = {
-            "code": result.error_code,
-            "retryable": result.retryable,
-            "source": result.source or SOURCE_CHRIS,
-        }
+    if result.status not in (SELECTED, NO_MATCH):
+        raise ValueError("Failures cannot be serialized as chat replies.")
     return {
         "schema": CHRIS_SCHEMA_ID,
         "status": result.status,
         "agent": {"id": result.agent.id} if result.agent is not None else None,
-        "error": error,
     }
 
 
 def summary_text(result: RoutingResult) -> str:
     """One plain sentence for the text part. It states the routing, never an answer."""
     if result.status == SELECTED and result.agent is not None:
-        return (
-            f"The registry selected the expert {result.agent.id} for this question. "
-            "No expert has been called yet, so this is not an answer."
-        )
+        return "I found a specialist for your question."
     if result.status == NO_MATCH:
         return "The registry found no registered expert that fits this question."
-    return (
-        "Chris could not get an expert selection "
-        f"({result.error_code}, reported by {result.source or SOURCE_CHRIS})."
-    )
+    raise ValueError("Failures cannot be summarized as chat replies.")
 
 
 def to_event_parts(result: RoutingResult) -> list[types.Part]:

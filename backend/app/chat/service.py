@@ -200,7 +200,8 @@ async def handle_message(
     except ConfigError as e:
         log.error("Chris configuration error: %s", e)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Chris is temporarily unavailable. Please try again shortly.",
         )
     except ChrisUnavailable:
         log.warning("Chris A2A call did not produce a completed answer.")
@@ -222,10 +223,10 @@ async def handle_message(
         if record is not None:
             routing.agent.name = record.name
             routing.agent.description = record.description
-            text = (
-                f"The registry selected {record.name} for this question. "
-                "No expert has been called yet, so this is not an answer."
-            )
+            text = f"I found the {record.name} specialist for your question."
+        else:
+            text = "I found a specialist for your question."
+        log.info("Selected expert: id=%s name=%s", routing.agent.id, routing.agent.name)
     # Persist after A2A succeeds; catch DB errors without failing the response.
     # The decision is kept in the message's meta. ``chats.agent_id`` is not set: a
     # selection is not a conversation with that expert (none has been called), and the

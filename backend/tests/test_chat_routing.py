@@ -14,7 +14,6 @@ GOOD = {
     "schema": "openbeavs.chris.routing.v1",
     "status": "selected",
     "agent": {"id": "math"},
-    "error": None,
 }
 ERROR = {
     "code": "registry_timeout",
@@ -34,9 +33,9 @@ class TestParseRouting:
         info = parse_routing({**GOOD, "status": "no_match", "agent": None})
         assert info.status == "no_match" and info.agent is None
 
-    def test_error(self) -> None:
-        info = parse_routing({**GOOD, "status": "error", "agent": None, "error": ERROR})
-        assert info.error.code == "registry_timeout" and info.error.source == "chris"
+    def test_error_payloads_are_rejected(self) -> None:
+        with pytest.raises(ChrisUnavailable):
+            parse_routing({**GOOD, "status": "error", "agent": None, "error": ERROR})
 
     @pytest.mark.parametrize(
         "bad",
@@ -84,13 +83,11 @@ class TestChrisSerialization:
         payload = routing.to_chat_payload(self.SELECTED)
         assert payload["agent"] == {"id": "a"}
         assert "secret.example.test" not in json.dumps(payload)
-        assert set(payload) == {"schema", "status", "agent", "error"}
+        assert set(payload) == {"schema", "status", "agent"}
 
     def test_chris_output_is_accepted_by_chat(self) -> None:
         for result in (
             routing.RoutingResult(status="no_match"),
-            routing.chris_error("registry_timeout", retryable=True),
-            routing.registry_error("selection_busy"),
             self.SELECTED,
         ):
             assert (
@@ -98,7 +95,14 @@ class TestChrisSerialization:
             )
 
     def test_the_summary_never_reads_like_an_answer(self) -> None:
-        assert "not an answer" in routing.summary_text(self.SELECTED)
+        assert routing.summary_text(self.SELECTED) == "I found a specialist for your question."
+
+    @pytest.mark.parametrize("failure", [routing.chris_error("registry_timeout", True), routing.registry_error("selection_busy")])
+    def test_failures_cannot_be_forwarded_as_messages(self, failure) -> None:
+        with pytest.raises(ValueError):
+            routing.to_chat_payload(failure)
+        with pytest.raises(ValueError):
+            routing.summary_text(failure)
 
 
 class TestRegistryContractParsing:

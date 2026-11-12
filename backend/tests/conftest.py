@@ -7,8 +7,7 @@ import pytest
 def legacy_chris_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run the tests as Chris's *fallback* mode (``CHRIS_SELECTION_ONLY=false``).
 
-    The default is selection-only (no Gemini answer, failures stay visible), which
-    ``tests/integration`` and ``tests/test_chris_selection_only.py`` cover. The older
-    tests here check the Gemini fallback path, which is still available behind this flag.
+    Keep these tests independent of local environment overrides. Integration tests
+    explicitly enable selection-only mode when inspecting registry outcomes.
     """
     monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")

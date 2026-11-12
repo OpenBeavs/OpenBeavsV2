@@ -155,6 +155,8 @@ def create_standalone_app(
     the database and required configuration, never calls Gemini, and answers 503
     until everything a request needs is in place. Neither route needs a token.
     """
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("app").setLevel(logging.INFO)
     if session_factory is None:
         from app.db import SessionLocal
 
