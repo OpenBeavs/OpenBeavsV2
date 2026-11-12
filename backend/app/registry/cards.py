@@ -142,6 +142,82 @@ def derive_card_url(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}{WELL_KNOWN}agent.json"
 
 
+# The only transport the hub speaks to experts: JSON-RPC over HTTP. A2A 1.0 names it
+# in ``supportedInterfaces[].protocolBinding``; 0.3 cards name it in
+# ``preferredTransport`` / ``additionalInterfaces[].transport``.
+SUPPORTED_BINDING = "JSONRPC"
+# A2A versions the hub can talk to, best first. A listed version matches on its
+# major.minor (1.0, 1.1 ... count as "1"; 0.3.0 counts as "0.3").
+_PROTOCOL_RANK = {"1": 2, "0.3": 1}
+
+
+def _protocol_rank(version: Any) -> int:
+    """Return how much the hub prefers ``version`` (0 means it cannot be used)."""
+    if not isinstance(version, str):
+        return 0
+    parts = version.strip().split(".")
+    return _PROTOCOL_RANK.get(parts[0], 0) or _PROTOCOL_RANK.get(".".join(parts[:2]), 0)
+
+
+def _is_jsonrpc(binding: Any) -> bool:
+    return isinstance(binding, str) and binding.strip().upper() == SUPPORTED_BINDING
+
+
+def select_endpoint(raw: dict[str, Any]) -> str:
+    """Choose which advertised address the registry stores as the agent's endpoint.
+
+    Two card formats exist, and the choice is explicit rather than "the first url":
+
+    - **A2A 1.0** lists ``supportedInterfaces``. Only entries with the JSON-RPC
+      binding and a protocol version the hub supports (1.x, or 0.3) qualify; the
+      newest version wins and the card's own order breaks ties. If the list is
+      present but has no qualifying entry the card is rejected. It is never
+      replaced by a different field.
+    - **Older cards** (no ``supportedInterfaces``) use the top-level ``url``. It must
+      be JSON-RPC (``preferredTransport`` absent or ``JSONRPC``), otherwise a
+      JSON-RPC entry in ``additionalInterfaces`` is used.
+
+    The result is only *chosen* here; the caller still applies every URL safety check.
+
+    Raises:
+        CardError: If no usable endpoint is advertised.
+    """
+    listed = raw.get("supportedInterfaces")
+    if listed not in (None, []):
+        if not isinstance(listed, list):
+            raise CardError("supportedInterfaces must be a list.")
+        best: tuple[int, str] | None = None
+        for item in listed:
+            if not isinstance(item, dict):
+                continue
+            if not _is_jsonrpc(item.get("protocolBinding")):
+                continue
+            rank = _protocol_rank(item.get("protocolVersion"))
+            url = item.get("url")
+            usable = rank and isinstance(url, str) and url.strip()
+            if usable and (best is None or rank > best[0]):
+                best = (rank, url.strip())
+        if best is None:
+            raise CardError(
+                "The agent card lists no supported interface (it needs JSON-RPC "
+                "with A2A 1.x or 0.3)."
+            )
+        return best[1]
+
+    url = raw.get("url")
+    transport = raw.get("preferredTransport")
+    if transport is None or _is_jsonrpc(transport):
+        if not isinstance(url, str) or not url.strip():
+            raise CardError("The agent card must advertise a non-empty endpoint url.")
+        return url.strip()
+    for item in raw.get("additionalInterfaces") or []:
+        if isinstance(item, dict) and _is_jsonrpc(item.get("transport")):
+            extra = item.get("url")
+            if isinstance(extra, str) and extra.strip():
+                return extra.strip()
+    raise CardError("The agent card offers no JSON-RPC endpoint url.")
+
+
 def parse_card(
     raw: Any,
     card_url: str,
@@ -151,7 +227,9 @@ def parse_card(
 ) -> AgentCard:
     """Validate card fields and the advertised absolute service URL.
 
-    Preserve the endpoint path and query; never guess from the discovery URL.
+    The endpoint comes from ``select_endpoint`` (A2A 1.0 ``supportedInterfaces`` or
+    the older top-level ``url``). Preserve its path and query; never guess from the
+    discovery URL. Every check below applies to the chosen endpoint.
     The resolver and HTTP policy are shared with discovery-address validation.
 
     Raises:
@@ -187,10 +265,7 @@ def parse_card(
     if not isinstance(capabilities, dict):
         raise CardError("Capabilities must be an object.")
 
-    endpoint_url = raw.get("url")
-    if not isinstance(endpoint_url, str) or not endpoint_url.strip():
-        raise CardError("The agent card must advertise a non-empty endpoint url.")
-    endpoint_url = endpoint_url.strip()
+    endpoint_url = select_endpoint(raw)
     # Reject ambiguous URL text before different URL parsers can reinterpret it.
     if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in endpoint_url):
         raise CardError("The endpoint url must not contain whitespace or controls.")

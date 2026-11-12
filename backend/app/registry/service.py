@@ -34,20 +34,33 @@ class DuplicateAgentError(ValueError):
     """Raised when an agent with the same card URL is already registered."""
 
 
-def routable_agents(db: Session) -> list[Agent]:
-    """Return the active agents Chris may route to (approved or provisional).
-
-    Pending and revoked agents are excluded, as is Chris himself. Until real
-    caller authorization exists, only public agents without a role are eligible.
-    """
-    stmt = select(Agent).where(
+def _routable_conditions() -> tuple:
+    """The one definition of "eligible", shared by the list and the single-row check."""
+    return (
         Agent.is_active.is_(True),
         Agent.status.in_(ROUTABLE_STATUSES),
         Agent.id != CHRIS_AGENT_ID,
         Agent.trust_tier == "public",
         Agent.required_role.is_(None),
     )
-    return list(db.scalars(stmt))
+
+
+def routable_agents(db: Session) -> list[Agent]:
+    """Return the active agents Chris may route to (approved or provisional).
+
+    Pending and revoked agents are excluded, as is Chris himself. Until real
+    caller authorization exists, only public agents without a role are eligible.
+    """
+    return list(db.scalars(select(Agent).where(*_routable_conditions())))
+
+
+def get_routable_agent(db: Session, agent_id: str) -> Agent | None:
+    """Return one agent if it is eligible *right now*, otherwise None.
+
+    Uses the same rules as ``routable_agents``. Selection takes seconds (it waits for
+    a model), so callers use this to re-check a choice just before acting on it.
+    """
+    return db.scalar(select(Agent).where(Agent.id == agent_id, *_routable_conditions()))
 
 
 def has_any_agents(db: Session) -> bool:
