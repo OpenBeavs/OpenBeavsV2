@@ -63,14 +63,11 @@
   <div class="chat-scroll" bind:this={scrollArea} on:scroll={() => { atBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight <= 8; }}>
     <div class="transcript" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions">
       {#if $conversation.messages.length === 0 && !$conversation.pending}
-        <div class="empty-chat"><span class="accent"><Icon name="sparkles" size={44} /></span><h2>How can Chris help?</h2><p>Ask a question about OSU or anything on your mind.</p><p class="routing-note">Chris can answer directly and preview which registered agent fits your question. Agent calls are coming later.</p></div>
+        <div class="empty-chat"><span class="accent"><Icon name="sparkles" size={44} /></span><h2>How can Chris help?</h2><p>Ask a question about OSU or anything on your mind.</p><p class="routing-note">Chris finds a specialist for your question or answers directly with Gemini.</p></div>
       {/if}
       {#each $conversation.messages as message (message.id)}
         <div class="message-row" class:user={message.role === 'user'}>
           <div class="message-wrapper">
-            {#if message.role === 'assistant' && message.routing?.routed_to}
-              <span class="badge routing-badge" title={message.routing.routing_reason ?? undefined}>Routing preview · {message.routing.agent_name ?? message.routing.routed_to}</span>
-            {/if}
             <div class="message-bubble" data-testid="message" aria-label={message.role === 'user' ? 'You' : 'Chris'}>
               {#if message.role === 'assistant'}
                 <MarkdownReply content={message.content} />

@@ -132,10 +132,11 @@ test('opens, traps focus, and closes the mobile sidebar with Escape', async ({ p
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('shows routing previews and persistence fallback without direct agent calls', async ({ page }) => {
+test('uses normal bubbles and persistence fallback without routing debug output', async ({ page }) => {
   await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, chat_id: null, routed_to: 'library', agent_name: 'Library' } }));
   await page.goto('/'); await send(page, 'Find research');
-  await expect(page.getByText('Routing preview · Library')).toBeVisible();
+  await expect(page.getByText('Routing preview · Library')).toHaveCount(0);
+  await expect(page.getByTestId('message')).toHaveCount(2);
   await expect(page.getByText(/Conversation storage is unavailable/)).toBeVisible();
 });
 

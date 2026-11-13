@@ -4,6 +4,7 @@ Each test gets a fresh in-memory SQLite database and a FastAPI client whose card
 fetcher is replaced by a fake, so no test touches the network or real DNS.
 """
 
+import logging
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -17,6 +18,20 @@ from app.db.session import get_db
 from app.main import app
 from app.registry.cards import AgentCard, CardError
 from app.registry.router import get_card_fetcher
+
+
+@pytest.fixture(autouse=True)
+def app_loggers_enabled() -> None:
+    """Keep ``app.*`` loggers on for every test.
+
+    The migration tests run Alembic, whose ``fileConfig`` disables every logger that
+    already exists. Without this, a log assertion passes or fails depending on test
+    order (and "this text is not in the log" passes vacuously).
+    """
+    for name, logger in logging.Logger.manager.loggerDict.items():
+        if name.startswith("app.") and isinstance(logger, logging.Logger):
+            logger.disabled = False
+
 
 ADMIN_EMAIL = "admin@example.test"
 USER_EMAIL = "alice@example.test"

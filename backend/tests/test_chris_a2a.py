@@ -9,6 +9,7 @@ from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import Message, Part, Role, SendMessageRequest, TaskState
 from fastapi.testclient import TestClient
 
+from app.chris.routing import RoutingResult
 from app.main import app
 
 CARD_PATH = "/chris/a2a/.well-known/agent-card.json"
@@ -49,7 +50,7 @@ def test_generated_card_and_repeated_startup():
 @pytest.mark.parametrize("text", ["Hello Chris", "   "])
 def test_sdk_discovery_and_message(text, monkeypatch):
     """A real SDK client discovers the mounted endpoint and receives its result."""
-    selection = AsyncMock(return_value='{"agent":"none"}')
+    selection = AsyncMock(return_value=RoutingResult(status="no_match"))
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
     monkeypatch.setattr("app.chris.gemini.answer", answer)
