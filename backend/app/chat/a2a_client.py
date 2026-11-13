@@ -36,10 +36,9 @@ from app.history import bounded_history
 log = logging.getLogger(__name__)
 
 # Chat -> Chris deadline. Chris spends up to REGISTRY_A2A_TIMEOUT_SECONDS (14 s) on the
-# registry plus up to 15 s for optional Gemini fallback. The 35 s default leaves
-# response overhead before the browser's 90 s deadline. When expert dispatch is added this
-# must grow by the expert-call budget.
-DEFAULT_TIMEOUT_SECONDS = 35.0
+# registry plus up to 30 s for an expert (or 15 s for Gemini fallback). Leave
+# response overhead before the browser's 90 s deadline.
+DEFAULT_TIMEOUT_SECONDS = 50.0
 MAX_TIMEOUT_SECONDS = 120.0
 DEFAULT_CHRIS_A2A_URL = "http://127.0.0.1:8000/chris/a2a/"
 
