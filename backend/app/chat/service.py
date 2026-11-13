@@ -215,7 +215,10 @@ async def handle_message(
             detail="Chris is temporarily unavailable. Please try again shortly.",
         )
 
-    routing, text = reply.routing, reply.text
+    if hasattr(reply, "routing") and hasattr(reply, "text"):
+        routing, text = reply.routing, reply.text
+    else:
+        routing, text = None, str(reply)
     if routing is not None and routing.status == "selected" and routing.agent:
         # Chris reports only the selected agent's id; the display name and description
         # come from this application's own agents table.

@@ -12,6 +12,7 @@ from app.auth.verifier import (
     create_state_token,
     verify_state_token,
 )
+from app.chat.a2a_client import ChrisReply
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -181,7 +182,9 @@ def test_authorize_url_generation():
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_authenticated_chat_persistence(mock_send, test_db: Session):
     """Verify chat turn with Bearer token sets user_id and session_type=authenticated."""
-    mock_send.return_value = "Hello from Chris to authenticated user!"
+    mock_send.return_value = ChrisReply(
+        text="Hello from Chris to authenticated user!", routing=None
+    )
 
     client = TestClient(app)
     login_resp = client.post("/auth/dev/login", json={"email": "chat.beav@oregonstate.edu"})
@@ -206,7 +209,7 @@ def test_authenticated_chat_persistence(mock_send, test_db: Session):
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_idor_protection_with_auth_tokens(mock_send, test_db: Session):
     """Verify user cannot append messages to another user's authenticated chat."""
-    mock_send.return_value = "Response"
+    mock_send.return_value = ChrisReply(text="Response", routing=None)
 
     client = TestClient(app)
     # User 1 creates a chat

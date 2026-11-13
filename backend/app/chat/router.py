@@ -21,7 +21,12 @@ async def chris_message(
     caller: Annotated[DBUser | None, Depends(get_optional_user)] = None,
 ) -> ChrisMessageResponse:
     """Handle a chat turn using the existing Chris response contract."""
-    return await service.handle_message(form, db, caller=caller)
+    if caller is not None:
+        try:
+            return await service.handle_message(form, db, caller=caller)
+        except TypeError:
+            return await service.handle_message(form, db)
+    return await service.handle_message(form, db)
 
 
 @router.get("/agents", response_model=list[AgentSummary])
