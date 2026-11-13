@@ -86,8 +86,8 @@ answers the question. It reads only agents that are currently routable
 **Status.** The local frontend -> Chat -> Chris -> registry A2A selection flow is
 built and tested. Chris returns a plain selection acknowledgement or a Gemini answer.
 Backend errors stay in terminal logs; if no answer is available the UI shows a generic notice.
-The selected expert is not called yet. See [Local development setup](#local-development-setup)
-for the complete setup and [Workflow validation](#workflow-validation) for testing.
+The selected expert is not called yet. See [Local registry development](#local-registry-development)
+for registry setup and [Registry validation](#registry-validation) for testing.
 
 ```text
 Frontend --POST /chat/message--> Chat API --A2A--> Chris --A2A--> Registry
@@ -258,7 +258,7 @@ unusable replies are logged as field names and error kinds only.
 
 ### Query the registry directly
 
-After completing [Local development setup](#local-development-setup), from `backend/`
+After completing [Local registry development](#local-registry-development), from `backend/`
 in another terminal:
 
 ```powershell
@@ -453,144 +453,46 @@ Re-running either seed preserves status, activity, tier, role, featured settings
 review history, timestamps, and edited agent metadata (including URLs). Changes to
 existing agents require an explicit update rather than rerunning the seed.
 
-## Integrated selection workflow
+## Registry integration
 
-| Hop | Request | Reply |
-|---|---|---|
-| Frontend -> Chat (`POST /chat/message`) | Question, history, optional chat ID and guest session | Readable text and structured `routing` |
-| Chat -> Chris (A2A) | Question; history in `metadata.history` | Text plus `openbeavs.chris.routing.v1` data |
-| Chris -> registry (A2A) | Question; history in a data part | Compact text JSON: selected ID/endpoint or `"none"`; coded error on failure |
+Chris calls the registry over A2A with a question and optional bounded history.
+The registry returns a selected agent ID and endpoint, no match, or a coded error.
+It never invokes the selected expert. See [the wire contract](#the-contract-chris-builds-against)
+for payloads and [Chris's documentation](chris.md) for caller behavior and fallback.
 
-The [registry contract](#the-contract-chris-builds-against) defines the exact wire
-shapes and registry errors. Chris forwards only the chosen ID to Chat; Chat looks up
-the name/description for display. Confidence and reason remain inside the registry.
-Each receiver validates the contract rather than inferring a result from prose.
+### Registry caller timeout
 
-The frontend uses normal message bubbles: for example, "I found the Math Expert
-specialist for your question." Selection details are logged, not shown as debug cards.
-The expert is not called yet. Backend failure codes, sources and retry diagnostics
-remain in service terminal logs. They are absent from Chris-to-Chat routing payloads
-and browser schemas.
+The default model queue wait is 2 seconds and the model request deadline is 8 seconds.
+Chris's `REGISTRY_A2A_TIMEOUT_SECONDS` defaults to 14 seconds, allowing additional
+room for discovery and database work. Coordinate caller deadlines with the
+[registry limits](#limits-and-overload) when changing these settings.
 
-`CHRIS_SELECTION_ONLY=false` (the default) uses Gemini on no-match or registry failure.
-`true` disables fallback for diagnostics: no-match is plain text, failures are failed
-A2A calls. If Chris cannot answer, Chat returns a generic HTTP 503 notice and saves no
-turn. The frontend keeps this notice outside the conversation and excludes failed
-turns from subsequent history. Each service configures INFO-level console logging at
-its entrypoint, so selection details and failures can be inspected in its terminal.
+## Local registry development
 
-### Timeouts and bounded history
+Use the [root README](../README.md#run-locally-windows-powershell) for dependencies,
+private model configuration, the shared database, and launching all four services.
+The registry uses the same database as the backend; it does not need a separate
+registry database. Configure `REGISTRY_MODEL` and `REGISTRY_GEMINI_API_KEY` privately
+in `backend/.env` (or use the documented `GEMINI_API_KEY` fallback).
 
-| Layer | Setting | Value | Why this value |
-|---|---|---|---|
-| Registry: wait for a model slot | `REGISTRY_MODEL_QUEUE_SECONDS` | 2 s | refuse quickly when busy |
-| Registry: one Gemini request | `REGISTRY_MODEL_TIMEOUT_SECONDS` | 8 s | bound the complete model request |
-| Registry worst case | | about 10 s + database time | queue + model |
-| Chris -> registry (discovery + selection) | `REGISTRY_A2A_TIMEOUT_SECONDS` | 14 s | above the registry worst case |
-| Chat -> Chris | `CHRIS_A2A_TIMEOUT_SECONDS` | 35 s | allows registry 14 s plus optional fallback 15 s and response overhead |
-| Browser | fixed in `api.ts` / `conversation.ts` | 90 s | unchanged |
-
-The 8-second model deadline plus 2-second queue leaves time within Chris's
-14-second overall registry deadline for discovery/database work. Optional fallback
-has a separate 15-second deadline inside Chat's 35 seconds. Coordinate overrides;
-there is no expert-call budget yet.
-
-Chat queries only the six latest stored turns, restores their chronological order, and
-bounds history before serializing either A2A hop (six turns, 1,000 UTF-8 bytes each).
-Questions are limited to 4,000 UTF-8 bytes by the Chat API. This leaves room for JSON
-escaping below the registry's 64 KiB body limit. A failed display-name lookup retains
-the selected ID rather than discarding a successful selection.
-
-Local A2A auth is disabled for this demonstration and refused outside the supported
-local environment. Google verification has synthetic tests only; Chris does not attach
-tokens yet. See [Authentication](#authentication) for registry A2A requirements.
-
-## Local development setup
-
-Use Python 3.12 and Node 22 or newer. No scratch-folder path is needed. The examples
-use three terminals and a local SQLite database; do not use production credentials.
-Keep both backend services running while using the browser.
-
-### First-time setup
-
-From the repository root, open PowerShell. These commands use a separate
-`registry-demo.db` SQLite database so an existing local database stays untouched:
+To start only the registry, run from `backend/` after database setup:
 
 ```powershell
-cd backend
-$env:DATABASE_URL='sqlite:///./registry-demo.db'
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt
-if (!(Test-Path .env)) { Copy-Item .env.example .env }
-```
-
-Edit the ignored `backend/.env` privately. Set `REGISTRY_MODEL` to your team's available Gemini model ID, and
-`REGISTRY_GEMINI_API_KEY` to your own key. Never commit or share the key. Set
-`REGISTRY_DEV_AUTH=true` only for this local SQLite setup. The example file configures
-Gemini fallback; configure its own `CHRIS_MODEL` and `GEMINI_API_KEY`.
-Existing environment files are deliberately preserved by this integration; check these
-non-secret settings yourself if your file predates the runbook.
-
-Initialize and seed that local database:
-
-```powershell
-.\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m app.db.seed_agents
-# Optional extra choices for a selection demo; these are placeholders, not callable experts:
-.\.venv\Scripts\python.exe scripts/seed_demo_agents.py
-cd ../frontend
-npm ci
-```
-
-### Terminal 1: registry (from backend/)
-
-```powershell
-$env:DATABASE_URL='sqlite:///./registry-demo.db'
+$env:DATABASE_URL='sqlite:///./openbeavs.db'
 $env:REGISTRY_PUBLIC_URL='http://127.0.0.1:8001'
 $env:REGISTRY_A2A_AUTH='dev'
-$env:REGISTRY_MODEL_QUEUE_SECONDS='2'
-$env:REGISTRY_MODEL_TIMEOUT_SECONDS='8'
 .\.venv\Scripts\python.exe -m uvicorn app.registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
 ```
 
-Check `http://127.0.0.1:8001/ready`; it should return 200. A 503 means a database,
-auth, public URL, model or key configuration check failed. Readiness does not call
-Gemini and cannot establish that the key/model is accepted by the provider.
-
-### Terminal 2: Chat and Chris (from backend/)
-
-```powershell
-$env:DATABASE_URL='sqlite:///./registry-demo.db'
-$env:REGISTRY_DEV_AUTH='true'
-$env:REGISTRY_ADMIN_EMAILS='admin@example.test'
-$env:CHRIS_PUBLIC_URL='http://127.0.0.1:8010'
-$env:CHRIS_A2A_URL='http://127.0.0.1:8010/chris/a2a/'
-$env:REGISTRY_A2A_URL='http://127.0.0.1:8001/a2a/registry'
-$env:REGISTRY_A2A_TIMEOUT_SECONDS='14'
-$env:CHRIS_A2A_TIMEOUT_SECONDS='35'
-$env:CHRIS_SELECTION_ONLY='false'
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8010
-```
-
-### Terminal 3: frontend (from frontend/)
-
-```powershell
-$env:BACKEND_ORIGIN='http://127.0.0.1:8010'
-npm run dev
-```
-
-Open the Local URL printed by Vite in Chrome (normally `http://127.0.0.1:5173`).
-Use plain `npm run dev`; the pipeline browser runner sets its own ports directly.
-
-Try an OSU question, then a related follow-up in the same conversation. If you added
-the demo agents, try `What is 15% of 240?`. Expect a plain acknowledgement naming
-the selected specialist; expert dispatch is not implemented. The real model can choose differently; use the deterministic tests below to
-verify the plumbing without Gemini credentials.
+Do not run this separately when the all-services launcher already owns port 8001.
+Check `http://127.0.0.1:8001/ready`; a 503 means a database, auth, public URL,
+model or key configuration check failed. Readiness does not call Gemini and
+cannot establish that the provider accepts the model or key.
 
 ### Submit and review an expert agent
 
-With Chat/Chris running on port 8010, open `http://127.0.0.1:8010/docs`, or use a
-fourth PowerShell terminal. The headers below are synthetic local-development identities.
+With the backend running on port 8010, open `http://127.0.0.1:8010/docs`, or use a
+separate PowerShell terminal. The headers below are synthetic local-development identities.
 Use a reachable public HTTPS agent/card URL; loopback and private addresses remain
 blocked by the registration safety checks.
 
@@ -603,7 +505,7 @@ $agent | Select-Object id, name, status, is_active
 
 In default `auto` mode, a clean card becomes active and `provisional`; flagged cards
 remain pending. An already registered card returns HTTP 409. To approve a pending
-entry using the local admin configured in Terminal 2:
+entry, configure `REGISTRY_DEV_AUTH=true` and `REGISTRY_ADMIN_EMAILS=admin@example.test` in the local backend environment before starting it:
 
 ```powershell
 $adminHeaders = @{ 'X-User-Id'='registry-admin'; 'X-User-Email'='admin@example.test' }
@@ -615,45 +517,22 @@ Ask a question matching that expert in the frontend. Selection reads the agents 
 on each request, so a newly eligible expert can be considered without restarting the
 registry. For the full submission/review rules, see [How an agent gets in](#how-an-agent-gets-in).
 
-## Workflow validation
+## Registry validation
 
-From `backend/`:
+From `backend/`, in a separate terminal so test settings do not affect servers:
 
 ```powershell
 $env:PYTHON_DOTENV_DISABLED='1'
 $env:DATABASE_URL='sqlite:///:memory:'
-.\.venv\Scripts\python.exe -m ruff check .
-.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m pytest tests/registry
 ```
 
-Use a separate terminal for tests so those environment overrides do not affect the
-servers. From `frontend/`:
-
-```powershell
-npm run lint
-npm run test
-npm run build
-npx playwright install chromium
-npm run test:e2e
-npm run test:pipeline
-```
-
-`test:pipeline` starts an isolated real Chat/Chris/registry stack with a scripted model,
-a temporary database and no credentials, on ports 8100/8101 and frontend 5273.
-Keep those ports free. It runs on Windows and Linux; `PIPELINE_PYTHON` may name a
-backend Python executable explicitly. Otherwise it uses the local backend virtual
-environment when available, or `python` from PATH. Set `PLAYWRIGHT_CHANNEL=msedge`
-to use installed Edge instead of downloading Chromium. Both browser suites run in CI.
-
-On Linux/macOS, use `.venv/bin/python` instead of `.venv\Scripts\python.exe`,
-`export NAME=value` instead of PowerShell environment assignments, and `cp` for the
-example file. The Python, npm and Alembic entry points are otherwise the same.
-
-The backend suite covers registration/URL safety, card formats, review/auth guards,
-selection and fresh eligibility, concurrency/deadlines, readiness, safe logs, capacity,
-and migrations. Unit/integration and browser pipeline tests use a fake model and no
-credentials. Live model requests separately verify provider configuration and example
-choices; they are not a repeatable accuracy benchmark.
+These tests cover registration/URL safety, card formats, review/auth guards,
+selection and fresh eligibility, concurrency/deadlines, readiness, safe logs,
+capacity, and migrations without live model credentials. Live model calls verify
+provider configuration separately; they are not a repeatable accuracy benchmark.
+See the [backend checks](../backend/README.md#dependencies-and-checks) for the full
+backend suite and [frontend documentation](frontend.md) for browser validation.
 
 ## Not done yet
 

@@ -4,9 +4,9 @@ The backend provides the Chat REST API, Chris's ADK/A2A endpoint, registry manag
 and a separately started registry A2A selection service. Development uses Python 3.12
 and local SQLite; Cloud SQL is not required.
 
-Follow [the registry setup guide](../docs/registry.md#local-development-setup) for first-time setup,
-private model configuration, migrations, seeding, and the three terminal commands.
-It uses ports 8010 (Chat/Chris), 8001 (registry), and normally 5173 (frontend).
+Follow [the root README](../README.md#run-locally-windows-powershell) for first-time setup,
+private model configuration, migrations, seeding, and the all-services launcher.
+It uses ports 8010 (backend), 8000 (Chris), 8001 (registry), and 5173 (frontend).
 The registry A2A service must be started separately from `app.main:app`.
 
 The default workflow reports a selected expert or answers with Gemini on no match

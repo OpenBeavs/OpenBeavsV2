@@ -8,7 +8,7 @@ workflow.
 > expert fits and reports a selected expert as a structured result. It does not call
 > that expert yet. By default, Chris answers with Gemini when no expert matches or
 > the registry fails. Set `CHRIS_SELECTION_ONLY=true` to inspect registry outcomes
-> without fallback. See [the registry workflow guide](registry.md#integrated-selection-workflow).
+> without fallback. See [registry integration](registry.md#registry-integration).
 
 ## Current request flow
 
@@ -185,7 +185,7 @@ this branch does not establish a provider-retention guarantee.
 
 Chat's overall A2A deadline is 35 seconds (`CHRIS_A2A_TIMEOUT_SECONDS`), Chris's registry
 deadline is 14 seconds, optional fallback is bounded to 15 seconds, and the frontend waits up to 90 seconds; see
-[the registry timeout settings](registry.md#timeouts-and-bounded-history) for how they nest.
+[the registry timeout settings](registry.md#registry-caller-timeout) for the selection deadline.
 Timeouts in different layers do not prove a downstream operation was canceled;
 there are no automatic frontend POST retries.
 
