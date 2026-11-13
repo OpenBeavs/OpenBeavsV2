@@ -26,8 +26,3 @@ def list_active_agents(db: Annotated[Session, Depends(get_db)]) -> list[dict[str
     """List the active, reviewed agents available to chat."""
     return service.list_active_agents(db)
 
-
-@router.delete("/chats/expired")
-def delete_expired_chats(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
-    """Purge expired guest chats using the existing maintenance endpoint."""
-    return {"purged": service.purge_expired_chats(db)}

@@ -1,7 +1,7 @@
 # Chris agent and chat API
 
 Chris is a custom Google ADK `BaseAgent` exposed over A2A 1.0. The chat API owns
-conversation access and persistence; Chris owns the deterministic registry-first
+transient conversation history; Chris owns the deterministic registry-first
 workflow.
 
 > **Current stage: selection with Gemini fallback.** Chris asks the registry which
@@ -19,7 +19,7 @@ sequenceDiagram
     participant Chris as Chris A2A agent
     participant Registry as Registry selection agent
     UI->>Chat: POST /chat/message
-    Chat->>Chat: Check chat access and load history
+    Chat->>Chat: Bound client-provided history
     Chat->>Chris: A2A SendMessage + history in metadata
     Chris->>Registry: Discover card, then SendMessage (text + history data part)
     Registry-->>Chris: text JSON: agent id + endpoint, or none (or a coded A2A error)
@@ -30,7 +30,6 @@ sequenceDiagram
         Chris-->>Chat: Plain answer text
     end
     Note over Chris,Chat: If no answer is available: failed A2A call, HTTP 503, no persistence
-    Chat->>Chat: Persist successful turns only (routing in meta)
     Chat-->>UI: JSON with response, chat_id and structured routing
 ```
 
@@ -49,7 +48,7 @@ your question." This acknowledges the selection; it is not an expert answer.
 With `CHRIS_SELECTION_ONLY=false` (the default), no-match and registry failures use
 Gemini. With `true`, a diagnostic no-match remains a plain message and failures
 become failed A2A calls. If Gemini also fails, Chris likewise fails the A2A call.
-Chat returns a generic HTTP 503 notice before persistence. Failed turns are neither
+Chat returns a generic HTTP 503 notice without adding a browser turn. Failed turns are neither
 saved as user/assistant messages nor replayed as history. Backend configuration
 errors similarly return a generic HTTP 500 without saving a turn.
 
@@ -61,12 +60,11 @@ They are not included in Chris-to-Chat routing data or browser-facing schemas.
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/health` | Returns `{"status":"ok","app":"OpenBeavs v2"}`; does not check dependencies. |
-| POST | `/chat/message` | Check access, load history, call Chris over A2A, and persist the reply. |
+| POST | `/chat/message` | Bound client history and call Chris over A2A without saving transcripts. |
 | GET | `/chat/agents` | Read-only directory of active, reviewed public agents with no required role; excludes Chris. |
-| DELETE | `/chat/chats/expired` | Purge expired chats. No scheduler is installed. |
 
-The former `/chris/message`, `/chris/agents`, and `/chris/chats/expired` paths have
-been replaced by `/chat/*`; no compatibility aliases are registered.
+The former `/chris/message` and `/chris/agents` paths have been replaced by
+`/chat/message` and `/chat/agents`; no compatibility aliases are registered.
 
 ### `POST /chat/message`
 
@@ -74,9 +72,6 @@ been replaced by `/chat/*`; no compatibility aliases are registered.
 {
   "message": "What majors does OSU offer?",
   "history": [{"role":"user","content":"Earlier question"}],
-  "chat_id": "optional-chat-id",
-  "user_id": null,
-  "guest_session_id": "client-generated-guest-id",
   "source_domain": "library.oregonstate.edu"
 }
 ```
@@ -86,7 +81,7 @@ A response has this shape:
 ```json
 {
   "response": "I found the Math Expert specialist for your question.",
-  "chat_id": "persisted-chat-id",
+  "chat_id": null,
   "routed_to": "math-expert",
   "agent_name": "Math Expert",
   "routing_confidence": null,
@@ -104,21 +99,20 @@ A response has this shape:
 `no_match`. Only selected agents have an `agent`; endpoints are never sent to the
 browser. There is no error field. The UI renders `response` in a normal bubble and
 does not display routing metadata. `routing` is null for Gemini answers. The older
-flat fields mirror a selected result and are null otherwise. `chat_id` may be null
-if persistence fails after Chris has answered. Existing chats use stored history; a database history-read failure
-falls back to the client-provided history. The client should omit the current
-message from `history`, because it is supplied separately.
+flat fields mirror a selected result and are null otherwise. `chat_id` is always
+null for compatibility. The public endpoint is stateless: history comes only from
+the request, bounded before forwarding to Chris. Omit the current message from
+`history`, because it is supplied separately. Legacy `chat_id`, `guest_session_id`
+and `user_id` request fields are ignored, including IDs belonging to real users.
+No conversation history, routing metadata or guest identifier is saved to the DB.
 
-Errors: 400 for blank message text, 403 for denied access to an existing chat, 422
-for invalid request bodies, 500 for chat-to-Chris configuration errors, and 503
-when Chris cannot produce a completed A2A reply (including a malformed routing
-result). A registry failure that Chris reports as `routing.status = "error"` returns
-200, not 503: the pipeline worked and is reporting what went wrong.
+Errors: 400 for blank message text, 422 for invalid request bodies, 500 for
+chat-to-Chris configuration errors, and 503 when Chris cannot produce a completed
+A2A reply. Failed turns are not added to the browser's successful history.
 
-`user_id` is a caller-supplied database lookup, not a verified SSO identity. The
-current frontend omits it and supplies its guest identifier. Tokenless legacy
-chats remain accessible under the existing prototype checks. Guest chats get a
-two-hour expiry timestamp; expiry does not itself reject turns or trigger deletion.
+The database owner handles deletion of existing guest chats and their messages
+separately. The former `DELETE /chat/chats/expired` endpoint is removed.
+Verified SSO and account-backed chat storage are not implemented.
 
 ## Chris's A2A API
 
@@ -243,7 +237,7 @@ Both entrypoints advertise no streaming; both clients use non-streaming calls.
 ```text
 app/chat/router.py          frontend REST routes
 app/chat/schemas.py         frontend request/response models
-app/chat/service.py         access checks, history, persistence, directory
+app/chat/service.py         transient history, agent directory
 app/chat/a2a_client.py      SDK client adapter that calls Chris
 app/chris/agent.py          registry-first flow (Gemini fallback only when enabled)
 app/chris/registry_client.py SDK discovery, selection request and failure classification

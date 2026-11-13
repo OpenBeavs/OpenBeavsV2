@@ -36,7 +36,7 @@ The system delivers three core capabilities:
 
 1. **Intelligent Conversational Orchestration ("Chris"):** A conversational entry point that receives user inquiries, evaluates context using Google Gemini, queries the Agent Registry for active specialist capabilities, dispatches queries to vetted campus agents over JSON-RPC 2.0, or generates a direct answer if no specialist applies.
 2. **Secure Agent Registry & Ingestion Pipeline:** An administrative vetting system allowing campus developers to submit agent discovery cards (`/.well-known/agent.json`). The hub performs rigorous Server-Side Request Forgery (SSRF) and DNS validation, enforces a strict approval workflow (`pending` → `approved` / `provisional` → `revoked`), and isolates agents into permission tiers (`public`, `authenticated`, `privileged`).
-3. **Lean Session & Message Persistence:** A 5-table relational persistence engine built on SQLAlchemy 2.0 and Alembic, supporting O(1) turn-by-turn message streaming, server-issued bearer tokens for guest privacy, and zero local credential storage.
+3. **Stateless Guest Chat:** Transcripts stay in browser memory. The five-table SQLAlchemy/Alembic schema remains, but the public chat endpoint never reads or writes conversation records.
 
 ---
 
@@ -78,7 +78,7 @@ During Weeks 1 through 5 of Fall term, our team conducted a comprehensive audit 
 | **Database Schema** | 20+ tables (memories, valves, channels, prompts) | **REPLACE** | Lean 5-Table Relational Schema | 80% of legacy tables served unneeded Open WebUI features. Pruning cut schema code from 1,800 to 250 LOC. |
 | **ORM Architecture** | Dual ORMs (Peewee + SQLAlchemy) | **REPLACE** | Pure SQLAlchemy 2.0 + Alembic | Eliminated boot regex hacks and connection leaks; enables native SQLite in dev and PostgreSQL in prod. |
 | **Chat Turn Storage** | Monolithic JSON blob per chat (`chats.py`) | **REPLACE** | Relational `messages` with `(chat_id, seq)` | Replaced O(N) turn rewrites with O(1) append latency; enables streaming and future envelope encryption. |
-| **User Authentication** | Local bcrypt password hashes (`passlib`) | **REPLACE** | Microsoft Entra ID OIDC + Guest Tokens | Eliminates credential storage risks; enforces fail-closed guest SHA-256 tokens and 2h/24h TTL purge. |
+| **User Authentication** | Local bcrypt password hashes (`passlib`) | **REPLACE** | Microsoft Entra ID OIDC (future) + stateless guest chat | Guest transcripts are not stored; caller-supplied identity cannot enable persistence. |
 | **Agent Deployment** | In-Hub `gcloud run deploy` (Broken 503) | **REPLACE** | Outbound A2A Client Dispatch | Decouples agent hosting: campus departments host their own agents; OpenBeavs acts solely as a secure routing hub. |
 | **Card Registration** | Unvalidated `requests.get` on submitted URLs | **REPLACE** | Hardened SSRF Validator (`security.py`) | Blocks loopback, RFC1918, link-local metadata `169.254.169.254`; caps payload at 100 KB with 10s timeout. |
 
@@ -167,7 +167,7 @@ The sequence diagram below (matching `imgs/Image.jpg`) illustrates how user turn
 7. **A2A Execution:** Chris dispatches a JSON-RPC 2.0 `message/send` payload to the chosen agent.
 8. **Specialist Response:** Specialist processes the query and returns its formatted result.
 9. **Fallback Branch:** If no specialist fits or confidence is below 0.7, Chris prompts Gemini directly.
-10. **Delivery & Attribution:** Chris persists the turn to PostgreSQL and responds to the frontend with the answer, confidence score, and attributed agent identifier.
+10. **Delivery & Attribution:** The chat API returns the response and routing metadata without persisting the turn.
 
 ---
 
@@ -177,70 +177,14 @@ To eliminate ambiguity across front-end, back-end, and downstream agent teams, a
 
 ### 4.1 REST API: Chris Orchestration Service
 
-#### `POST /chris/message`
-Dispatches a user turn for routing or direct processing. Continued chats strictly load history from the persistence tier; client-supplied history is accepted only when opening new conversations.
+#### `POST /chat/message`
+The public chat endpoint is stateless. Requests contain `message`, prior successful
+`history` turns, and optional `source_domain`. History is bounded before calling
+Chris. Responses contain text and routing information, with `chat_id: null` for
+compatibility. No guest IDs, transcripts or routing decisions are persisted.
+Legacy identity/chat fields are ignored and cannot authorize stored-history access.
+See [the current API contract](chris.md#frontend-api) for response and error details.
 
-- **Request Body (`application/json`):**
-  ```json
-  {
-    "message": "What prerequisites do I need for CS 344?",
-    "history": [
-      { "role": "user", "content": "Hello" },
-      { "role": "assistant", "content": "Hi! How can I assist you with OSU courses today?" }
-    ],
-    "chat_id": "8f695b47-27a7-4ce7-9932-975fc618ba1d",
-    "user_id": null,
-    "guest_session_id": "c9b2e814... (server-issued continuation token)",
-    "source_domain": "eecs.oregonstate.edu"
-  }
-  ```
-- **Response Body (200 OK):**
-  ```json
-  {
-    "response": "CS 344 (Operating Systems I) requires CS 261 and CS 271...",
-    "chat_id": "8f695b47-27a7-4ce7-9932-975fc618ba1d",
-    "guest_session_id": "c9b2e814... (retained for next turn)",
-    "routed_to": "a3b19c82-4f12-4c8d-8a1e-1289fe4a1122",
-    "agent_name": "eecs_advisor_agent",
-    "routing_confidence": 0.94,
-    "routing_explanation": "Query matched EECS course prerequisite advising catalog."
-  }
-  ```
-- **Status & Error Codes:**
-  - `200 OK`: Message successfully routed and persisted.
-  - `400 Bad Request`: Empty message body or malformed payload.
-  - `403 Forbidden`: Mismatched guest session token or unverified identity claim.
-  - `404 Not Found`: Unknown `chat_id`.
-  - `410 Gone`: Expired guest chat session (past 2-hour TTL).
-  - `500 Internal Server Error`: Unconfigured model provider or internal fatal fault.
-  - `501 Not Implemented`: Production authentication requested but unconfigured.
-  - `503 Service Unavailable`: Upstream LLM provider or primary database unreachable.
-
-#### `GET /chris/agents`
-Returns all active agents with `status IN ('approved', 'provisional')` and `trust_tier = 'public'`:
-```json
-[
-  {
-    "id": "eecs-advisor",
-    "name": "EECS Academic Advisor",
-    "description": "Advises OSU engineering students on course selection and requirements.",
-    "skills": ["advising", "prerequisites", "graduation"],
-    "capabilities": { "streaming": false, "pushNotifications": false }
-  }
-]
-```
-
-#### `GET /health`
-Liveness and readiness check for Cloud Run and automated monitors:
-```json
-{
-  "status": "ok",
-  "environment": "production",
-  "database": "connected"
-}
-```
-
----
 
 ### 4.2 REST API: Agent Registry Service
 
@@ -377,14 +321,14 @@ erDiagram
     CHATS {
         string id PK "UUID"
         string user_id FK "References USERS(id), NULL for guests"
-        string guest_session_id "SHA-256 hash of server-issued guest token"
+        string guest_session_id "Legacy guest identifier (unused)"
         string agent_id FK "References AGENTS(id)"
         string title "Chat title or summary"
         string source_domain "Origin domain (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
-        bigint expires_at "TTL epoch timestamp (24h/2h for guests, NULL for auth)"
+        bigint expires_at "Legacy expiry (unused by public chat)"
     }
 
     MESSAGES {
@@ -417,7 +361,7 @@ erDiagram
 
 1. **`agents`**: Holds registry discovery metadata and review audit trails. `card_url` carries a `UNIQUE` constraint to prevent duplicate agent registrations. `status` has no default, forcing explicit assignment.
 2. **`users`**: Contains directory identities populated purely from verified OIDC/Entra ID SSO claims. Zero local passwords, salt fields, or legacy bcrypt hashes exist.
-3. **`chats`**: Manages session state. For guest users, `user_id` is `NULL` and `guest_session_id` stores the SHA-256 digest of the server-issued token. `expires_at` indexes guest sessions for automated purging.
+3. **`chats`**: Legacy conversation schema. The database owner handles cleanup of existing guest rows and related messages. The public endpoint does not use this table.
 4. **`messages`**: Stores message turns. Replaces monolithic JSON blobs with distinct rows. Enforces a `UNIQUE(chat_id, sequence)` constraint, ensuring strict chronological order and preventing message clobbering under concurrency.
 5. **`tickets`**: Triage feedback, routing failures, and issue reports submitted by students or staff.
 
@@ -455,7 +399,7 @@ To de-risk the project, the team conducted focused, time-boxed technical spikes.
 ### ADR-003: Stateless vs. Guarded Chat Persistence Before SSO
 - **Context:** PR #2 introduced conversation persistence prior to the implementation of institutional SSO, risking IDOR security violations.
 - **Spike:** Tested client spoofing vectors against session ownership. Evaluated three options: stateless chat, flag-guarded persistence with server-issued guest bearer tokens, or unrestricted persistence.
-- **Decision:** **Adopt Guarded Persistence with SHA-256 Guest Tokens.** Persistence is gated by `CHRIS_PERSIST_CHATS`. Guest continuation requires a server-issued token (persisting only its SHA-256 hash). Expired chats reject continuation immediately.
+- **Current decision (2026-11-13):** Stateless public chat. No guest continuation tokens or stored history. The database owner handles legacy transcript cleanup. Account-backed persistence awaits verified authentication.
 
 ---
 
@@ -510,9 +454,9 @@ The following decisions remain active or scheduled for subsequent sprint cycles:
 2. **DNS-Rebinding Egress Protection:**
    - *Status:* Identified vulnerability. The host IP is validated prior to fetching the card, but a hostile DNS server could return a private IP on second resolution.
    - *Mitigation Plan:* Pin the socket connection directly to the resolved IP or route outbound card fetches through a hardened egress forward-proxy.
-3. **Scheduled Background Purge Job:**
-   - *Status:* Endpoint `DELETE /chris/chats/expired` exists, but lacks automated triggering.
-   - *Mitigation Plan:* Configure a Google Cloud Scheduler cron task invoking the maintenance endpoint once daily via an OIDC-authenticated service account.
+3. **Legacy Guest Data Removal:**
+   - The database owner handles deletion of existing guest chats and messages after the stateless app is deployed.
+   - New guest chat is stateless; no TTL endpoint or scheduled purge is needed.
 4. **Streaming Protocol for Agent Replies:**
    - *Status:* Current implementation uses synchronous JSON turn exchanges.
    - *Mitigation Plan:* Benchmark Server-Sent Events (SSE) vs WebSockets for streaming token chunks from specialist agents through Chris to the SvelteKit client.
@@ -526,7 +470,7 @@ The following decisions remain active or scheduled for subsequent sprint cycles:
 > All AI coding assistants generating or modifying code in this repository must validate proposed changes against this system design document before presenting diffs to human reviewers:
 > 
 > 1. **Schema Integrity:** NEVER reintroduce legacy Open WebUI tables (`channels`, `memories`, `valves`, `folders`). All database changes must be declarative SQLAlchemy 2.0 models reflected in `alembic/versions/`.
-> 2. **Authentication Guard:** NEVER trust a client-supplied `user_id` without server-side principal verification. In unauthenticated paths, verify that guest continuation tokens match their stored SHA-256 digest.
+> 2. **Authentication Guard:** NEVER trust a client-supplied `user_id` without server-side principal verification. The public chat endpoint must not read or write stored conversations, even if a caller supplies identity fields.
 > 3. **SSRF Guard:** ANY outbound network request fetching external agent resources must use `backend/app/registry/security.py` to assert destination safety (rejecting loopback, RFC1918, link-local `169.254.169.254`, and cloud metadata IPs).
 > 4. **Message Ordering:** Always preserve sequential ordering via `(chat_id, sequence)` composite locks. Never append messages by overwriting monolithic JSON blobs.
 > 5. **Git Rules:** AI assistants must NEVER run `git commit`, `git push`, or alter repository tags. Leave all changes unstaged in the working tree for human review.

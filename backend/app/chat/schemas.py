@@ -27,9 +27,6 @@ class ChrisMessageForm(BaseModel):
             raise ValueError("Message must be at most 4,000 UTF-8 bytes.")
         return value
     history: list[HistoryMessage] = []
-    chat_id: str | None = None
-    user_id: str | None = None
-    guest_session_id: str | None = None
     source_domain: str | None = None
 
 
@@ -65,7 +62,8 @@ class ChrisMessageResponse(BaseModel):
     """
 
     response: str
-    chat_id: str | None = None
+    # Retained as null for older response consumers; chat is stateless.
+    chat_id: None = None
     routed_to: str | None = None
     agent_name: str | None = None
     routing_confidence: float | None = None
