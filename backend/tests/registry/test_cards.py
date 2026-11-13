@@ -372,8 +372,11 @@ class TestDeadline:
             fetch_card(HOST, resolver=broken_resolver)
 
     def test_unsafe_urls_still_raise_unsafe_url_error(self) -> None:
+        client = httpx.Client(
+            transport=mock_transport(lambda r: json_response(GOOD_CARD))
+        )
         with pytest.raises(UnsafeURLError):
-            fetch_card(HOST, resolver=lambda host: ["10.0.0.1"])
+            fetch_card(HOST, client=client, resolver=lambda host: ["10.0.0.1"])
 
 
 class TestParse:
