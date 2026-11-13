@@ -21,7 +21,27 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-DEFAULT_PORTS = [8000, 8001, 5173]
+DEFAULT_PORTS = [8000, 8010, 8001, 5173]
+
+
+def get_backend_port() -> int:
+    """Read configured backend port from backend/.env or return default 8010."""
+    env_file = BACKEND_DIR / ".env"
+    if env_file.exists():
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("CHRIS_PUBLIC_URL=") or line.startswith("CHRIS_A2A_URL="):
+                        val = line.split("=", 1)[1].strip()
+                        from urllib.parse import urlsplit
+
+                        parsed = urlsplit(val)
+                        if parsed.port:
+                            return parsed.port
+        except Exception:
+            pass
+    return 8010
 
 # ANSI colors for nice terminal output
 COLORS = {
@@ -88,11 +108,12 @@ def start_services():
     stop_processes_on_ports()
 
     py_exec = sys.executable
+    backend_port = get_backend_port()
 
     services = [
         {
             "name": "backend",
-            "cmd": [py_exec, "-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+            "cmd": [py_exec, "-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", str(backend_port)],
             "cwd": str(BACKEND_DIR),
             "color": COLORS["backend"],
         },
@@ -123,12 +144,16 @@ def start_services():
             "cwd": str(FRONTEND_DIR),
             "color": COLORS["frontend"],
             "shell": True,
+            "env": {
+                **os.environ,
+                "BACKEND_ORIGIN": f"http://127.0.0.1:{backend_port}",
+            },
         },
     ]
 
     print(f"\n{COLORS['system']}════════════════════════════════════════════════════════════════")
     print("  🚀 Starting OpenBeavs v2 Development Environment (All 3 Services)")
-    print("  - Backend:  http://127.0.0.1:8000 (FastAPI Chat & Chris A2A)")
+    print(f"  - Backend:  http://127.0.0.1:{backend_port} (FastAPI Chat & Chris A2A)")
     print("  - Registry: http://127.0.0.1:8001 (A2A Expert Selection Service)")
     print("  - Frontend: http://127.0.0.1:5173 (SvelteKit Chat UI)")
     print("  Press Ctrl+C to stop all services.")

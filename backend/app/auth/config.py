@@ -32,8 +32,8 @@ class AuthConfig:
 
     @classmethod
     def session_secret_key(cls) -> str:
-        # Fallback for dev only; production deployments require setting SESSION_SECRET_KEY
-        secret = get_env("SESSION_SECRET_KEY", "")
+        # Fallback for dev only; production deployments require setting AUTH_SECRET_KEY / SESSION_SECRET_KEY
+        secret = get_env("AUTH_SECRET_KEY", "") or get_env("SESSION_SECRET_KEY", "")
         if not secret:
             return "openbeavs-dev-fallback-secret-key-change-in-production"
         return secret
