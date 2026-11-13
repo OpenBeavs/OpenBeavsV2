@@ -17,9 +17,9 @@ uv run alembic upgrade head
 uv run python -m app.db.seed_agents
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-Follow [the registry setup guide](registry.md#local-development-setup) for backend dependencies,
-migrations, model configuration, and all three terminals. It runs Chat/Chris at
-`http://127.0.0.1:8010` and the standalone registry at `http://127.0.0.1:8001`.
+Follow [the root README](../README.md#run-locally-windows-powershell) for backend dependencies,
+migrations, model configuration, and the all-services launcher. It runs the backend at
+`http://127.0.0.1:8010`, Chris at port 8000, and the registry at port 8001.
 Use Python 3.12 and Node 22 or newer.
 
 In `frontend/`, after `npm ci`, start Vite with the backend proxy origin:
