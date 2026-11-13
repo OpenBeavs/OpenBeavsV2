@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const response = { response: 'Hello from Chris', chat_id: 'chat-browser', routed_to: null, agent_name: null, routing_confidence: null, routing_reason: null };
+const response = { response: 'Hello from Chris', chat_id: null, routed_to: null, agent_name: null, routing_confidence: null, routing_reason: null };
 const agents = [
   { id: 'library', name: 'Library', description: 'Find research resources', endpoint_url: 'https://example.com/a2a', card_url: null, trust_tier: 'public', required_role: null, skills: [], capabilities: {}, is_featured: true },
   { id: 'advising', name: 'Advising', description: 'Degree planning', endpoint_url: 'https://example.com/private', card_url: null, trust_tier: 'privileged', required_role: 'student', skills: null, capabilities: null, is_featured: false }
@@ -130,12 +130,11 @@ test('opens, traps focus, and closes the mobile sidebar with Escape', async ({ p
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('uses normal bubbles and persistence fallback without routing debug output', async ({ page }) => {
-  await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, chat_id: null, routed_to: 'library', agent_name: 'Library' } }));
+test('shows the guest reply in a normal bubble without routing debug output', async ({ page }) => {
+  await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, routed_to: 'library', agent_name: 'Library' } }));
   await page.goto('/'); await send(page, 'Find research');
   await expect(page.getByText('Routing preview · Library')).toHaveCount(0);
-  await expect(page.getByTestId('message')).toHaveCount(2);
-  await expect(page.getByText(/Conversation storage is unavailable/)).toBeVisible();
+  await expect(page.getByTestId('message')).toHaveText(['Find research', response.response]);
 });
 
 test('offers a retry when the agent list stalls', async ({ page }) => {
