@@ -6,11 +6,11 @@ The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 - `backend/`: chat REST API and persistence, Chris's ADK/A2A agent, and registry management.
 - `docs/`: API, frontend setup, and database documentation.
 
-Start with [local setup and frontend integration](docs/frontend.md), then see
-[Chris's API](docs/chris.md). The frontend runs independently of the original
-Open WebUI backend. Chat calls Chris over A2A; Chris always asks the configured
-registry agent and uses Gemini when selection fails or returns no match. A selected
-specialist's JSON is currently returned without invoking it. Verified SSO and
+Start with the [registry setup guide](docs/registry.md#local-development-setup), then see
+[Chris's API](docs/chris.md). Chat calls Chris over A2A; Chris asks the standalone
+registry to select an expert. By default Chris answers with Gemini when no expert
+matches or the registry fails. Set `CHRIS_SELECTION_ONLY=true` to diagnose registry outcomes
+without fallback; failures remain in service logs. No selected expert is invoked yet. Verified SSO and
 service-to-service authentication remain future work.
 
 For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](docs/registry.md).

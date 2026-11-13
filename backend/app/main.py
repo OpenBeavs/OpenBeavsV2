@@ -1,5 +1,6 @@
 """FastAPI entrypoint. Mounts routers only; contains no feature logic."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -17,6 +18,8 @@ from app.registry.router import router as registry_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Check registry auth and initialize Chris's isolated A2A endpoint."""
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("app").setLevel(logging.INFO)
     check_dev_auth_config()
     chris_app = await build_chris_a2a_app()
     mount = Mount(MOUNT_PATH, app=chris_app)

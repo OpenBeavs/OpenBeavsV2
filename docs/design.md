@@ -40,11 +40,55 @@ The system delivers three core capabilities:
 
 ---
 
-## 2. C4 Architecture Diagrams
+## 2. Inherited-Codebase Audit: Decisions to Keep vs. Replace
+
+During Weeks 1 through 5 of Fall term, our team conducted a comprehensive audit of the inherited v1 codebase (produced by predecessor Team #043 and based on an Open WebUI fork). The audit findings directly determined what we kept, what we excised, and what we re-architected.
+
+### 2.1 Audit Findings (Fall Weeks 1–5)
+
+- **What Runs and How, and What Does Not:**
+  - *Runs:* The SvelteKit client rendered basic chat interfaces; local agent cards could be loaded into memory; direct Gemini API calls functioned when supplied with API keys.
+  - *Does NOT Run:* The inherited in-UI "Deploy to Cloud Run" feature crashed and returned HTTP 503 (`OPENBEAVS_CLOUD_RUN_DISABLED=1`) because the Docker image omitted the `gcloud` CLI and excluded the `agents/` source directory. Monolithic chat updates (`front/backend/open_webui/models/chats.py`) locked and degraded under multi-turn conversations. Dual-ORM connection regex hacks caused connection pool exhaustion and 12–18 second container cold starts.
+- **State of Tests and CI:**
+  - Tests were fragmented between an abandoned prototype (`back/tests/`) and Open WebUI upstream tests (`front/backend/open_webui/test/`). No automated tests verified A2A JSON-RPC message dispatching, SSRF card validation, or trust tier gates.
+  - CI (`cloudbuild.yaml`) executed only after merges to `main` without automated pull-request status gates, migration round-trip checks, or pre-merge linters.
+- **Dependencies and Their Age:**
+  - The inherited environment suffered from conflicting, dated dependencies: `passlib` with known bcrypt 4.0+ runtime bugs (`database/BCRYPT_BUG_FIX.md`), `peewee` and `sqlalchemy` linked simultaneously, heavy `chromadb` vector stores (irrelevant to an A2A routing hub), and an oversized 20MB+ Pyodide WASM runtime in the frontend.
+- **Open Risks and Known Technical Debt:**
+  - *SSRF Vulnerability:* Agent registration fetched arbitrary URLs with zero IP checks, exposing Google Cloud metadata (`169.254.169.254`) and internal VPC services.
+  - *Dual-ORM Boot Contention:* Peewee (handling auth) and SQLAlchemy (handling agents) competed for database connections via shell regex hacks (`connect_cloud_run_to_sql.sh`).
+  - *Insecure Direct Object References (IDOR):* Chat routes blindly trusted client-supplied `user_id` values, creating cross-user conversation exposure and FERPA compliance risks.
+  - *Monolithic JSON Blobs:* Conversations were serialized in single JSON fields, requiring full deserialize-mutate-serialize cycles on every turn (O(N) write scaling).
+- **Predecessor Team's Handoff Document & Retrospective:**
+  - The handoff manual (`docs/CLOUD_RUN_OPERATIONS.md`, `CLAUDE.md`, and ADR-001) advised against running agent deployments inside the hub container, recommended decoupling from Open WebUI's ChatGPT clone features, and emphasized GCP Secret Manager for API key isolation.
+- **Upstream Contribution Rules & Divergence:**
+  - Upstream Open WebUI is MIT-licensed but structured around local LLMs (Ollama) and document RAG. Upstream sync broke because OpenBeavs required A2A protocol dispatching, discovery cards, and institutional SSO rather than a personal LLM interface.
+- **What We Changed First:**
+  - In Weeks 4–5, we prioritized the persistent data layer: replacing the 20+ table database with a lean 5-table schema in SQLAlchemy 2.0 with Alembic, implementing SSRF-safe card ingestion, and redesigning Chris as a Gemini-driven A2A message orchestrator.
+
+### 2.2 The Decision Matrix: What to KEEP vs. What to REPLACE
+
+| Architectural Element | Inherited v1 Baseline | Decision | v2 Choice | Rationale & Trade-off |
+| :--- | :--- | :--- | :--- | :--- |
+| **Inter-Agent Protocol** | A2A JSON-RPC 2.0 + `/.well-known/agent.json` | **KEEP** | Standard A2A v0.3.0 | Preserves interoperability with campus agent developers across OSU departments. |
+| **Frontend Framework** | SvelteKit 2 + Tailwind CSS + TypeScript | **KEEP** | SvelteKit 2 SPA (Lightweight) | Retains familiar UI components and TypeScript safety; stripped out 20MB Pyodide WASM runtime. |
+| **Deployment Platform** | Google Cloud Run (us-west1) | **KEEP** | Serverless Cloud Run Container | Native GCP hosting fits existing OSU Capstone project billing, auto-scales, and provides sub-2s boot. |
+| **Database Host** | Google Cloud SQL (PostgreSQL 16) | **KEEP** | Cloud SQL PostgreSQL (openbeavs_v2) | Managed, secure, ACID-compliant database with private IP VPC peering and automated backups. |
+| **Secret Management** | Google Cloud Secret Manager | **KEEP** | GCP Secret Manager + `.env` | Prevents credential leaks; keeps Gemini API keys and connection strings out of code and prompts. |
+| **Database Schema** | 20+ tables (memories, valves, channels, prompts) | **REPLACE** | Lean 5-Table Relational Schema | 80% of legacy tables served unneeded Open WebUI features. Pruning cut schema code from 1,800 to 250 LOC. |
+| **ORM Architecture** | Dual ORMs (Peewee + SQLAlchemy) | **REPLACE** | Pure SQLAlchemy 2.0 + Alembic | Eliminated boot regex hacks and connection leaks; enables native SQLite in dev and PostgreSQL in prod. |
+| **Chat Turn Storage** | Monolithic JSON blob per chat (`chats.py`) | **REPLACE** | Relational `messages` with `(chat_id, seq)` | Replaced O(N) turn rewrites with O(1) append latency; enables streaming and future envelope encryption. |
+| **User Authentication** | Local bcrypt password hashes (`passlib`) | **REPLACE** | Microsoft Entra ID OIDC + Guest Tokens | Eliminates credential storage risks; enforces fail-closed guest SHA-256 tokens and 2h/24h TTL purge. |
+| **Agent Deployment** | In-Hub `gcloud run deploy` (Broken 503) | **REPLACE** | Outbound A2A Client Dispatch | Decouples agent hosting: campus departments host their own agents; OpenBeavs acts solely as a secure routing hub. |
+| **Card Registration** | Unvalidated `requests.get` on submitted URLs | **REPLACE** | Hardened SSRF Validator (`security.py`) | Blocks loopback, RFC1918, link-local metadata `169.254.169.254`; caps payload at 100 KB with 10s timeout. |
+
+---
+
+## 3. C4 Architecture Diagrams
 
 The system architecture is organized below following the **C4 model** (System Context and Container levels), supplemented by the runtime execution sequence.
 
-### 2.1 C4 Level 1: System Context Diagram
+### 3.1 C4 Level 1: System Context Diagram
 
 The System Context diagram details how OpenBeavs fits within the OSU ecosystem, external identity providers, campus agent hosts, and external AI foundation services.
 
@@ -74,7 +118,7 @@ graph TD
     OpenBeavs -->|"Dispatches queries via message/send [JSON-RPC 2.0]"| SpecialistAgents
 ```
 
-### 2.2 C4 Level 2: Container Diagram
+### 3.2 C4 Level 2: Container Diagram
 
 The Container diagram shows the high-level technical building blocks, boundaries, storage systems, and communication protocols within OpenBeavs v2.
 
@@ -108,7 +152,7 @@ graph TD
     API -->|"Relays user turns to specialist agent [JSON-RPC 2.0 HTTPS]"| Specialist
 ```
 
-### 2.3 Runtime Execution Sequence
+### 3.3 Runtime Execution Sequence
 
 The sequence diagram below (matching `imgs/Image.jpg`) illustrates how user turns propagate through the frontend, orchestrator, registry, model, and chosen expert agent:
 
@@ -127,11 +171,11 @@ The sequence diagram below (matching `imgs/Image.jpg`) illustrates how user turn
 
 ---
 
-## 3. Agreed Integration Contracts & Interfaces
+## 4. Agreed Integration Contracts & Interfaces
 
 To eliminate ambiguity across front-end, back-end, and downstream agent teams, all integration boundaries are formally frozen below.
 
-### 3.1 REST API: Chris Orchestration Service
+### 4.1 REST API: Chris Orchestration Service
 
 #### `POST /chris/message`
 Dispatches a user turn for routing or direct processing. Continued chats strictly load history from the persistence tier; client-supplied history is accepted only when opening new conversations.
@@ -198,7 +242,7 @@ Liveness and readiness check for Cloud Run and automated monitors:
 
 ---
 
-### 3.2 REST API: Agent Registry Service
+### 4.2 REST API: Agent Registry Service
 
 #### `POST /registry/agents`
 Submits a new specialist agent card URL for administrative review. Rejects any body property other than `url`.
@@ -222,7 +266,7 @@ Admin-only endpoint to transition agent status and trust tiers.
 
 ---
 
-### 3.3 A2A Protocol & Discovery Card Specification
+### 4.3 A2A Protocol & Discovery Card Specification
 
 All specialist agents integrate with OpenBeavs via the standard **Agent-to-Agent (A2A) v0.3.0 protocol**.
 
@@ -285,7 +329,7 @@ Dispatches user turns via JSON-RPC 2.0 over HTTPS POST:
 
 ---
 
-## 4. The Data Model: Lean 5-Table Schema
+## 5. The Data Model: Lean 5-Table Schema
 
 OpenBeavs v2 replaces the inherited 20+ table schema with a streamlined, **5-table relational core**.
 
@@ -379,7 +423,7 @@ erDiagram
 
 ---
 
-## 5. Type 1 Architectural Decisions: Decided Up Front
+## 6. Type 1 Architectural Decisions: Decided Up Front
 
 Per two-way vs one-way door decision frameworks (Jeff Bezos, 2015), the team resolved **only what is prohibitively expensive to reverse** later:
 
@@ -392,7 +436,7 @@ Per two-way vs one-way door decision frameworks (Jeff Bezos, 2015), the team res
 
 ---
 
-## 6. Spikes & Architecture Decision Records (ADRs)
+## 7. Spikes & Architecture Decision Records (ADRs)
 
 To de-risk the project, the team conducted focused, time-boxed technical spikes. The findings are summarized below.
 
@@ -415,7 +459,7 @@ To de-risk the project, the team conducted focused, time-boxed technical spikes.
 
 ---
 
-## 7. Deployment Topology & Environments
+## 8. Deployment Topology & Environments
 
 OpenBeavs v2 enforces strict parity between local development ergonomics and production cloud resilience.
 
@@ -456,7 +500,7 @@ Every pull request must pass the following deterministic gates before review:
 
 ---
 
-## 8. Open Questions & Technical Roadmap
+## 9. Open Questions & Technical Roadmap
 
 The following decisions remain active or scheduled for subsequent sprint cycles:
 
@@ -475,7 +519,7 @@ The following decisions remain active or scheduled for subsequent sprint cycles:
 
 ---
 
-## 9. AI Coding Agent Verification Protocol
+## 10. AI Coding Agent Verification Protocol
 
 > **Instructions for AI Tools (Claude Code, Antigravity, ChatGPT, Codex, Copilot):**
 > 
@@ -486,4 +530,3 @@ The following decisions remain active or scheduled for subsequent sprint cycles:
 > 3. **SSRF Guard:** ANY outbound network request fetching external agent resources must use `backend/app/registry/security.py` to assert destination safety (rejecting loopback, RFC1918, link-local `169.254.169.254`, and cloud metadata IPs).
 > 4. **Message Ordering:** Always preserve sequential ordering via `(chat_id, sequence)` composite locks. Never append messages by overwriting monolithic JSON blobs.
 > 5. **Git Rules:** AI assistants must NEVER run `git commit`, `git push`, or alter repository tags. Leave all changes unstaged in the working tree for human review.
-

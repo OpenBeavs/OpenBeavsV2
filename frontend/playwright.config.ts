@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
+  // The real-stack tests have their own config (playwright.pipeline.config.ts).
+  testIgnore: /pipeline\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,

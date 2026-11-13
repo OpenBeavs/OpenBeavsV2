@@ -7,39 +7,30 @@ The old Open WebUI Python backend is not required.
 
 ## Run locally
 
-Use Python 3.12 and Node.js 22 or newer. From the repository root:
+Use Python 3.12, uv, and Node.js 22 or newer. From the repository root:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install ./backend -r backend/requirements-dev.txt
 cd backend
-alembic upgrade head
+uv sync
+uv run alembic upgrade head
 # Optional: populate the registered-agent directory.
-python -m app.db.seed_agents
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run python -m app.db.seed_agents
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+Follow [the registry setup guide](registry.md#local-development-setup) for backend dependencies,
+migrations, model configuration, and all three terminals. It runs Chat/Chris at
+`http://127.0.0.1:8010` and the standalone registry at `http://127.0.0.1:8001`.
+Use Python 3.12 and Node 22 or newer.
 
-Configure `GEMINI_API_KEY` and `CHRIS_MODEL` privately in the backend environment
-or its ignored `.env` file before sending messages. Do not put model keys,
-database credentials, or login tokens in frontend configuration. Backend startup
-and `/health` can succeed even if model configuration or database tables are
-missing. The directory's agent table is separate from Chris's routing service.
-Chris always calls `REGISTRY_A2A_URL` (default `http://127.0.0.1:8001/`); if it is
-unavailable or returns no match, Chris answers with Gemini. No local registry agent
-is required to exercise fallback. `CHRIS_A2A_URL` defaults to the mounted Chris
-endpoint in the same backend process. See [Chris's workflow](chris.md).
+In `frontend/`, after `npm ci`, start Vite with the backend proxy origin:
 
-In a second terminal, from the repository root:
-
-```bash
-cd frontend
-npm ci
+```powershell
+$env:BACKEND_ORIGIN='http://127.0.0.1:8010'
 npm run dev
 ```
 
 Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls relative `/health` and `/chat/*` paths. Vite proxies those requests to
+calls `/health`, `/chat/message`, and `/chat/agents`. Vite proxies those requests to
 `http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
 requests. To use another backend, set the **non-secret server-side**
 `BACKEND_ORIGIN` when starting Vite:
@@ -47,6 +38,10 @@ requests. To use another backend, set the **non-secret server-side**
 ```bash
 BACKEND_ORIGIN=http://127.0.0.1:9000 npm run dev
 ```
+Open the Local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
+calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`,
+which defaults to port 8000 if unset. It is a server-side setting, not a browser secret.
+Do not put model keys, database credentials, or login tokens in frontend configuration.
 
 No backend API routes, CORS configuration, or database migrations are added by
 this frontend. `BACKEND_ORIGIN` must be an origin you control; it is not embedded
@@ -54,9 +49,10 @@ as a browser API URL.
 
 ## Supported behavior
 
-- `/`: Chris chat with plain-text message bubbles, loading/error states, and
+- `/`: Chris chat with Markdown replies, plain-text guest messages, loading/error states, and
   New Chat. Enter sends; Shift+Enter inserts a newline. IME composition does not
-  submit. Only one request runs at a time.
+  submit. You can type the next draft while Chris replies. Send stays disabled
+  until the current request finishes.
 - `/agents`: case-insensitive name/description search, featured flags, and access
   tiers. Restricted and role-gated agents are marked unavailable to guests.
 - Collapsible desktop sidebar, keyboard-accessible mobile drawer, and theme
@@ -64,21 +60,23 @@ as a browser API URL.
 
 The typed client uses only `GET /health`, `GET /chat/agents`, and
 `POST /chat/message`. Agent endpoint URLs remain metadata, never browser call
-targets. Responses are complete JSON, not streams. Routing attribution fields
-remain null. Chris's Gemini answer is displayed normally; if the registry selects
-a specialist, its selection JSON is currently displayed as text because specialist
-invocation is not implemented. The UI retains routing-preview rendering for
-responses with routing fields, but the current backend does not populate them.
+targets. Responses are complete JSON, not streams. The backend returns a structured
+`routing` metadata, but the UI renders all successful replies as plain message bubbles.
+It shows no expert IDs, confidence, routing cards or diagnostic explanations. Backend
+failures use a generic notice outside the transcript; failed turns are not added to
+browser history or replayed on the next request. No expert is called yet.
 
-The layout owns the in-memory conversation, so moving between Chris and Agents
-preserves it. Requests include prior successful turns, a random guest session
+The layout keeps each guest chat, draft, and pin in memory while the tab is open.
+New Chat opens a separate conversation, and the sidebar lets you switch between
+chats or pin them. A pending reply stays with the chat that sent it.
+Requests include prior successful turns, a random guest session
 identifier, and the current hostname. A returned `chat_id` is reused with that
 guest identifier; the backend then treats database history as authoritative.
 Neither `user_id` nor old bearer tokens are sent. The prototype's user lookup is
 not a verified authentication system.
 
-Refresh and New Chat clear the visible conversation and identifiers, but do not
-delete backend records. No transcript or guest token is saved to browser
+Refreshing or closing the tab clears the local chat list and pins. Existing
+backend records keep their normal expiry. No transcript or guest token is saved to browser
 storage. Only the theme preference is stored. Guest records receive a two-hour
 expiry at creation; deletion depends on backend cleanup being invoked. This
 frontend does not promise automatic deletion or expose the maintenance route.
@@ -86,10 +84,12 @@ frontend does not promise automatic deletion or expose the maintenance route.
 If a response has no persisted chat ID, its reply is still displayed. The rest
 of that conversation sends complete client history without a chat ID, even if
 storage later recovers, avoiding a switch to an incomplete stored history.
-Failures restore the input and remain outside conversation history. POSTs are
+Failures restore the sent text if the composer is empty. If you've started
+another draft, the failed text is available in the error notice and your draft
+stays in the composer. Failed messages stay outside conversation history. POSTs are
 never retried automatically. Requests time out after 90 seconds; a backend may
 still finish after the browser stops waiting, so a manual retry can duplicate a
-turn. New Chat ignores any late response from the previous conversation.
+turn.
 
 SSO, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
 Arena Mode, model controls, and administration are outside this initial port.
@@ -105,9 +105,9 @@ npm run preview
 The static application is emitted into `frontend/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy must
-send `/chat/*` and `/health` to FastAPI **before** applying the SPA fallback.
-Vite's proxy configuration does not ship inside the static files. Keep the
-maintenance DELETE route outside public proxy access in a real deployment.
+send only the exact paths `/chat/message`, `/chat/agents`, and `/health` to FastAPI
+**before** applying the SPA fallback. Vite's proxy configuration does not ship
+inside the static files. Keep `/chat/chats/expired` outside public proxy access.
 This change does not deploy a cloud service or establish production auth.
 
 ## Checks
@@ -119,21 +119,24 @@ npm run test
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:pipeline
 ```
 
-Browser tests run the built app against intercepted API fixtures, without model
+The original browser tests run the built app against intercepted API fixtures, without model
 keys or a live backend. On a machine with Chrome already installed,
 `PLAYWRIGHT_CHANNEL=chrome npm run test:e2e` uses that browser instead. Vitest
-covers the actual typed client and conversation transitions. Playwright covers
+covers the typed client and conversation transitions and tests the dev and preview
+proxy against a loopback stub. Playwright covers
 navigation, rendering safety, input, errors, refresh, mobile keyboard behavior,
 and the absence of unsupported API calls. These test dependencies are retained
 only for development; no browser AI or Open WebUI runtime packages are needed.
 
-From `backend/`, with the project virtual environment active:
+From `backend/`:
 
 ```bash
-PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: pytest
-ruff check .
+uv sync --locked
+uv run ruff check .
+PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
 ```
 
 `.github/workflows/checks.yml` runs the backend suite (including security-related
@@ -141,14 +144,15 @@ authorization cases), Ruff, frontend lint/type checks, unit tests, build, and
 browser tests. Secret scanning and production dependency-policy gates remain
 separate team work; this workflow does not claim to implement them.
 
-For live acceptance, start the actual backend with initialized tables and model
-configuration, send a greeting, receive a direct answer, then send a follow-up.
-With the registry unavailable or returning `{"agent":"none"}`, confirm Gemini
-provides the answer. If Gemini also fails, the backend returns a normal availability
-message, which is displayed and saved rather than treated as an HTTP error.
-Confirm the second request reuses the returned chat ID and guest identifier, and
-that the directory loads from the real database. This is separate from the
-fixture-based browser suite and requires a working model service.
+`test:pipeline` additionally starts the real Chat/Chris/registry code with a scripted
+model and a temporary SQLite database. It exercises selection, history, no match,
+revocation, malformed model output, and timeout/error recovery through the browser.
+Both suites run in CI; neither requires a real model key.
+
+For live acceptance, follow the runbook and ask an OSU question followed by a related
+question in the same chat. Expect a plain acknowledgement naming the selected specialist; expert dispatch is not implemented. Confirm
+the chat ID and guest identifier are reused and the directory loads from SQLite.
+This requires a working registry model/key and is distinct from deterministic tests.
 
 ## Attribution
 

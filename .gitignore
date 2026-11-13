@@ -25,3 +25,9 @@ frontend/playwright-report/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+
+.env
+docs/imgs/registry-a2a-flow.png
+docs/imgs/registry-registration-current.png
+docs/imgs/registry-selection-current.png
+docs/imgs/registry-selection-current-v2.png
