@@ -6,7 +6,8 @@ The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 - `backend/`: chat REST API and persistence, Chris's ADK/A2A agent, and registry management.
 - `docs/`: API, frontend setup, and database documentation.
 
-Start with [local setup](#run-locally-windows-powershell), then see
+Start with local setup for [macOS](#run-locally-macos) or
+[Windows](#run-locally-windows-powershell), then see
 [Chris's API](docs/chris.md). Chat calls Chris over A2A; Chris asks the standalone
 registry to select an expert. By default Chris answers with Gemini when no expert
 matches or the registry fails. Set `CHRIS_SELECTION_ONLY=true` to diagnose registry outcomes
@@ -14,6 +15,46 @@ without fallback; failures remain in service logs. No selected expert is invoked
 service-to-service authentication remain future work.
 
 For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](docs/registry.md).
+
+## Run locally (macOS)
+
+Use uv and Node.js 22 or later. If uv is missing, install it with `brew install uv`.
+From the repository root, set up the dependencies once:
+
+```zsh
+cd backend
+uv sync --locked --python 3.12
+[ -f .env ] || cp .env.example .env
+cd ../frontend
+npm ci
+cd ..
+```
+
+In `backend/.env`, set `GEMINI_API_KEY`, `CHRIS_MODEL`, and `REGISTRY_MODEL`
+privately. Set `REGISTRY_GEMINI_API_KEY` if the registry uses a separate key.
+For local registry development, set `REGISTRY_A2A_AUTH=dev`. Set
+`REGISTRY_DEV_AUTH=true` and configure `REGISTRY_ADMIN_EMAILS` only if you need
+local registry admin actions.
+
+Initialize the local database before the first run, and rerun migrations when
+the schema changes:
+
+```zsh
+cd backend
+export DATABASE_URL='sqlite:///./openbeavs.db'
+uv run alembic upgrade head
+uv run python -m app.db.seed_agents
+cd ..
+```
+
+Start all four services from the repository root:
+
+```zsh
+bash start-dev-mac.sh
+```
+
+Open [OpenBeavs](http://127.0.0.1:5173). The script uses `backend/openbeavs.db`
+and runs all four services in one terminal. Press **Ctrl+C** there to stop them.
 
 ## Run locally (Windows PowerShell)
 
