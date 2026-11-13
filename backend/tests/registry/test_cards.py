@@ -368,8 +368,11 @@ class TestDeadline:
         def broken_resolver(host: str) -> list[str]:
             raise OSError("dns exploded")
 
+        client = httpx.Client(
+            transport=mock_transport(lambda r: json_response(GOOD_CARD))
+        )
         with pytest.raises(OSError, match="dns exploded"):
-            fetch_card(HOST, resolver=broken_resolver)
+            fetch_card(HOST, client=client, resolver=broken_resolver)
 
     def test_unsafe_urls_still_raise_unsafe_url_error(self) -> None:
         client = httpx.Client(
