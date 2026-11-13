@@ -52,7 +52,7 @@ as a browser API URL.
 
 ## Supported behavior
 
-- `/`: Chris chat with plain-text message bubbles, loading/error states, and
+- `/`: Chris chat with Markdown replies, plain-text guest messages, loading/error states, and
   New Chat. Enter sends; Shift+Enter inserts a newline. IME composition does not
   submit. You can type the next draft while Chris replies. Send stays disabled
   until the current request finishes.
@@ -69,15 +69,17 @@ a specialist, its selection JSON is currently displayed as text because speciali
 invocation is not implemented. The UI retains routing-preview rendering for
 responses with routing fields, but the current backend does not populate them.
 
-The layout owns the in-memory conversation, so moving between Chris and Agents
-preserves it. Requests include prior successful turns, a random guest session
+The layout keeps each guest chat, draft, and pin in memory while the tab is open.
+New Chat opens a separate conversation, and the sidebar lets you switch between
+chats or pin them. A pending reply stays with the chat that sent it.
+Requests include prior successful turns, a random guest session
 identifier, and the current hostname. A returned `chat_id` is reused with that
 guest identifier; the backend then treats database history as authoritative.
 Neither `user_id` nor old bearer tokens are sent. The prototype's user lookup is
 not a verified authentication system.
 
-Refresh and New Chat clear the visible conversation and identifiers, but do not
-delete backend records. No transcript or guest token is saved to browser
+Refreshing or closing the tab clears the local chat list and pins. Existing
+backend records keep their normal expiry. No transcript or guest token is saved to browser
 storage. Only the theme preference is stored. Guest records receive a two-hour
 expiry at creation; deletion depends on backend cleanup being invoked. This
 frontend does not promise automatic deletion or expose the maintenance route.
@@ -90,7 +92,7 @@ another draft, the failed text is available in the error notice and your draft
 stays in the composer. Failed messages stay outside conversation history. POSTs are
 never retried automatically. Requests time out after 90 seconds; a backend may
 still finish after the browser stops waiting, so a manual retry can duplicate a
-turn. New Chat ignores any late response from the previous conversation.
+turn.
 
 SSO, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
 Arena Mode, model controls, and administration are outside this initial port.
