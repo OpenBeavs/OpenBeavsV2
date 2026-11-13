@@ -18,7 +18,7 @@ async function send(page: Page, text: string) {
 
 test.beforeEach(async ({ page }) => { await mockBackend(page); });
 
-test('talks to Chris, carries the chat ID, and preserves the conversation across navigation', async ({ page }) => {
+test('talks to Chris, carries in-memory history, and preserves the conversation across navigation', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 430 });
   const requests: Record<string, unknown>[] = [];
   page.on('request', (request) => { if (request.url().endsWith('/chat/message')) requests.push(request.postDataJSON()); });
@@ -37,8 +37,7 @@ test('talks to Chris, carries the chat ID, and preserves the conversation across
     const bar = await page.getByRole('form', { name: 'Chat composer' }).boundingBox();
     return !!reply && !!bar && reply.y + reply.height <= bar.y;
   }).toBe(true);
-  expect(requests[0]).not.toHaveProperty('chat_id');
-  expect(requests[1]).toMatchObject({ chat_id: 'chat-browser', guest_session_id: requests[0].guest_session_id, history: [
+  expect(requests[1]).toMatchObject({ history: [
     { role: 'user', content: 'Hello' }, { role: 'assistant', content: response.response }
   ] });
   const composer = page.getByRole('textbox', { name: 'Message Chris' });
@@ -48,8 +47,7 @@ test('talks to Chris, carries the chat ID, and preserves the conversation across
   await expect(composer).toHaveValue('');
   await send(page, 'Fresh');
   await expect(page.getByTestId('message')).toHaveCount(2);
-  expect(requests[2]).not.toHaveProperty('chat_id');
-  expect(requests[2].guest_session_id).not.toBe(requests[0].guest_session_id);
+  expect(requests[2]).toMatchObject({ history: [] });
 
   await page.getByRole('button', { name: 'Pin Hello', exact: true }).click();
   const pinned = page.getByRole('region', { name: 'Pinned' });

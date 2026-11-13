@@ -4,9 +4,7 @@ export type HistoryMessage = { role: 'user' | 'assistant'; content: string };
 export type ChrisRequest = {
   message: string;
   history: HistoryMessage[];
-  guest_session_id: string;
   source_domain: string;
-  chat_id?: string;
 };
 
 /** Chris's routing decision. A selection is a decision only: no expert has been called. */

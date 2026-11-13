@@ -8,17 +8,13 @@ export type Conversation = {
   pending: string | null;
   error: string | null;
   failedDraft: string | null;
-  chatId: string | null;
-  guestId: string | null;
-  storageUnavailable: boolean;
 };
 
 const empty = (): Conversation => ({
-  messages: [], draft: '', pending: null, error: null, failedDraft: null,
-  chatId: null, guestId: null, storageUnavailable: false
+  messages: [], draft: '', pending: null, error: null, failedDraft: null
 });
 
-/** Keep guest IDs cryptographically random even on plain HTTP dev origins. */
+/** Keep message IDs cryptographically random even on plain HTTP dev origins. */
 function createId(): string {
   const crypto = globalThis.crypto;
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -54,11 +50,9 @@ export function createConversation(
       const message = before.draft.trim();
       if (!message || before.pending !== null) return;
       const currentGeneration = generation;
-      let guestId: string;
       let userMessageId: string;
       let assistantMessageId: string;
       try {
-        guestId = before.guestId ?? id();
         userMessageId = id();
         assistantMessageId = id();
       } catch {
@@ -75,23 +69,18 @@ export function createConversation(
       const request: ChrisRequest = {
         message,
         history: before.messages.map(({ role, content }) => ({ role, content })),
-        guest_session_id: guestId,
         source_domain: sourceDomain,
-        ...(before.chatId && !before.storageUnavailable ? { chat_id: before.chatId } : {})
       };
-      state.set({ ...before, guestId, draft: '', pending: message, error: null, failedDraft: null });
+      state.set({ ...before, draft: '', pending: message, error: null, failedDraft: null });
       try {
         const reply = await transport(request, controller.signal);
         if (generation !== currentGeneration) return;
-        const storageUnavailable = before.storageUnavailable || reply.chat_id === null;
         state.update((current) => ({
           ...current,
           messages: [...before.messages,
             { id: userMessageId, role: 'user', content: message },
             { id: assistantMessageId, role: 'assistant', content: reply.response, routing: reply }],
           pending: null,
-          chatId: storageUnavailable ? null : reply.chat_id,
-          storageUnavailable
         }));
       } catch (error) {
         if (generation !== currentGeneration) return;
@@ -102,7 +91,7 @@ export function createConversation(
           draft: current.draft || before.draft,
           failedDraft: current.draft ? before.draft : null,
           error: controllerForRequest.signal.aborted || (error instanceof Error && error.name === 'TimeoutError')
-            ? 'The request timed out. Chris may still finish on the server; retrying can duplicate a turn.'
+            ? 'The request timed out. Chris may still finish on the server; please try again.'
             : error instanceof Error ? error.message : 'The request failed. Please try again.'
         }));
       } finally {

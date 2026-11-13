@@ -69,21 +69,16 @@ browser history or replayed on the next request. No expert is called yet.
 The layout keeps each guest chat, draft, and pin in memory while the tab is open.
 New Chat opens a separate conversation, and the sidebar lets you switch between
 chats or pin them. A pending reply stays with the chat that sent it.
-Requests include prior successful turns, a random guest session
-identifier, and the current hostname. A returned `chat_id` is reused with that
-guest identifier; the backend then treats database history as authoritative.
-Neither `user_id` nor old bearer tokens are sent. The prototype's user lookup is
-not a verified authentication system.
+Requests include prior successful turns and the current hostname. Guest tokens,
+chat IDs and user IDs are not sent. The backend uses only the supplied history
+and never reads or writes conversation records. Replies retain `chat_id: null`
+for wire compatibility; this is normal and does not show a storage warning.
 
-Refreshing or closing the tab clears the local chat list and pins. Existing
-backend records keep their normal expiry. No transcript or guest token is saved to browser
-storage. Only the theme preference is stored. Guest records receive a two-hour
-expiry at creation; deletion depends on backend cleanup being invoked. This
-frontend does not promise automatic deletion or expose the maintenance route.
+Refreshing or closing the tab clears the local chat list and pins. No transcript
+is saved to browser storage or the application database. Only the theme preference
+is stored. Previously stored guest transcripts remain until the database owner
+removes them.
 
-If a response has no persisted chat ID, its reply is still displayed. The rest
-of that conversation sends complete client history without a chat ID, even if
-storage later recovers, avoiding a switch to an incomplete stored history.
 Failures restore the sent text if the composer is empty. If you've started
 another draft, the failed text is available in the error notice and your draft
 stays in the composer. Failed messages stay outside conversation history. POSTs are
@@ -107,7 +102,7 @@ same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy must
 send only the exact paths `/chat/message`, `/chat/agents`, and `/health` to FastAPI
 **before** applying the SPA fallback. Vite's proxy configuration does not ship
-inside the static files. Keep `/chat/chats/expired` outside public proxy access.
+inside the static files. Proxy only the supported public routes.
 This change does not deploy a cloud service or establish production auth.
 
 ## Checks
@@ -151,7 +146,7 @@ Both suites run in CI; neither requires a real model key.
 
 For live acceptance, follow the runbook and ask an OSU question followed by a related
 question in the same chat. Expect a plain acknowledgement naming the selected specialist; expert dispatch is not implemented. Confirm
-the chat ID and guest identifier are reused and the directory loads from SQLite.
+prior successful turns are sent from browser memory and the directory loads from SQLite.
 This requires a working registry model/key and is distinct from deterministic tests.
 
 ## Attribution

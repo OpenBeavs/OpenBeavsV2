@@ -81,36 +81,27 @@ class TestSuccessfulSelection:
         assert "math-expert" in system and "osu-expert" in system
         assert "revoked-expert" not in system
 
-    def test_the_decision_is_stored_with_the_turn(self, experts: Pipeline) -> None:
+    def test_the_decision_is_not_stored(self, experts: Pipeline) -> None:
         experts.choose("math-expert", 0.9, "Math.")
         body = experts.ask("What is 2+2?").json()
+        assert body["chat_id"] is None
         with experts.factory() as db:
-            stored = (
-                db.query(Message)
-                .filter(
-                    Message.chat_id == body["chat_id"], Message.sender_type == "agent"
-                )
-                .one()
-            )
-        assert stored.meta["routing"]["status"] == "selected"
-        assert stored.meta["routing"]["agent"]["id"] == "math-expert"
-        # a selection is not a conversation with that expert
-        with experts.factory() as db:
-            from app.models import Chat
-
-            assert db.get(Chat, body["chat_id"]).agent_id is None
+            assert db.query(Message).count() == 0
 
 
 class TestConversationHistory:
     def test_earlier_turns_reach_the_registry_model(self, experts: Pipeline) -> None:
         experts.choose("none", 0.9, "ok")
         first = experts.ask("My name is Sam and I study physics").json()
-        experts.ask("What courses should I take?", chat_id=first["chat_id"])
+        experts.ask("What courses should I take?", history=[
+            {"role": "user", "content": "My name is Sam and I study physics"},
+            {"role": "assistant", "content": first["response"]},
+        ])
 
         user_prompt = experts.prompts[1][1]
         assert "Earlier in this conversation" in user_prompt
         assert "user: My name is Sam and I study physics" in user_prompt
-        # Chat stores Chris's reply, so it is replayed as the assistant's turn
+        # The browser replays Chris's reply as the assistant's turn
         assert "assistant: The registry found no registered expert" in user_prompt
         assert (
             "Latest question (select an agent for this):\nWhat courses" in user_prompt
@@ -395,22 +386,6 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
         assert body["response"] == "I found the Math Wizard specialist for your question."
         assert body["agent_name"] == "Math Wizard"
 
-    def test_the_stored_assistant_turn_uses_the_looked_up_name(
-        self, experts: Pipeline
-    ) -> None:
-        experts.choose("math-expert")
-        body = experts.ask("What is 2+2?").json()
-        with experts.factory() as db:
-            stored = (
-                db.query(Message)
-                .filter(
-                    Message.chat_id == body["chat_id"], Message.sender_type == "agent"
-                )
-                .one()
-            )
-        assert "Math Expert" in stored.content
-        assert stored.meta["routing"]["agent"]["name"] == "Math Expert"
-
     def test_an_id_this_database_does_not_know_still_shows_as_a_selection(
         self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -539,11 +514,12 @@ def test_failed_gemini_turn_is_not_saved_or_replayed(experts, monkeypatch, caplo
     monkeypatch.setattr(gemini, "answer", answer)
     first = experts.ask("first question", guest_session_id="fallback-guest")
     assert first.status_code == 200
-    chat_id = first.json()["chat_id"]
-    assert_unavailable(experts.ask("failed question", chat_id=chat_id, guest_session_id="fallback-guest"))
+    history = [{"role": "user", "content": "first question"},
+               {"role": "assistant", "content": first.json()["response"]}]
+    assert_unavailable(experts.ask("failed question", history=history))
     with experts.factory() as db:
-        assert db.query(Message).filter_by(chat_id=chat_id).count() == 2
-    recovered = experts.ask("next question", chat_id=chat_id, guest_session_id="fallback-guest")
+        assert db.query(Message).count() == 0
+    recovered = experts.ask("next question", history=history)
     assert recovered.status_code == 200
     assert histories[-1] == [
         {"role": "user", "content": "first question"},
