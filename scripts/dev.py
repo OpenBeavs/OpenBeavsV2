@@ -1,8 +1,12 @@
 """OpenBeavs v2 Development Orchestrator.
 
-Starts backend (FastAPI, port 8000) and frontend (SvelteKit, port 5173) concurrently
-in a single terminal with colored output prefixes, graceful Ctrl+C handling, and a
-'stop' command that terminates all lingering processes by port.
+Starts all 3 development services concurrently in a single terminal:
+1. Backend (FastAPI Chat & Chris, port 8000)
+2. Registry (A2A Agent Selection Service, port 8001)
+3. Frontend (SvelteKit Chat UI, port 5173)
+
+Provides colored output prefixes, graceful Ctrl+C handling, and a 'stop' command
+that terminates all lingering processes by port.
 """
 
 import os
@@ -17,11 +21,12 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-DEFAULT_PORTS = [8000, 5173]
+DEFAULT_PORTS = [8000, 8001, 5173]
 
 # ANSI colors for nice terminal output
 COLORS = {
     "backend": "\033[94m",   # Blue
+    "registry": "\033[93m",  # Yellow
     "frontend": "\033[92m",  # Green
     "system": "\033[95m",    # Magenta
     "reset": "\033[0m",
@@ -78,7 +83,7 @@ def stream_output(pipe, prefix, color):
 
 
 def start_services():
-    """Start frontend and backend concurrently in one terminal."""
+    """Start all 3 services (backend, registry, frontend) concurrently."""
     # First ensure ports are clear
     stop_processes_on_ports()
 
@@ -92,6 +97,27 @@ def start_services():
             "color": COLORS["backend"],
         },
         {
+            "name": "registry",
+            "cmd": [
+                py_exec,
+                "-m",
+                "uvicorn",
+                "app.registry.a2a_app:create_standalone_app",
+                "--factory",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8001",
+            ],
+            "cwd": str(BACKEND_DIR),
+            "color": COLORS["registry"],
+            "env": {
+                **os.environ,
+                "REGISTRY_PUBLIC_URL": os.environ.get("REGISTRY_PUBLIC_URL", "http://127.0.0.1:8001"),
+                "REGISTRY_A2A_AUTH": os.environ.get("REGISTRY_A2A_AUTH", "dev"),
+            },
+        },
+        {
             "name": "frontend",
             "cmd": "npm run dev",
             "cwd": str(FRONTEND_DIR),
@@ -101,10 +127,11 @@ def start_services():
     ]
 
     print(f"\n{COLORS['system']}════════════════════════════════════════════════════════════════")
-    print("  🚀 Starting OpenBeavs v2 Development Environment")
-    print("  - Backend:  http://127.0.0.1:8000 (FastAPI + Chris A2A + Registry)")
+    print("  🚀 Starting OpenBeavs v2 Development Environment (All 3 Services)")
+    print("  - Backend:  http://127.0.0.1:8000 (FastAPI Chat & Chris A2A)")
+    print("  - Registry: http://127.0.0.1:8001 (A2A Expert Selection Service)")
     print("  - Frontend: http://127.0.0.1:5173 (SvelteKit Chat UI)")
-    print("  Press Ctrl+C to stop both services.")
+    print("  Press Ctrl+C to stop all services.")
     print(f"════════════════════════════════════════════════════════════════{COLORS['reset']}\n")
 
     processes = []
@@ -114,10 +141,12 @@ def start_services():
         for s in services:
             is_shell = s.get("shell", False)
             cmd = s["cmd"]
+            env = s.get("env", os.environ)
             # On Windows, using CREATE_NEW_PROCESS_GROUP allows clean signal management
             p = subprocess.Popen(
                 cmd,
                 cwd=s["cwd"],
+                env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -166,5 +195,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
