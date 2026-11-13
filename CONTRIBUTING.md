@@ -43,16 +43,16 @@ backend/frontend setup, configuration, checks, and static hosting requirements.
 
 ### Prerequisites
 
-* Python 3.12 and a project virtual environment.
+* Python 3.12 and uv, which manages the backend virtual environment.
 * [Node.js 22 or newer and npm](https://nodejs.org/).
 * Backend Gemini configuration for live answers. Docker and Google Cloud SDK
   are not required for local development.
 
 ### Running the app Locally
 
-Start FastAPI from `backend/` on port 8000 after installing the backend and
-applying Alembic migrations. In a second terminal, run `npm ci` and `npm run dev`
-from `frontend/`. The frontend proxies the existing Chris API to FastAPI; the
+From `backend/`, run `uv sync`, then `uv run alembic upgrade head`. Start FastAPI
+on port 8000 with `uv run uvicorn app.main:app --reload`. In a second terminal,
+run `npm ci` and `npm run dev` from `frontend/`. The frontend proxies the existing Chris API to FastAPI; the
 original Open WebUI backend is not used. Follow the linked guide for commands.
 
 ### Handling secrets
@@ -108,13 +108,13 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Backend lint uses `ruff check .` from `backend/`. Frontend `npm run lint` runs
+Backend lint uses `uv run ruff check .` from `backend/`. Frontend `npm run lint` runs
 ESLint without rewriting files, followed by Svelte/TypeScript checks. Keep
 changes readable and limited to the feature being implemented.
 
 ## Testing
 
-Run `pytest` from `backend/`, including its authorization tests. From `frontend/`,
+Run `uv run pytest` from `backend/`, including its authorization tests. From `frontend/`,
 run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
 Playwright Chromium browser. Browser tests use API fixtures; a live Gemini
 conversation is a separate acceptance check. See the setup guide for details.

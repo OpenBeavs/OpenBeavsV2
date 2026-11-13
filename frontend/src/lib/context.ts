@@ -1,4 +1,4 @@
-import type { createConversation } from './conversation';
+import type { createGuestChats } from './guest-chats';
 
-export const conversationKey = Symbol('conversation');
-export type ConversationStore = ReturnType<typeof createConversation>;
+export const guestChatsKey = Symbol('guestChats');
+export type GuestChats = ReturnType<typeof createGuestChats>;

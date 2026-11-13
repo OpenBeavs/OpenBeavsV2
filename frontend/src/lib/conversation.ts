@@ -7,22 +7,35 @@ export type Conversation = {
   draft: string;
   pending: string | null;
   error: string | null;
+  failedDraft: string | null;
   chatId: string | null;
   guestId: string | null;
   storageUnavailable: boolean;
 };
 
 const empty = (): Conversation => ({
-  messages: [], draft: '', pending: null, error: null,
+  messages: [], draft: '', pending: null, error: null, failedDraft: null,
   chatId: null, guestId: null, storageUnavailable: false
 });
 
-/** One in-memory conversation per app instance, shared by both routes.
+/** Keep guest IDs cryptographically random even on plain HTTP dev origins. */
+function createId(): string {
+  const crypto = globalThis.crypto;
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
+}
+
+/** One in-memory conversation with its own request and transcript.
  * Generation checks discard responses after reset even if cancellation is ignored.
  */
 export function createConversation(
   transport: (request: ChrisRequest, signal: AbortSignal) => Promise<ChrisResponse> = sendMessage,
-  id: () => string = () => crypto.randomUUID()
+  id: () => string = createId
 ) {
   const state = writable<Conversation>(empty());
   let generation = 0;
@@ -41,7 +54,20 @@ export function createConversation(
       const message = before.draft.trim();
       if (!message || before.pending !== null) return;
       const currentGeneration = generation;
-      const guestId = before.guestId ?? id();
+      let guestId: string;
+      let userMessageId: string;
+      let assistantMessageId: string;
+      try {
+        guestId = before.guestId ?? id();
+        userMessageId = id();
+        assistantMessageId = id();
+      } catch {
+        state.update((current) => ({
+          ...current,
+          error: 'Could not prepare the message. Please try again in a browser with cryptography support.'
+        }));
+        return;
+      }
       controller = new AbortController();
       // Timeout covers routing plus the direct-answer model call. Reset aborts locally only.
       const controllerForRequest = controller;
@@ -53,7 +79,7 @@ export function createConversation(
         source_domain: sourceDomain,
         ...(before.chatId && !before.storageUnavailable ? { chat_id: before.chatId } : {})
       };
-      state.set({ ...before, guestId, draft: '', pending: message, error: null });
+      state.set({ ...before, guestId, draft: '', pending: message, error: null, failedDraft: null });
       try {
         const reply = await transport(request, controller.signal);
         if (generation !== currentGeneration) return;
@@ -61,8 +87,8 @@ export function createConversation(
         state.update((current) => ({
           ...current,
           messages: [...before.messages,
-            { id: id(), role: 'user', content: message },
-            { id: id(), role: 'assistant', content: reply.response, routing: reply }],
+            { id: userMessageId, role: 'user', content: message },
+            { id: assistantMessageId, role: 'assistant', content: reply.response, routing: reply }],
           pending: null,
           chatId: storageUnavailable ? null : reply.chat_id,
           storageUnavailable
@@ -72,8 +98,10 @@ export function createConversation(
         state.update((current) => ({
           ...current,
           pending: null,
-          draft: before.draft,
-          error: controllerForRequest.signal.aborted
+          // The textarea stays editable while this request is in flight.
+          draft: current.draft || before.draft,
+          failedDraft: current.draft ? before.draft : null,
+          error: controllerForRequest.signal.aborted || (error instanceof Error && error.name === 'TimeoutError')
             ? 'The request timed out. Chris may still finish on the server; retrying can duplicate a turn.'
             : error instanceof Error ? error.message : 'The request failed. Please try again.'
         }));

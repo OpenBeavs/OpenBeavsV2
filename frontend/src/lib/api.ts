@@ -56,6 +56,14 @@ function nullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+/** Fetch may report body cancellation as AbortError even when the deadline fired. */
+function throwIfRequestAborted(signal: AbortSignal): void {
+  if (signal.reason instanceof Error && signal.reason.name === 'TimeoutError') {
+    throw new DOMException('The request timed out. Please try again.', 'TimeoutError');
+  }
+  signal.throwIfAborted();
+}
+
 /** True only for a routing result that is complete and consistent with its status. */
 export function isRoutingInfo(value: unknown): value is RoutingInfo {
   if (!isRecord(value)) return false;
@@ -71,10 +79,13 @@ export function isRoutingInfo(value: unknown): value is RoutingInfo {
 
 /** Use fixed errors rather than echoing arbitrary server bodies into the UI/logs. */
 async function request(path: string, init?: RequestInit): Promise<unknown> {
+  const timeout = AbortSignal.timeout(90_000);
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
   let response: Response;
   try {
-    response = await fetch(path, { ...init, signal: init?.signal ?? AbortSignal.timeout(90_000) });
+    response = await fetch(path, { ...init, signal });
   } catch (error) {
+    throwIfRequestAborted(signal);
     if (error instanceof Error && error.name === 'AbortError') throw error;
     throw new ApiError('Chris is temporarily unavailable. Please try again shortly.');
   }
@@ -91,6 +102,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   try {
     return await response.json();
   } catch {
+    throwIfRequestAborted(signal);
     throw new ApiError('The backend returned an invalid response. Please try again.');
   }
 }

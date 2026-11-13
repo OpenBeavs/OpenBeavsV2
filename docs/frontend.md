@@ -7,6 +7,16 @@ The old Open WebUI Python backend is not required.
 
 ## Run locally
 
+Use Python 3.12, uv, and Node.js 22 or newer. From the repository root:
+
+```bash
+cd backend
+uv sync
+uv run alembic upgrade head
+# Optional: populate the registered-agent directory.
+uv run python -m app.db.seed_agents
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
 Follow [the registry setup guide](registry.md#local-development-setup) for backend dependencies,
 migrations, model configuration, and all three terminals. It runs Chat/Chris at
 `http://127.0.0.1:8010` and the standalone registry at `http://127.0.0.1:8001`.
@@ -19,6 +29,15 @@ $env:BACKEND_ORIGIN='http://127.0.0.1:8010'
 npm run dev
 ```
 
+Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
+calls `/health`, `/chat/message`, and `/chat/agents`. Vite proxies those requests to
+`http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
+requests. To use another backend, set the **non-secret server-side**
+`BACKEND_ORIGIN` when starting Vite:
+
+```bash
+BACKEND_ORIGIN=http://127.0.0.1:9000 npm run dev
+```
 Open the Local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
 calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`,
 which defaults to port 8000 if unset. It is a server-side setting, not a browser secret.
@@ -30,9 +49,10 @@ as a browser API URL.
 
 ## Supported behavior
 
-- `/`: Chris chat with plain-text message bubbles, loading/error states, and
+- `/`: Chris chat with Markdown replies, plain-text guest messages, loading/error states, and
   New Chat. Enter sends; Shift+Enter inserts a newline. IME composition does not
-  submit. Only one request runs at a time.
+  submit. You can type the next draft while Chris replies. Send stays disabled
+  until the current request finishes.
 - `/agents`: case-insensitive name/description search, featured flags, and access
   tiers. Restricted and role-gated agents are marked unavailable to guests.
 - Collapsible desktop sidebar, keyboard-accessible mobile drawer, and theme
@@ -46,15 +66,17 @@ It shows no expert IDs, confidence, routing cards or diagnostic explanations. Ba
 failures use a generic notice outside the transcript; failed turns are not added to
 browser history or replayed on the next request. No expert is called yet.
 
-The layout owns the in-memory conversation, so moving between Chris and Agents
-preserves it. Requests include prior successful turns, a random guest session
+The layout keeps each guest chat, draft, and pin in memory while the tab is open.
+New Chat opens a separate conversation, and the sidebar lets you switch between
+chats or pin them. A pending reply stays with the chat that sent it.
+Requests include prior successful turns, a random guest session
 identifier, and the current hostname. A returned `chat_id` is reused with that
 guest identifier; the backend then treats database history as authoritative.
 Neither `user_id` nor old bearer tokens are sent. The prototype's user lookup is
 not a verified authentication system.
 
-Refresh and New Chat clear the visible conversation and identifiers, but do not
-delete backend records. No transcript or guest token is saved to browser
+Refreshing or closing the tab clears the local chat list and pins. Existing
+backend records keep their normal expiry. No transcript or guest token is saved to browser
 storage. Only the theme preference is stored. Guest records receive a two-hour
 expiry at creation; deletion depends on backend cleanup being invoked. This
 frontend does not promise automatic deletion or expose the maintenance route.
@@ -62,10 +84,12 @@ frontend does not promise automatic deletion or expose the maintenance route.
 If a response has no persisted chat ID, its reply is still displayed. The rest
 of that conversation sends complete client history without a chat ID, even if
 storage later recovers, avoiding a switch to an incomplete stored history.
-Failures restore the input and remain outside conversation history. POSTs are
+Failures restore the sent text if the composer is empty. If you've started
+another draft, the failed text is available in the error notice and your draft
+stays in the composer. Failed messages stay outside conversation history. POSTs are
 never retried automatically. Requests time out after 90 seconds; a backend may
 still finish after the browser stops waiting, so a manual retry can duplicate a
-turn. New Chat ignores any late response from the previous conversation.
+turn.
 
 SSO, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
 Arena Mode, model controls, and administration are outside this initial port.
@@ -81,9 +105,9 @@ npm run preview
 The static application is emitted into `frontend/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy must
-send `/chat/*` and `/health` to FastAPI **before** applying the SPA fallback.
-Vite's proxy configuration does not ship inside the static files. Keep the
-maintenance DELETE route outside public proxy access in a real deployment.
+send only the exact paths `/chat/message`, `/chat/agents`, and `/health` to FastAPI
+**before** applying the SPA fallback. Vite's proxy configuration does not ship
+inside the static files. Keep `/chat/chats/expired` outside public proxy access.
 This change does not deploy a cloud service or establish production auth.
 
 ## Checks
@@ -101,16 +125,18 @@ npm run test:pipeline
 The original browser tests run the built app against intercepted API fixtures, without model
 keys or a live backend. On a machine with Chrome already installed,
 `PLAYWRIGHT_CHANNEL=chrome npm run test:e2e` uses that browser instead. Vitest
-covers the actual typed client and conversation transitions. Playwright covers
+covers the typed client and conversation transitions and tests the dev and preview
+proxy against a loopback stub. Playwright covers
 navigation, rendering safety, input, errors, refresh, mobile keyboard behavior,
 and the absence of unsupported API calls. These test dependencies are retained
 only for development; no browser AI or Open WebUI runtime packages are needed.
 
-From `backend/`, with the project virtual environment active:
+From `backend/`:
 
 ```bash
-PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: pytest
-ruff check .
+uv sync --locked
+uv run ruff check .
+PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
 ```
 
 `.github/workflows/checks.yml` runs the backend suite (including security-related

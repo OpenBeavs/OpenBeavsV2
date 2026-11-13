@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConversation } from './conversation';
 import type { ChrisResponse } from './api';
 
@@ -8,7 +8,51 @@ const reply = (chat_id: string | null = 'chat-1'): ChrisResponse => ({
 });
 const idFactory = () => { let value = 0; return () => `id-${++value}`; };
 
+afterEach(() => { vi.unstubAllGlobals(); });
+
 describe('in-memory conversation', () => {
+  it('uses secure UUIDs when randomUUID is unavailable on plain HTTP', async () => {
+    const crypto = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    const transport = vi.fn().mockResolvedValue(reply());
+    const chat = createConversation(transport);
+    const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+    chat.setDraft('Hello'); await chat.send('dev.example');
+    const guest = transport.mock.calls[0][0].guest_session_id;
+    expect(guest).toMatch(uuidV4);
+    chat.setDraft('Follow-up'); await chat.send('dev.example');
+    expect(transport.mock.calls[1][0].guest_session_id).toBe(guest);
+    const ids = get(chat).messages.map(({ id }) => id);
+    expect(ids).toHaveLength(4);
+    expect(new Set([guest, ...ids]).size).toBe(5);
+    ids.forEach((id) => expect(id).toMatch(uuidV4));
+
+    chat.reset();
+    chat.setDraft('Fresh'); await chat.send('dev.example');
+    expect(transport.mock.calls[2][0].guest_session_id).not.toBe(guest);
+  });
+
+  it('keeps the draft and never sends if a message ID cannot be generated', async () => {
+    const transport = vi.fn().mockResolvedValue(reply());
+    const id = vi.fn((): string => { throw new Error('Crypto unavailable'); }).mockReturnValueOnce('guest');
+    const chat = createConversation(transport, id);
+    chat.setDraft('Keep this');
+    await chat.send('localhost');
+    expect(transport).not.toHaveBeenCalled();
+    expect(get(chat)).toMatchObject({ draft: 'Keep this', pending: null, guestId: null, messages: [],
+      error: expect.stringContaining('Could not prepare the message') });
+  });
+
+  it('preserves the draft and warns about duplicate turns when the API times out', async () => {
+    const transport = vi.fn().mockRejectedValue(new DOMException('Deadline exceeded', 'TimeoutError'));
+    const chat = createConversation(transport, idFactory());
+    chat.setDraft('Keep this');
+    await chat.send('localhost');
+    expect(get(chat)).toMatchObject({ draft: 'Keep this', pending: null, messages: [],
+      error: expect.stringContaining('retrying can duplicate a turn') });
+  });
+
   it('uses the same guest and returned chat ID, sending only earlier successful turns', async () => {
     const transport = vi.fn().mockResolvedValue(reply());
     const chat = createConversation(transport, idFactory());

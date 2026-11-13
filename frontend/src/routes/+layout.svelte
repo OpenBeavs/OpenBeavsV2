@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { onMount, setContext } from 'svelte';
+  import { onMount, setContext, tick } from 'svelte';
   import { goto } from '$app/navigation';
-  import { createConversation } from '$lib/conversation';
-  import { conversationKey } from '$lib/context';
+  import { createGuestChats } from '$lib/guest-chats';
+  import { guestChatsKey } from '$lib/context';
   import { checkHealth } from '$lib/api';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import '../app.css';
 
-  // Layout lifetime keeps the active conversation alive across route navigation.
-  const conversation = createConversation();
-  setContext(conversationKey, conversation);
+  const chats = createGuestChats();
+  const { summaries, selected } = chats;
+  setContext(guestChatsKey, chats);
   let sidebarOpen = false;
   let dark = false;
   let status: 'checking' | 'connected' | 'offline' = 'checking';
@@ -43,12 +43,13 @@
     };
     system.addEventListener('change', followSystem);
     void refreshHealth();
-    return () => { system.removeEventListener('change', followSystem); conversation.reset(); };
+    return () => { system.removeEventListener('change', followSystem); chats.dispose(); };
   });
 
-  function newChat() {
-    conversation.reset();
-    void goto('/').then(() => document.getElementById('chat-input')?.focus());
+  async function showChat() {
+    if (window.location.pathname !== '/') await goto('/');
+    await tick();
+    document.getElementById('chat-input')?.focus();
   }
 </script>
 
@@ -56,7 +57,10 @@
 
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="app-shell">
-  <Sidebar bind:open={sidebarOpen} {dark} onNewChat={newChat} onToggleTheme={toggleTheme} />
+  <Sidebar bind:open={sidebarOpen} {dark} chats={$summaries} selected={$selected}
+    onNewChat={() => { chats.newChat(); void showChat(); }}
+    onSelectChat={(id) => { chats.select(id); void showChat(); }}
+    onTogglePin={chats.togglePin} onToggleTheme={toggleTheme} />
   <div class="main-shell" class:sidebar-open={sidebarOpen}>
     <header class="topbar">
       <div class="topbar-brand">
