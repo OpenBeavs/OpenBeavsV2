@@ -1,13 +1,13 @@
 .PHONY: run dev stop down dev-back dev-registry dev-front test test-backend test-frontend lint seed migrate help
 
 # ── Development ───────────────────────────────────────────────────────────────
-# Starts all 3 services (backend, registry, frontend) concurrently in one terminal
+# Starts all 4 services (registry, chris, backend, frontend) using the team's start-dev.py
 run:
-	python scripts/dev.py start
+	python start-dev.py
 
 dev: run
 
-# Stops all running development servers and frees ports 8000, 8001, and 5173
+# Stops all running development servers and frees ports 8000, 8001, 8010, and 5173
 stop:
 	python scripts/dev.py stop
 
