@@ -13,8 +13,8 @@ Priorities use MoSCoW: **Must** is required for the MVP, **Should** is important
 but not required for the MVP. These priorities were specified by the team.
 
 Anonymous chat is implemented. Microsoft SSO, saving anonymous chats to an
-account after sign-in, reopening saved account chats, and real A2A expert calls
-are not implemented yet, and current agent selection only returns a routing preview.
+account after sign-in, and reopening saved account chats are not implemented yet.
+Chris invokes selected public HTTPS experts over A2A and returns their answers.
 Multi-agent combined replies and steering an in-progress response are also not
 implemented yet.
 The acceptance criteria below describe the MVP target.

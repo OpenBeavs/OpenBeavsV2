@@ -7,7 +7,7 @@ export type ChrisRequest = {
   source_domain: string;
 };
 
-/** Chris's routing decision. A selection is a decision only: no expert has been called. */
+/** Routing metadata for a reply, including legacy no-match responses. */
 export type RoutingInfo = {
   status: 'selected' | 'no_match';
   agent: { id: string; name: string; description: string | null } | null;

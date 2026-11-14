@@ -1,8 +1,7 @@
-"""Chris asks the registry first and reports a selected expert.
+"""Chris asks the registry first and calls a selected expert.
 
 By default, a no-match or registry failure is answered directly with Gemini,
-which needs GEMINI_API_KEY and CHRIS_MODEL. Set CHRIS_SELECTION_ONLY=true to
-inspect registry outcomes without fallback. Selected experts are not called yet.
+which needs GEMINI_API_KEY and CHRIS_MODEL.
 """
 
 import asyncio
@@ -15,15 +14,10 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from google.genai import types
 
-from app.chris import gemini, registry_client, routing
-from app.config import ConfigError, get_env
+from app.chris import expert_client, gemini, registry_client, routing
+from app.config import ConfigError
 
 log = logging.getLogger(__name__)
-
-
-def selection_only() -> bool:
-    """Whether diagnostic selection-only mode is explicitly enabled."""
-    return get_env("CHRIS_SELECTION_ONLY", "false").lower() not in ("false", "0", "no")
 
 
 def _history(ctx: InvocationContext) -> list[dict[str, str]]:
@@ -47,7 +41,7 @@ class ChrisAgent(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        """Ask the registry once and report its decision."""
+        """Select once, then dispatch to the expert or answer with Gemini."""
         parts = ctx.user_content.parts if ctx.user_content else []
         message = "\n".join(p.text for p in parts or [] if p.text).strip()
         if not message:
@@ -60,9 +54,7 @@ class ChrisAgent(BaseAgent):
                 "Registry selection failed: code=%s source=%s retryable=%s",
                 result.error_code, result.source, result.retryable,
             )
-            if selection_only():
-                raise InternalError("Chris is temporarily unavailable.")
-        if result.status != routing.SELECTED and not selection_only():
+        if result.status != routing.SELECTED:
             answer = await self._gemini_answer(message, history)
             yield Event(
                 author=self.name,
@@ -71,14 +63,24 @@ class ChrisAgent(BaseAgent):
             return
         log.info("Registry selection: status=%s agent=%s", result.status,
                  result.agent.id if result.agent else None)
+        if result.agent is None:
+            raise InternalError("Chris is temporarily unavailable.")
+        try:
+            answer = await expert_client.send_message(
+                result.agent.endpoint_url, message, history
+            )
+        except expert_client.ExpertUnavailable:
+            raise InternalError("Chris is temporarily unavailable.") from None
         yield Event(
             author=self.name,
-            content=types.Content(role="model", parts=routing.to_event_parts(result)),
+            content=types.Content(
+                role="model", parts=routing.to_event_parts(result, answer=answer)
+            ),
         )
 
     @staticmethod
     async def _gemini_answer(message: str, history: list[dict[str, str]]) -> str:
-        """The legacy direct answer (only when ``CHRIS_SELECTION_ONLY`` is false)."""
+        """Answer directly when the registry cannot select an expert."""
         try:
             async with asyncio.timeout(15):
                 return await gemini.answer(message, history)
@@ -91,7 +93,7 @@ class ChrisAgent(BaseAgent):
 chris_agent = ChrisAgent(
     name="chris",
     description=(
-        "Asks the registry which registered expert fits a question and reports the "
-        "selection. It does not call the expert yet."
+        "Asks the registry which registered expert fits a question, calls that "
+        "expert, and returns its answer."
     ),
 )
