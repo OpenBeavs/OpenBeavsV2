@@ -38,7 +38,7 @@ submit URL -> safe-address check -> fetch + clean + validate card -> wording che
 5. **Selection.** Chris asks the registry over A2A. The registry offers its model only
    active agents whose status is `approved` or `provisional`, with public access and
    no required role (`service.routable_agents`). It rechecks eligibility before returning
-   a selection. Chris invokes the selected expert unless selection-only diagnostics are enabled.
+   a selection. Chris invokes the selected expert.
 
 ## Statuses
 
@@ -86,7 +86,7 @@ answers the question. It reads only agents that are currently routable
 **Status.** The local frontend -> Chat -> Chris -> registry A2A selection flow is
 built and tested. Chris returns a plain selection acknowledgement or a Gemini answer.
 Backend errors stay in terminal logs; if no answer is available the UI shows a generic notice.
-Chris calls the selected expert by default and returns its answer; selection-only mode reports the selection without dispatch. See [Local registry development](#local-registry-development)
+Chris calls the selected expert and returns its answer. See [Local registry development](#local-registry-development)
 for registry setup and [Registry validation](#registry-validation) for testing.
 
 ```text
@@ -157,7 +157,7 @@ needs the name or description looks the id up (Chat reads its own `agents` table
 
 | Reply | Meaning | What Chris does |
 |---|---|---|
-| `{"agent": {"id", "endpoint_url"}}` | An expert fits (confidence at least 0.7; the threshold is an initial guess). | Call the expert and return its answer plus routing metadata (selection-only mode reports the selection). |
+| `{"agent": {"id", "endpoint_url"}}` | An expert fits (confidence at least 0.7; the threshold is an initial guess). | Call the expert and return its answer plus routing metadata. |
 | `{"agent": "none"}` | Nothing fits, or nothing is registered. A normal answer. | Report no match (or answer directly, in fallback mode). |
 | an A2A error | The registry could not decide. The JSON-RPC error **message is a short code** (below) and nothing else: no internal detail. `invalid_request` is `-32602`; every other code is `-32603`. | Report the failure; retry later only if the code is retryable. |
 
@@ -223,7 +223,7 @@ as `REGISTRY_DEV_AUTH`); anything misconfigured fails closed.
 Each request that reaches the model is a paid Gemini call, so the number running at the
 same time is capped by `ModelLimiter` in `llm.py`. A request waits up to `REGISTRY_MODEL_QUEUE_SECONDS`
 for a slot and is then answered with the retryable `error: selection_busy`.
-Chris reports the failure in selection-only mode; optional fallback may answer directly. A request that is refused never
+Chris logs the failure and attempts Gemini fallback. A request that is refused never
 reaches Gemini, and a slot is released when a call succeeds, fails or is cancelled.
 The Gemini call itself times out after 8 seconds.
 

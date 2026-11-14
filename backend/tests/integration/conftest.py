@@ -9,7 +9,7 @@ What is fake: the Gemini call inside the registry (``call_llm``), because tests 
 deterministic and free. Nothing here proves how a real model behaves, that a Google
 token is accepted (the registry runs in its local-development mode, no token is sent),
 or that anything works when deployed. Tests enable dispatch explicitly and mock
-the expert's HTTP responses; the fixture defaults to selection-only diagnostics.
+the expert's HTTP responses.
 """
 
 import asyncio
@@ -143,9 +143,19 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
     monkeypatch.setenv("CHRIS_PUBLIC_URL", CHRIS_ORIGIN)
     monkeypatch.setenv("CHRIS_A2A_URL", f"{CHRIS_ORIGIN}/chris/a2a/")
     monkeypatch.setenv("REGISTRY_A2A_URL", f"{REGISTRY_ORIGIN}{MOUNT_PATH}")
-    monkeypatch.setenv("CHRIS_SELECTION_ONLY", "true")
     monkeypatch.setenv("REGISTRY_A2A_TIMEOUT_SECONDS", "5")
     monkeypatch.setenv("CHRIS_A2A_TIMEOUT_SECONDS", "10")
+
+    from app.chris import expert_client, gemini
+
+    async def expert_answer(endpoint, message, history):
+        return "Expert answer."
+
+    async def unavailable_fallback(message, history):
+        raise gemini.GeminiUnavailable("No fallback configured for this test.")
+
+    monkeypatch.setattr(expert_client, "send_message", expert_answer)
+    monkeypatch.setattr(gemini, "answer", unavailable_fallback)
 
     engine = create_engine(
         f"sqlite:///{tmp_path / 'pipeline.db'}",

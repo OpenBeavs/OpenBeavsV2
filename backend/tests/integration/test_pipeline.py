@@ -1,8 +1,8 @@
 """Chat -> Chris -> registry, using the real implementations and a fake model.
 
 Each test sends a question the way the frontend does (``POST /chat/message``) and checks
-the structured ``routing`` result that comes back. Selection-only tests stop at the
-registry; dispatch tests also exercise the expert SDK over mocked HTTP.
+the structured routing result. Expert and fallback replies use test doubles; the
+dispatch regression test also exercises the expert SDK over mocked HTTP.
 """
 
 import asyncio
@@ -14,12 +14,14 @@ import pytest
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.chris import gemini
+from app.chris import expert_client, gemini
 from app.history import bounded_history
 from app.models import Agent, Message
 from scripts import registry_a2a_client
 
 from .conftest import Pipeline, reply, slow
+
+real_expert_send = expert_client.send_message
 
 
 def routing_of(response: httpx.Response) -> dict:
@@ -49,11 +51,10 @@ class TestSuccessfulSelection:
             "reason": None,
         }
 
-    def test_it_is_a_selection_not_an_answer(self, experts: Pipeline) -> None:
+    def test_it_returns_the_expert_answer(self, experts: Pipeline) -> None:
         experts.choose("math-expert")
         body = experts.ask("What is 15% of 240?").json()
-        assert body["response"] == "I found a specialist for your question."
-        assert "36" not in body["response"]  # nothing pretends to be the expert's work
+        assert body["response"] == "Expert answer."
 
     def test_the_older_flat_fields_mirror_the_selection(
         self, experts: Pipeline
@@ -90,7 +91,7 @@ class TestSuccessfulSelection:
 
 
 class TestConversationHistory:
-    def test_earlier_turns_reach_the_registry_model(self, experts: Pipeline) -> None:
+    def test_earlier_turns_reach_the_registry_model(self, experts: Pipeline, fallback) -> None:
         experts.choose("none", 0.9, "ok")
         first = experts.ask("My name is Sam and I study physics").json()
         experts.ask("What courses should I take?", history=[
@@ -102,7 +103,7 @@ class TestConversationHistory:
         assert "Earlier in this conversation" in user_prompt
         assert "user: My name is Sam and I study physics" in user_prompt
         # The browser replays Chris's reply as the assistant's turn
-        assert "assistant: The registry found no registered expert" in user_prompt
+        assert "assistant: Gemini answer." in user_prompt
         assert (
             "Latest question (select an agent for this):\nWhat courses" in user_prompt
         )
@@ -155,35 +156,27 @@ class TestConversationHistory:
         assert "history" not in params.get("metadata", {})
 
 
-class TestNoMatch:
-    def test_none_is_shown_as_no_match_not_an_answer(self, experts: Pipeline) -> None:
-        experts.choose("none", 0.9, "A greeting.")
-        body = experts.ask("hi there").json()
-        assert body["routing"]["status"] == "no_match"
-        assert body["routing"]["agent"] is None
-        assert body["routing"]["reason"] is None
-        assert body["routed_to"] is None
-        assert "no registered expert" in body["response"]
+@pytest.fixture
+def fallback(monkeypatch):
+    async def answer(message, history):
+        return "Gemini answer."
 
-    def test_a_low_confidence_pick_is_no_match(self, experts: Pipeline) -> None:
-        experts.choose("math-expert", 0.4, "Maybe.")
-        assert routing_of(experts.ask("hmm"))["status"] == "no_match"
+    monkeypatch.setattr(gemini, "answer", answer)
 
-    def test_an_empty_registry_is_no_match_and_asks_no_model(
-        self, pipeline: Pipeline
-    ) -> None:
-        body = pipeline.ask("anything").json()
-        assert body["routing"]["status"] == "no_match"
-        assert pipeline.prompts == []
 
-    def test_no_match_is_not_replaced_by_a_gemini_answer(
-        self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def boom(*args):
-            raise AssertionError("Gemini must not answer in selection-only mode")
+@pytest.mark.parametrize("choice, confidence", [("none", 0.9), ("math-expert", 0.4)])
+def test_no_match_returns_unattributed_gemini_answer(experts, fallback, choice, confidence):
+    experts.choose(choice, confidence)
+    body = experts.ask("hi").json()
+    assert body["response"] == "Gemini answer."
+    assert body["agent_name"] is None
+    assert body["routed_to"] is None
+    assert body["routing"] is None
 
-        monkeypatch.setattr(gemini, "answer", boom)
-        assert routing_of(experts.ask("hi"))["status"] == "no_match"
+
+def test_empty_registry_does_not_call_selection_model(pipeline, fallback):
+    assert pipeline.ask("anything").json()["response"] == "Gemini answer."
+    assert pipeline.prompts == []
 
 
 class TestRegistryErrorsAreVisible:
@@ -215,20 +208,6 @@ class TestRegistryErrorsAreVisible:
         assert f"code={code} source=registry retryable={retryable}" in caplog.text
         with experts.factory() as db:
             assert db.query(Message).count() == 0
-
-    def test_errors_are_not_turned_into_a_gemini_answer(
-        self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        async def boom(*args):
-            raise AssertionError("Gemini must not answer in selection-only mode")
-
-        monkeypatch.setattr(gemini, "answer", boom)
-
-        async def failing(system, user, schema):
-            raise RuntimeError("model blew up")
-
-        experts.set_model(failing)
-        assert_unavailable(experts.ask("q"))
 
     def test_the_model_error_text_never_reaches_the_browser(
         self, experts: Pipeline
@@ -383,7 +362,7 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
             "name": "Math Wizard",
             "description": "Numbers.",
         }
-        assert body["response"] == "I found a specialist for your question."
+        assert body["response"] == "Expert answer."
         assert body["agent_name"] == "Math Wizard"
 
     def test_an_id_this_database_does_not_know_still_shows_as_a_selection(
@@ -433,7 +412,7 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
     ["x" * 4000, "Ã°Å¸Ëœâ‚¬" * 4000, "\x00" * 4000],
     ids=["ascii", "unicode", "controls"],
 )
-def test_large_history_fits_registry_before_it_is_parsed(experts, monkeypatch, content):
+def test_large_history_fits_registry_before_it_is_parsed(experts, monkeypatch, content, fallback):
     seen = []
     original = httpx.AsyncClient.send
 
@@ -447,7 +426,7 @@ def test_large_history_fits_registry_before_it_is_parsed(experts, monkeypatch, c
         "next", history=[{"role": "user", "content": content} for _ in range(24)]
     )
     assert response.status_code == 200
-    assert response.json()["routing"]["status"] == "no_match"
+    assert response.json()["agent_name"] is None
     assert seen and max(seen) < 64 * 1024
     assert experts.prompts
 
@@ -502,10 +481,9 @@ def test_cli_reads_the_registry_text_contract(experts, monkeypatch):
 @pytest.mark.parametrize("fails", [False, True])
 def test_expert_dispatch_through_chat_registry_and_sdk(experts, monkeypatch, fails):
     """The browser receives actual expert text, or a sanitized 503 on failure."""
-    from app.chris import expert_client
+    monkeypatch.setattr(expert_client, "send_message", real_expert_send)
 
     experts.choose("math-expert")
-    monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
     monkeypatch.setenv("CHRIS_EXPERT_A2A_VERSION", "1.0")
     monkeypatch.setattr(
         "app.registry.security.default_resolver", lambda host: ["8.8.8.8"]
@@ -553,7 +531,6 @@ def test_expert_dispatch_through_chat_registry_and_sdk(experts, monkeypatch, fai
 
 def test_failed_gemini_turn_is_not_saved_or_replayed(experts, monkeypatch, caplog):
     """A failed fallback is a notice; only successful turns become model history."""
-    monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
     experts.choose("none")
     histories = []
 

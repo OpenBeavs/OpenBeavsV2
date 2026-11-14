@@ -1,7 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Real Chat, Chris and registry with a scripted registry model. Selection-only
-// mode exercises failures without calling Gemini or dispatching to an expert.
+// Real Chat, Chris and registry with scripted selection, expert and fallback replies.
 async function ask(page: Page, text: string) {
   const pending = page.waitForResponse(r => r.url().endsWith('/chat/message') && r.request().method() === 'POST');
   await page.getByLabel('Message Chris', { exact: true }).fill(text);
@@ -24,11 +23,12 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Check backend connection' })).toContainText('Backend connected');
 });
 
-test('reports a selection as a normal message without debug details', async ({ page }) => {
+test('shows the expert answer and attribution without debug details', async ({ page }) => {
   const response = await ask(page, 'What is 15 percent of 240? (math)');
   expect(response.status()).toBe(200);
-  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
+  await expect(lastReply(page)).toHaveText('Expert answer.');
   await expect(page.getByTestId('message')).toHaveCount(2);
+  await expect(page.getByText('Answered by Math Expert', { exact: true })).toBeVisible();
   const text = await page.locator('body').innerText();
   for (const detail of ['math-expert', 'Confidence', 'Selection only.', 'example.test']) expect(text).not.toContain(detail);
   await expect(page.locator('[data-status]')).toHaveCount(0);
@@ -36,12 +36,13 @@ test('reports a selection as a normal message without debug details', async ({ p
 
 test('selects the OSU expert', async ({ page }) => {
   await ask(page, 'Tell me about OSU housing');
-  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
+  await expect(lastReply(page)).toHaveText('Expert answer.');
 });
 
-test('reports diagnostic no-match as plain text', async ({ page }) => {
+test('shows Gemini fallback without expert attribution', async ({ page }) => {
   await ask(page, 'hello there');
-  await expect(lastReply(page)).toContainText('no registered expert');
+  await expect(lastReply(page)).toHaveText('Gemini answer.');
+  await expect(page.getByText('Answered by', { exact: false })).toHaveCount(0);
   await ask(page, 'weak match please');
   await expect(page.getByTestId('message')).toHaveCount(4);
 });
@@ -49,13 +50,13 @@ test('reports diagnostic no-match as plain text', async ({ page }) => {
 test('uses earlier successful turns for a follow-up', async ({ page }) => {
   const first = await ask(page, 'Tell me about OSU housing');
   expect((await first.json()).agent_name).toBe('OSU Expert');
-  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
+  await expect(lastReply(page)).toHaveText('Expert answer.');
   const followup = await ask(page, 'followup please');
   expect((await followup.json()).agent_name).toBe('OSU Expert');
-  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
+  await expect(lastReply(page)).toHaveText('Expert answer.');
   await page.getByRole('button', { name: 'New Chat', exact: true }).click();
   await ask(page, 'followup please');
-  await expect(lastReply(page)).toContainText('no registered expert');
+  await expect(lastReply(page)).toHaveText('Gemini answer.');
 });
 
 test('keeps registry errors out of messages and browser payloads', async ({ page }) => {
@@ -75,7 +76,7 @@ test('does not present a revoked expert as selected', async ({ page }) => {
   await page.waitForTimeout(2000);
   const response = await ask(page, 'Tell me about OSU admissions');
   expect((await response.json()).agent_name).toBe('OSU Expert');
-  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
+  await expect(lastReply(page)).toHaveText('Expert answer.');
 });
 
 test('keeps failed turns out of follow-up history and recovers', async ({ page }) => {

@@ -143,21 +143,12 @@ def to_chat_payload(result: RoutingResult) -> dict[str, Any]:
     }
 
 
-def summary_text(result: RoutingResult) -> str:
-    """One plain sentence for the text part. It states the routing, never an answer."""
-    if result.status == SELECTED and result.agent is not None:
-        return "I found a specialist for your question."
-    if result.status == NO_MATCH:
-        return "The registry found no registered expert that fits this question."
-    raise ValueError("Failures cannot be summarized as chat replies.")
-
-
 def to_event_parts(
-    result: RoutingResult, *, answer: str | None = None
+    result: RoutingResult, *, answer: str
 ) -> list[types.Part]:
-    """Return expert text (or a diagnostic summary) with routing metadata."""
+    """Return expert text with routing metadata."""
     blob = _DATA_START + json.dumps(to_chat_payload(result)).encode() + _DATA_END
     return [
-        types.Part(text=answer if answer is not None else summary_text(result)),
+        types.Part(text=answer),
         types.Part(inline_data=types.Blob(mime_type="text/plain", data=blob)),
     ]
