@@ -64,7 +64,7 @@ class InvalidRegistryReply(ValueError):
 
 @dataclass(frozen=True)
 class SelectedAgent:
-    """The expert the registry picked. Chris keeps the endpoint for later dispatch."""
+    """The expert the registry picked, including its private dispatch destination."""
 
     id: str
     endpoint_url: str
@@ -152,10 +152,12 @@ def summary_text(result: RoutingResult) -> str:
     raise ValueError("Failures cannot be summarized as chat replies.")
 
 
-def to_event_parts(result: RoutingResult) -> list[types.Part]:
-    """Parts for Chris's ADK event: the summary text plus the structured data part."""
+def to_event_parts(
+    result: RoutingResult, *, answer: str | None = None
+) -> list[types.Part]:
+    """Return expert text (or a diagnostic summary) with routing metadata."""
     blob = _DATA_START + json.dumps(to_chat_payload(result)).encode() + _DATA_END
     return [
-        types.Part(text=summary_text(result)),
+        types.Part(text=answer if answer is not None else summary_text(result)),
         types.Part(inline_data=types.Blob(mime_type="text/plain", data=blob)),
     ]

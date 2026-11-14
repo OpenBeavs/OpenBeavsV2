@@ -364,7 +364,7 @@ class TestLegacyFallbackSwitch:
         assert body["response"] == "A direct Gemini answer."
         assert body["routing"] is None  # a plain answer, not a routing result
 
-    def test_a_real_selection_is_still_only_reported(
+    def test_a_real_selection_dispatches_to_expert(
         self, monkeypatch, tmp_path
     ) -> None:
         client = serve(
@@ -380,4 +380,10 @@ class TestLegacyFallbackSwitch:
             ),
         )
         monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
-        assert ask(client)["routing"]["status"] == "selected"
+        async def expert_answer(endpoint, message, history):
+            return "Expert answer."
+
+        monkeypatch.setattr("app.chris.expert_client.send_message", expert_answer)
+        body = ask(client)
+        assert body["routing"]["status"] == "selected"
+        assert body["response"] == "Expert answer."

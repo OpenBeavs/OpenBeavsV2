@@ -145,7 +145,7 @@ revocation, malformed model output, and timeout/error recovery through the brows
 Both suites run in CI; neither requires a real model key.
 
 For live acceptance, follow the runbook and ask an OSU question followed by a related
-question in the same chat. Expect a plain acknowledgement naming the selected specialist; expert dispatch is not implemented. Confirm
+question in the same chat. With `CHRIS_SELECTION_ONLY=false`, expect the selected expert's answer. Selection-only diagnostics return a generic specialist acknowledgement. Confirm
 prior successful turns are sent from browser memory and the directory loads from SQLite.
 This requires a working registry model/key and is distinct from deterministic tests.
 

@@ -1,8 +1,8 @@
 """Chat -> Chris -> registry, using the real implementations and a fake model.
 
 Each test sends a question the way the frontend does (``POST /chat/message``) and checks
-the structured ``routing`` result that comes back. The pipeline stops at the selection:
-no test calls an expert, and none treats a selection as an answer.
+the structured ``routing`` result that comes back. Selection-only tests stop at the
+registry; dispatch tests also exercise the expert SDK over mocked HTTP.
 """
 
 import asyncio
@@ -52,7 +52,7 @@ class TestSuccessfulSelection:
     def test_it_is_a_selection_not_an_answer(self, experts: Pipeline) -> None:
         experts.choose("math-expert")
         body = experts.ask("What is 15% of 240?").json()
-        assert body["response"] == "I found the Math Expert specialist for your question."
+        assert body["response"] == "I found a specialist for your question."
         assert "36" not in body["response"]  # nothing pretends to be the expert's work
 
     def test_the_older_flat_fields_mirror_the_selection(
@@ -383,7 +383,7 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
             "name": "Math Wizard",
             "description": "Numbers.",
         }
-        assert body["response"] == "I found the Math Wizard specialist for your question."
+        assert body["response"] == "I found a specialist for your question."
         assert body["agent_name"] == "Math Wizard"
 
     def test_an_id_this_database_does_not_know_still_shows_as_a_selection(
@@ -497,6 +497,58 @@ def test_cli_reads_the_registry_text_contract(experts, monkeypatch):
         registry_a2a_client.ask("http://registry.test/a2a/registry", "hi", None)
     )
     assert json.dumps(result) == '{"agent": "none"}'
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_expert_dispatch_through_chat_registry_and_sdk(experts, monkeypatch, fails):
+    """The browser receives actual expert text, or a sanitized 503 on failure."""
+    from app.chris import expert_client
+
+    experts.choose("math-expert")
+    monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
+    monkeypatch.setenv("CHRIS_EXPERT_A2A_VERSION", "1.0")
+    monkeypatch.setattr(
+        "app.registry.security.default_resolver", lambda host: ["8.8.8.8"]
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if fails:
+            return httpx.Response(503, text="private provider details")
+        return httpx.Response(200, json={
+            "jsonrpc": "2.0", "id": json.loads(request.content)["id"],
+            "result": {"message": {
+                "messageId": "r", "role": "ROLE_AGENT", "parts": [{"text": "42"}],
+            }},
+        })
+
+    monkeypatch.setattr(expert_client, "_http_client", lambda timeout:
+                        httpx.AsyncClient(transport=httpx.MockTransport(respond)))
+
+    async def no_gemini(*args):
+        raise AssertionError("Selected expert failures must not become Gemini answers")
+
+    monkeypatch.setattr(gemini, "answer", no_gemini)
+    history = [{"role": "user", "content": "Earlier question"}]
+    response = experts.ask("What is the answer?", history=history)
+    assert len(requests) == 1
+    assert str(requests[0].url) == "https://math-expert.example.test/rpc"
+    sent = json.loads(requests[0].content)["params"]
+    assert sent["metadata"] == {"history": history}
+    assert sent["message"]["parts"] == [{"text": "What is the answer?"}]
+    if fails:
+        assert_unavailable(response)
+        assert "private provider details" not in response.text
+    else:
+        assert response.status_code == 200
+        body = response.json()
+        assert body["response"] == "42"
+        assert body["agent_name"] == "Math Expert"
+        assert body["routing"]["agent"]["id"] == "math-expert"
+        assert "endpoint_url" not in response.text
+    with experts.factory() as db:
+        assert db.query(Message).count() == 0
 
 
 def test_failed_gemini_turn_is_not_saved_or_replayed(experts, monkeypatch, caplog):

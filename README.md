@@ -11,7 +11,9 @@ Start with local setup for [macOS](#run-locally-macos) or
 [Chris's API](docs/chris.md). Chat calls Chris over A2A; Chris asks the standalone
 registry to select an expert. By default Chris answers with Gemini when no expert
 matches or the registry fails. Set `CHRIS_SELECTION_ONLY=true` to diagnose registry outcomes
-without fallback; failures remain in service logs. No selected expert is invoked yet. Verified SSO and
+without expert dispatch or fallback; failures remain in service logs. Selected public
+HTTPS experts are invoked over A2A (0.3 by default; configure
+`CHRIS_EXPERT_A2A_VERSION=1.0` for 1.0 experts). Verified SSO and
 service-to-service authentication remain future work.
 
 For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](docs/registry.md).

@@ -338,7 +338,11 @@ def test_fallback_mode_answers_no_match_and_failures_with_gemini(
     answer.assert_awaited_once_with("Hello", [])
 
 
-def test_a_selection_is_reported_and_never_answered_by_gemini(monkeypatch) -> None:
+@pytest.mark.parametrize("selection_only", [False, True])
+def test_a_selection_dispatches_unless_diagnostics_enabled(monkeypatch, selection_only) -> None:
+    monkeypatch.setenv("CHRIS_SELECTION_ONLY", str(selection_only).lower())
+    expert = AsyncMock(return_value="Expert answer.")
+    monkeypatch.setattr("app.chris.expert_client.send_message", expert)
     selected = routing.RoutingResult(
         status="selected",
         agent=routing.SelectedAgent(
@@ -360,4 +364,9 @@ def test_a_selection_is_reported_and_never_answered_by_gemini(monkeypatch) -> No
     answer.assert_not_awaited()
     assert reply.routing.status == "selected"
     assert reply.routing.agent.id == "library-agent"
-    assert reply.text == "I found a specialist for your question."
+    if selection_only:
+        expert.assert_not_awaited()
+        assert reply.text == "I found a specialist for your question."
+    else:
+        expert.assert_awaited_once_with(selected.agent.endpoint_url, "Hello", [])
+        assert reply.text == "Expert answer."

@@ -9,9 +9,11 @@ private model configuration, migrations, seeding, and the all-services launcher.
 It uses ports 8010 (backend), 8000 (Chris), 8001 (registry), and 5173 (frontend).
 The registry A2A service must be started separately from `app.main:app`.
 
-The default workflow reports a selected expert or answers with Gemini on no match
-or a registry failure, requiring `GEMINI_API_KEY` and `CHRIS_MODEL`. It does not invoke
-the expert. `CHRIS_SELECTION_ONLY=true` disables fallback for diagnostics. Failures are logged and return a generic
+The default workflow invokes the selected expert or answers with Gemini on no match
+or a registry failure (fallback requires `GEMINI_API_KEY` and `CHRIS_MODEL`).
+`CHRIS_SELECTION_ONLY=true` disables expert dispatch and fallback for diagnostics.
+Expert calls default to A2A 0.3 for the seeded experts; set `CHRIS_EXPERT_A2A_VERSION=1.0`
+for 1.0 experts. See [dispatch configuration](../docs/chris.md#expert-dispatch). Failures are logged and return a generic
 availability notice without saving failed conversation turns.
 The registry uses its own `REGISTRY_MODEL` and `REGISTRY_GEMINI_API_KEY` configuration.
 

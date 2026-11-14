@@ -8,7 +8,8 @@ through the official SDK over in-memory HTTP.
 What is fake: the Gemini call inside the registry (``call_llm``), because tests must be
 deterministic and free. Nothing here proves how a real model behaves, that a Google
 token is accepted (the registry runs in its local-development mode, no token is sent),
-or that anything works when deployed. No expert is called anywhere in this stage.
+or that anything works when deployed. Tests enable dispatch explicitly and mock
+the expert's HTTP responses; the fixture defaults to selection-only diagnostics.
 """
 
 import asyncio

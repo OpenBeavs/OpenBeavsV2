@@ -1,8 +1,8 @@
-"""Chris asks the registry first and reports a selected expert.
+"""Chris asks the registry first and calls a selected expert.
 
 By default, a no-match or registry failure is answered directly with Gemini,
 which needs GEMINI_API_KEY and CHRIS_MODEL. Set CHRIS_SELECTION_ONLY=true to
-inspect registry outcomes without fallback. Selected experts are not called yet.
+inspect registry outcomes without expert dispatch or fallback.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from google.genai import types
 
-from app.chris import gemini, registry_client, routing
+from app.chris import expert_client, gemini, registry_client, routing
 from app.config import ConfigError, get_env
 
 log = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class ChrisAgent(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        """Ask the registry once and report its decision."""
+        """Select once, then dispatch to the expert or answer with Gemini."""
         parts = ctx.user_content.parts if ctx.user_content else []
         message = "\n".join(p.text for p in parts or [] if p.text).strip()
         if not message:
@@ -71,9 +71,21 @@ class ChrisAgent(BaseAgent):
             return
         log.info("Registry selection: status=%s agent=%s", result.status,
                  result.agent.id if result.agent else None)
+        answer = None
+        if result.status == routing.SELECTED and not selection_only():
+            if result.agent is None:
+                raise InternalError("Chris is temporarily unavailable.")
+            try:
+                answer = await expert_client.send_message(
+                    result.agent.endpoint_url, message, history
+                )
+            except expert_client.ExpertUnavailable:
+                raise InternalError("Chris is temporarily unavailable.") from None
         yield Event(
             author=self.name,
-            content=types.Content(role="model", parts=routing.to_event_parts(result)),
+            content=types.Content(
+                role="model", parts=routing.to_event_parts(result, answer=answer)
+            ),
         )
 
     @staticmethod
@@ -91,7 +103,7 @@ class ChrisAgent(BaseAgent):
 chris_agent = ChrisAgent(
     name="chris",
     description=(
-        "Asks the registry which registered expert fits a question and reports the "
-        "selection. It does not call the expert yet."
+        "Asks the registry which registered expert fits a question, calls that "
+        "expert, and returns its answer."
     ),
 )

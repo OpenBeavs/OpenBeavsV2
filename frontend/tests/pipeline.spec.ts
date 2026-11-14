@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Real Chat, Chris and registry with a scripted registry model. Selection-only
-// mode exercises failures without calling Gemini; no expert is called yet.
+// mode exercises failures without calling Gemini or dispatching to an expert.
 async function ask(page: Page, text: string) {
   const pending = page.waitForResponse(r => r.url().endsWith('/chat/message') && r.request().method() === 'POST');
   await page.getByLabel('Message Chris', { exact: true }).fill(text);
@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
 test('reports a selection as a normal message without debug details', async ({ page }) => {
   const response = await ask(page, 'What is 15 percent of 240? (math)');
   expect(response.status()).toBe(200);
-  await expect(lastReply(page)).toHaveText('I found the Math Expert specialist for your question.');
+  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
   await expect(page.getByTestId('message')).toHaveCount(2);
   const text = await page.locator('body').innerText();
   for (const detail of ['math-expert', 'Confidence', 'Selection only.', 'example.test']) expect(text).not.toContain(detail);
@@ -36,7 +36,7 @@ test('reports a selection as a normal message without debug details', async ({ p
 
 test('selects the OSU expert', async ({ page }) => {
   await ask(page, 'Tell me about OSU housing');
-  await expect(lastReply(page)).toHaveText('I found the OSU Expert specialist for your question.');
+  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
 });
 
 test('reports diagnostic no-match as plain text', async ({ page }) => {
@@ -47,10 +47,12 @@ test('reports diagnostic no-match as plain text', async ({ page }) => {
 });
 
 test('uses earlier successful turns for a follow-up', async ({ page }) => {
-  await ask(page, 'Tell me about OSU housing');
-  await expect(lastReply(page)).toContainText('OSU Expert');
-  await ask(page, 'followup please');
-  await expect(lastReply(page)).toContainText('OSU Expert');
+  const first = await ask(page, 'Tell me about OSU housing');
+  expect((await first.json()).agent_name).toBe('OSU Expert');
+  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
+  const followup = await ask(page, 'followup please');
+  expect((await followup.json()).agent_name).toBe('OSU Expert');
+  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
   await page.getByRole('button', { name: 'New Chat', exact: true }).click();
   await ask(page, 'followup please');
   await expect(lastReply(page)).toContainText('no registered expert');
@@ -71,8 +73,9 @@ test('handles registry timeout without saving a failed reply', async ({ page }) 
 test('does not present a revoked expert as selected', async ({ page }) => {
   await unavailable(page, 'please revoke');
   await page.waitForTimeout(2000);
-  await ask(page, 'Tell me about OSU admissions');
-  await expect(lastReply(page)).toContainText('OSU Expert');
+  const response = await ask(page, 'Tell me about OSU admissions');
+  expect((await response.json()).agent_name).toBe('OSU Expert');
+  await expect(lastReply(page)).toHaveText('I found a specialist for your question.');
 });
 
 test('keeps failed turns out of follow-up history and recovers', async ({ page }) => {
