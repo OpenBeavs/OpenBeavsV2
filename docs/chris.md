@@ -230,6 +230,7 @@ Set these privately in the process environment or ignored `backend/.env`:
 | `REGISTRY_A2A_TIMEOUT_SECONDS` | `14`; one deadline for registry discovery plus selection. |
 | `CHRIS_A2A_TIMEOUT_SECONDS` | `50`; must exceed registry + expert deadlines plus response overhead. |
 | `CHRIS_EXPERT_TIMEOUT_SECONDS` | `30`; expert validation and call deadline, allowed 1–60. |
+| `CHRIS_EXPERT_DEBUG` | `false`; set `true` to log expert dispatch and completion details in standalone Chris. |
 | `CHRIS_EXPERT_A2A_VERSION` | `0.3`; use `1.0` for experts implementing `SendMessage`. |
 | `CHRIS_SELECTION_ONLY` | `false`; set `true` to report registry outcomes without expert dispatch or Gemini fallback. |
 | `GEMINI_API_KEY` | Needed only when `CHRIS_SELECTION_ONLY=false`; never put its value in docs, logs or commits. |

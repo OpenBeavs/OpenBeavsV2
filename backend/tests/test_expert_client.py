@@ -11,6 +11,19 @@ from app.chris import expert_client
 ENDPOINT = "https://expert.example.test/rpc"
 
 
+def test_redirect_diagnostics_keep_destination_without_secrets():
+    response = httpx.Response(
+        307,
+        request=httpx.Request("POST", ENDPOINT),
+        headers={"location": "http://user:password@example.test/rpc?token=private#fragment"},
+    )
+    with pytest.raises(httpx.HTTPStatusError) as error:
+        response.raise_for_status()
+    assert expert_client._failure_details(error.value) == (
+        "expert_http_error", 307, "HTTPStatusError", "http://example.test/rpc", None,
+    )
+
+
 @pytest.fixture
 def wire(monkeypatch):
     monkeypatch.setenv("CHRIS_EXPERT_A2A_VERSION", "1.0")
