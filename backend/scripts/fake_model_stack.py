@@ -7,7 +7,8 @@ Starts, on loopback only:
 - the Chat + Chris backend (real code) on 127.0.0.1:8100, pointed at that registry.
 
 Both use a fresh temporary SQLite database with three experts. No Gemini key is read
-(``PYTHON_DOTENV_DISABLED`` stops ``.env`` from loading), and nothing calls an expert.
+(``PYTHON_DOTENV_DISABLED`` stops ``.env`` from loading). Expert dispatch and Gemini
+fallback use scripted replies.
 This proves the plumbing and the user interface; it says nothing about how the real model
 behaves. For that use the real-model stack in the README.
 
@@ -55,7 +56,6 @@ os.environ.update(
         "CHRIS_PUBLIC_URL": "http://127.0.0.1:8100",
         "CHRIS_A2A_URL": "http://127.0.0.1:8100/chris/a2a/",
         "REGISTRY_A2A_URL": "http://127.0.0.1:8101/a2a/registry",
-        "CHRIS_SELECTION_ONLY": "true",
         "REGISTRY_A2A_TIMEOUT_SECONDS": "3",
         "CHRIS_A2A_TIMEOUT_SECONDS": "10",
     }
@@ -66,6 +66,7 @@ for name in ("REGISTRY_A2A_AUTH", "K_SERVICE", "GEMINI_API_KEY", "CHRIS_MODEL"):
 import uvicorn
 from fastapi import FastAPI
 
+from app.chris import expert_client, gemini
 from app.db import SessionLocal, engine
 from app.db.base import Base
 from app.main import app as backend_app
@@ -154,7 +155,19 @@ def serve(app, port: int) -> uvicorn.Server:
     return server
 
 
+async def scripted_expert(endpoint: str, message: str, history: list[dict[str, str]]) -> str:
+    return "Expert answer."
+
+
+async def scripted_fallback(message: str, history: list[dict[str, str]]) -> str:
+    if any(word in message.lower() for word in ("break", "garbage", "slow", "revoke")):
+        raise gemini.GeminiUnavailable("Scripted fallback failure.")
+    return "Gemini answer."
+
+
 def main() -> int:
+    expert_client.send_message = scripted_expert
+    gemini.answer = scripted_fallback
     seed()
     registry = FastAPI()
     registry.mount(

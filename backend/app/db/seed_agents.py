@@ -19,7 +19,7 @@ INITIAL_AGENTS = [
         "id": "8f695b47-27a7-4ce7-9932-975fc618ba1d",
         "name": "osu_rag_agent",
         "description": "An Oregon State University expert agent that answers questions using a RAG knowledge base of oregonstate.edu content.",
-        "endpoint_url": "https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent/",
+        "endpoint_url": "https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent",
         "card_url": "https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent",
         "trust_tier": "public",
         "skills": [

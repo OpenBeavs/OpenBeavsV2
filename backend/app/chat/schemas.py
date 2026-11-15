@@ -42,8 +42,8 @@ class RoutingInfo(BaseModel):
     """Chris's routing decision, kept structured for the frontend to display.
 
     Failures are not routing messages: they use HTTP errors without persistence.
-    ``status`` is ``selected`` or diagnostic ``no_match``. A selection is a routing
-    decision only: no expert has been called, so it is never an answer.
+    Chris emits ``selected`` after a successful expert reply. The wire schema
+    still accepts ``no_match`` from older Chris instances.
     """
 
     status: Literal["selected", "no_match"]
@@ -55,8 +55,8 @@ class RoutingInfo(BaseModel):
 class ChrisMessageResponse(BaseModel):
     """Response body.
 
-    ``response`` is a short plain-language statement of the routing result (for
-    history and for clients that ignore ``routing``). ``routing`` carries the structure.
+    ``response`` is the expert or Gemini answer. ``agent_name`` identifies the expert
+    for attribution and is null for a direct Gemini answer.
     The older flat routing fields mirror a *selected* result for frontend compatibility
     and are null otherwise.
     """

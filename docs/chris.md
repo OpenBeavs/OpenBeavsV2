@@ -4,11 +4,8 @@ Chris is a custom Google ADK `BaseAgent` exposed over A2A 1.0. The chat API owns
 transient conversation history; Chris owns the deterministic registry-first
 workflow.
 
-> **Current stage: selection with Gemini fallback.** Chris asks the registry which
-> expert fits and reports a selected expert as a structured result. It does not call
-> that expert yet. By default, Chris answers with Gemini when no expert matches or
-> the registry fails. Set `CHRIS_SELECTION_ONLY=true` to inspect registry outcomes
-> without fallback. See [registry integration](registry.md#registry-integration).
+Chris asks the registry which expert fits, calls its RPC endpoint, and returns the
+expert's answer with routing metadata. No-match and registry failures use Gemini.
 
 ## Current request flow
 
@@ -18,14 +15,17 @@ sequenceDiagram
     participant Chat as Chat API
     participant Chris as Chris A2A agent
     participant Registry as Registry selection agent
+    participant Expert as Selected expert
     UI->>Chat: POST /chat/message
     Chat->>Chat: Bound client-provided history
     Chat->>Chris: A2A SendMessage + history in metadata
     Chris->>Registry: Discover card, then SendMessage (text + history data part)
     Registry-->>Chris: text JSON: agent id + endpoint, or none (or a coded A2A error)
-    alt Expert selected or selection-only diagnostics enabled
-        Chris-->>Chat: text + openbeavs.chris.routing.v1 data part (no expert call)
-    else No match or registry failure (default)
+    alt Expert selected
+        Chris->>Expert: A2A request to selected RPC URL (question + metadata.history)
+        Expert-->>Chris: Message or completed task with text artifacts
+        Chris-->>Chat: Expert answer + openbeavs.chris.routing.v1 data part
+    else No match or registry failure
         Chris->>Chris: Answer with Gemini using question and history
         Chris-->>Chat: Plain answer text
     end
@@ -41,16 +41,11 @@ The configured registry is a separate A2A service. The existing `/registry/*`
 FastAPI routes manage stored agents and reviews; they do not implement this A2A
 selection service (that is `app.registry.a2a_app`, run on its own).
 
-Chris logs selection details and backend failure codes in its terminal. Successful
-selections become a plain message such as "I found the Math Expert specialist for
-your question." This acknowledges the selection; it is not an expert answer.
-
-With `CHRIS_SELECTION_ONLY=false` (the default), no-match and registry failures use
-Gemini. With `true`, a diagnostic no-match remains a plain message and failures
-become failed A2A calls. If Gemini also fails, Chris likewise fails the A2A call.
-Chat returns a generic HTTP 503 notice without adding a browser turn. Failed turns are neither
-saved as user/assistant messages nor replayed as history. Backend configuration
-errors similarly return a generic HTTP 500 without saving a turn.
+Chris logs selection details and failure types in its terminal. Chris calls the
+selected expert once. Chat returns the answer and resolves the expert's display name.
+If no expert matches or registry selection fails, Chris tries Gemini. If an expert
+call fails or returns an unfinished or empty reply, Chat returns HTTP 503. Failed
+turns are not saved or added to browser history.
 
 Internal registry codes remain in Chris's client for classification and logging.
 They are not included in Chris-to-Chat routing data or browser-facing schemas.
@@ -80,7 +75,7 @@ A response has this shape:
 
 ```json
 {
-  "response": "I found the Math Expert specialist for your question.",
+  "response": "The answer is 42.",
   "chat_id": null,
   "routed_to": "math-expert",
   "agent_name": "Math Expert",
@@ -95,10 +90,10 @@ A response has this shape:
 }
 ```
 
-`routing` retains successful selection metadata: `status` is `selected` or diagnostic
-`no_match`. Only selected agents have an `agent`; endpoints are never sent to the
+`routing` retains successful expert metadata with `status: "selected"`.
+The schema accepts legacy `no_match` replies from older Chris instances. Endpoints are never sent to the
 browser. There is no error field. The UI renders `response` in a normal bubble and
-does not display routing metadata. `routing` is null for Gemini answers. The older
+shows “Answered by” with `agent_name` for expert replies. `routing` is null for Gemini answers. The older
 flat fields mirror a selected result and are null otherwise. `chat_id` is always
 null for compatibility. The public endpoint is stateless: history comes only from
 the request, bounded before forwarding to Chris. Omit the current message from
@@ -167,6 +162,36 @@ application retry or task polling. Chris sends **no credential**: that is correc
 for the registry's local-development mode, and attaching a Google identity token for a
 deployed registry is not implemented.
 
+## Expert dispatch
+
+`app/chris/expert_client.py` calls the exact RPC URL supplied by the registry;
+there is no inferred discovery path or redirected destination. The registry contract
+contains no protocol version, so `CHRIS_EXPERT_A2A_VERSION` selects `0.3` (default,
+SDK `message/send`, matching the seeded experts) or `1.0` (SDK `SendMessage`). This setting applies to all experts
+in this Chris deployment; mixed-version routing needs protocol metadata added to
+the registry contract in future work. No database access is required by Chris.
+
+The request carries the question in a text part and bounded prior user/assistant
+turns in request-level `metadata.history`. Experts must implement that history
+contract to use earlier turns. Each turn uses a fresh message ID and no reused
+context or task ID. Only message text or completed-task artifact text is returned;
+expert data parts cannot replace Chris's routing metadata. There is no streaming,
+polling, or automatic retry.
+
+Only public HTTPS destinations are supported. Chris revalidates DNS and URL safety
+at dispatch, rejects credentials, queries, fragments and malformed URLs, and disables
+redirects and environment proxies. The shared registry validator still has a
+DNS-rebinding gap between validation and connection; production egress restrictions
+are needed to close it. Private/loopback endpoints are not supported by this path.
+No user credentials or service tokens are forwarded. Authenticated expert endpoints
+remain unsupported and return an unavailable response on auth rejection.
+
+`CHRIS_EXPERT_TIMEOUT_SECONDS` bounds validation plus the full exchange (default
+30 seconds, allowed 1–60). Invalid timeout values use the default. Transport and
+protocol failures log a safe classification (timeout, connection, auth, HTTP, unsafe
+URL, or protocol failure), HTTP status when available, and the underlying exception
+type. URLs, credentials and response bodies are omitted; callers receive a generic error.
+
 ## Gemini fallback (enabled by default)
 
 `app/chris/gemini.py` uses the asynchronous `google-genai` SDK's `generate_content`
@@ -177,8 +202,9 @@ Provider errors are replaced with a generic error without echoing their details.
 There is no Gemini Interactions API call or `store: false` setting in this path;
 this branch does not establish a provider-retention guarantee.
 
-Chat's overall A2A deadline is 35 seconds (`CHRIS_A2A_TIMEOUT_SECONDS`), Chris's registry
-deadline is 14 seconds, optional fallback is bounded to 15 seconds, and the frontend waits up to 90 seconds; see
+Chat's overall A2A deadline is 50 seconds (`CHRIS_A2A_TIMEOUT_SECONDS`), Chris's registry
+deadline is 14 seconds, expert dispatch is bounded to 30 seconds, optional Gemini
+fallback to 15 seconds, and the frontend waits up to 90 seconds; see
 [the registry timeout settings](registry.md#registry-caller-timeout) for the selection deadline.
 Timeouts in different layers do not prove a downstream operation was canceled;
 there are no automatic frontend POST retries.
@@ -193,15 +219,16 @@ Set these privately in the process environment or ignored `backend/.env`:
 | `CHRIS_PUBLIC_URL` | `http://localhost:8000`; public base URL used by the card mounted in `app.main`. |
 | `REGISTRY_A2A_URL` | `http://127.0.0.1:8001/a2a/registry`; registry base URL for SDK discovery. |
 | `REGISTRY_A2A_TIMEOUT_SECONDS` | `14`; one deadline for registry discovery plus selection. |
-| `CHRIS_A2A_TIMEOUT_SECONDS` | `35`; chat's deadline for Chris (must exceed the registry deadline). |
-| `CHRIS_SELECTION_ONLY` | `false`; set `true` to report registry outcomes without Gemini fallback. |
-| `GEMINI_API_KEY` | Needed only when `CHRIS_SELECTION_ONLY=false`; never put its value in docs, logs or commits. |
-| `CHRIS_MODEL` | Gemini model ID, needed only when `CHRIS_SELECTION_ONLY=false`. |
+| `CHRIS_A2A_TIMEOUT_SECONDS` | `50`; must exceed registry + expert deadlines plus response overhead. |
+| `CHRIS_EXPERT_TIMEOUT_SECONDS` | `30`; expert validation and call deadline, allowed 1–60. |
+| `CHRIS_EXPERT_DEBUG` | `false`; set `true` to log expert dispatch and completion details in standalone Chris. |
+| `CHRIS_EXPERT_A2A_VERSION` | `0.3`; use `1.0` for experts implementing `SendMessage`. |
+| `GEMINI_API_KEY` | Used for Gemini fallback; never put its value in docs, logs or commits. |
+| `CHRIS_MODEL` | Gemini model ID, used for fallback. |
 | `DATABASE_URL` | Chat/registry database; defaults to `sqlite:///./openbeavs.db`. |
 
 The registry URL is operator configuration, never a frontend-supplied destination.
-With no registry listening, Chris reports `registry_unreachable` (or uses Gemini only when
-`CHRIS_SELECTION_ONLY=false`). The directory
+With no registry listening, Chris logs `registry_unreachable` and tries Gemini. The directory
 still reads stored eligible agents, but that list does not drive Chris's selection.
 `CHRIS_USE_MOCK_AGENTS` and the old local mock list have been removed.
 
@@ -239,7 +266,8 @@ app/chat/router.py          frontend REST routes
 app/chat/schemas.py         frontend request/response models
 app/chat/service.py         transient history, agent directory
 app/chat/a2a_client.py      SDK client adapter that calls Chris
-app/chris/agent.py          registry-first flow (Gemini fallback only when enabled)
+app/chris/agent.py          registry-first expert dispatch or Gemini fallback
+app/chris/expert_client.py  validated direct RPC call, deadline, text extraction
 app/chris/registry_client.py SDK discovery, selection request and failure classification
 app/chris/routing.py        registry contract validation and Chris's routing result
 app/chris/gemini.py         direct Gemini generation
@@ -248,7 +276,6 @@ app/chris/transport.py      request-scoped SDK stores; task enumeration denied
 app/chris/run.py            local standalone entrypoint
 ```
 
-Selected-specialist invocation, a real registry selection service, A2A caller
-authentication, verified SSO, streaming in the frontend, saved-chat retrieval, and
+A2A caller authentication, authenticated expert invocation, mixed-version expert routing, verified SSO, streaming in the frontend, saved-chat retrieval, and
 automated TTL cleanup remain future work. See [registry](registry.md) and
 [frontend integration](frontend.md) for their separate responsibilities.

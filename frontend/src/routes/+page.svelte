@@ -75,6 +75,9 @@
                 {message.content}
               {/if}
             </div>
+            {#if message.role === 'assistant' && message.routing?.agent_name?.trim()}
+              <p class="message-attribution muted">Answered by {message.routing.agent_name}</p>
+            {/if}
           </div>
         </div>
       {/each}

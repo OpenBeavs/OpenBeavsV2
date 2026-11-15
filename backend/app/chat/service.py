@@ -64,9 +64,6 @@ async def handle_message(
         if record is not None:
             routing.agent.name = record.name
             routing.agent.description = record.description
-            text = f"I found the {record.name} specialist for your question."
-        else:
-            text = "I found a specialist for your question."
         log.info("Selected expert: id=%s name=%s", routing.agent.id, routing.agent.name)
     selected = routing is not None and routing.status == "selected" and routing.agent
     return ChrisMessageResponse(

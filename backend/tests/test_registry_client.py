@@ -291,7 +291,6 @@ class TestTimeoutSetting:
         assert registry_client.timeout_seconds() == 14.0
 
 
-@pytest.mark.parametrize("mode", [None, "false"])
 @pytest.mark.parametrize(
     "result",
     [
@@ -304,13 +303,8 @@ class TestTimeoutSetting:
     [None, gemini.GeminiUnavailable("private details")],
 )
 def test_fallback_mode_answers_no_match_and_failures_with_gemini(
-    monkeypatch, result, model_failure, mode
+    monkeypatch, result, model_failure
 ) -> None:
-    """The default and explicit fallback mode answer no-match and failures."""
-    if mode is None:
-        monkeypatch.delenv("CHRIS_SELECTION_ONLY", raising=False)
-    else:
-        monkeypatch.setenv("CHRIS_SELECTION_ONLY", mode)
     selection = AsyncMock(return_value=result)
 
     async def model_answer(message, history):
@@ -338,7 +332,9 @@ def test_fallback_mode_answers_no_match_and_failures_with_gemini(
     answer.assert_awaited_once_with("Hello", [])
 
 
-def test_a_selection_is_reported_and_never_answered_by_gemini(monkeypatch) -> None:
+def test_selected_expert_answers(monkeypatch) -> None:
+    expert = AsyncMock(return_value="Expert answer.")
+    monkeypatch.setattr("app.chris.expert_client.send_message", expert)
     selected = routing.RoutingResult(
         status="selected",
         agent=routing.SelectedAgent(
@@ -360,4 +356,5 @@ def test_a_selection_is_reported_and_never_answered_by_gemini(monkeypatch) -> No
     answer.assert_not_awaited()
     assert reply.routing.status == "selected"
     assert reply.routing.agent.id == "library-agent"
-    assert reply.text == "I found a specialist for your question."
+    expert.assert_awaited_once_with(selected.agent.endpoint_url, "Hello", [])
+    assert reply.text == "Expert answer."

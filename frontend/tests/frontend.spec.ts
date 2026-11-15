@@ -133,6 +133,7 @@ test('opens, traps focus, and closes the mobile sidebar with Escape', async ({ p
 test('shows the guest reply in a normal bubble without routing debug output', async ({ page }) => {
   await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, routed_to: 'library', agent_name: 'Library' } }));
   await page.goto('/'); await send(page, 'Find research');
+  await expect(page.getByText('Answered by Library', { exact: true })).toBeVisible();
   await expect(page.getByText('Routing preview · Library')).toHaveCount(0);
   await expect(page.getByTestId('message')).toHaveText(['Find research', response.response]);
 });
