@@ -16,7 +16,7 @@ from app.chat.a2a_client import ChrisReply
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import Chat, User
+from app.models import User
 
 
 @pytest.fixture(autouse=True)
