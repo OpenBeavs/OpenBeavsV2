@@ -27,7 +27,7 @@ def setup_auth_env(monkeypatch):
     monkeypatch.setenv("MICROSOFT_CLIENT_TENANT_ID", "mock-tenant-id")
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def test_db():
     """Create isolated in-memory SQLite database for auth tests."""
     engine = create_engine(
@@ -199,7 +199,7 @@ def test_login_redirect_unconfigured(monkeypatch):
 
 
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
-def test_authenticated_chat_message(mock_send):
+def test_authenticated_chat_message(mock_send, test_db: Session):
     """Verify authenticated user can interact with chat endpoint using Bearer token."""
     mock_send.return_value = ChrisReply(
         text="Hello from Chris to authenticated user!", routing=None
