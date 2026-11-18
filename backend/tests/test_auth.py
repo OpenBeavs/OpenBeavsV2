@@ -179,6 +179,14 @@ def test_authorize_url_generation():
     assert data["dev_bypass"] is True
 
 
+def test_login_redirect():
+    """Verify GET /auth/login returns a 307 redirect to Microsoft login."""
+    client = TestClient(app)
+    resp = client.get("/auth/login", follow_redirects=False)
+    assert resp.status_code == 307
+    assert "login.microsoftonline.com" in resp.headers["location"]
+
+
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
 def test_authenticated_chat_persistence(mock_send, test_db: Session):
     """Verify chat turn with Bearer token sets user_id and session_type=authenticated."""

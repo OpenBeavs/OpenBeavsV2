@@ -5,7 +5,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.auth.config import AuthConfig
@@ -96,6 +96,19 @@ async def get_authorization_url(redirect_uri: str | None = None) -> AuthorizeRes
         state=state,
         dev_bypass=AuthConfig.is_dev_bypass_enabled(),
     )
+
+
+@router.get("/login")
+async def login_redirect(redirect_uri: str | None = None) -> RedirectResponse:
+    """Redirect directly to the Microsoft Entra ID sign-in page."""
+    state = create_state_token(purpose="login")
+    authorize_url = AuthConfig.get_ms_authorize_url(state, redirect_uri=redirect_uri)
+    if not authorize_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Microsoft SSO is not configured.",
+        )
+    return RedirectResponse(url=authorize_url)
 
 
 @router.get("/callback")
