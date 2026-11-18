@@ -33,14 +33,21 @@ router = APIRouter()
 
 
 def _auth_popup_response(token: str, user_dict: dict, is_elevated: bool = False) -> HTMLResponse:
-    """Return minimal HTML page communicating token to opener window and closing popup."""
+    """Return HTML page communicating token to opener window or redirecting to home."""
+    name = user_dict.get("display_name") or user_dict.get("email") or "OSU User"
     html = f"""<!DOCTYPE html>
 <html>
-<head><title>OpenBeavs Authentication</title></head>
-<body>
-<div style="font-family: sans-serif; text-align: center; margin-top: 20%;">
-  <h3>Authentication successful. Closing window...</h3>
-</div>
+<head>
+  <title>OpenBeavs - Signed In</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; margin-top: 15%; background: #fdfdfd; color: #1a1a1a;">
+  <div style="max-width: 420px; margin: 0 auto; padding: 24px; border: 1px solid #e5e5e5; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+    <div style="font-size: 40px; margin-bottom: 12px;">🦫</div>
+    <h2 style="color: #d73f09; margin: 0 0 8px 0;">Signed In Successfully</h2>
+    <p style="margin: 0 0 16px 0; color: #4a4a4a;">Welcome, <strong>{name}</strong>!</p>
+    <a href="/" style="display: inline-block; padding: 10px 24px; background: #d73f09; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Continue to OpenBeavs</a>
+  </div>
 <script>
   try {{
     const payload = {{
@@ -51,12 +58,14 @@ def _auth_popup_response(token: str, user_dict: dict, is_elevated: bool = False)
     }};
     if (window.opener) {{
       window.opener.postMessage(payload, "*");
+      setTimeout(() => window.close(), 600);
+    }} else {{
+      setTimeout(() => {{ window.location.href = "/"; }}, 1000);
     }}
     localStorage.setItem("openbeavs_token", "{token}");
   }} catch (e) {{
     console.error(e);
   }}
-  setTimeout(() => window.close(), 600);
 </script>
 </body>
 </html>"""
