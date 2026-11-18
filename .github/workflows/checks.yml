@@ -24,7 +24,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --locked
       - run: uv run ruff check .
-      # Includes the guest/owner authorization, trust-tier and persistence tests.
+      # Includes the stateless-chat privacy, trust-tier and migration tests.
       - run: uv run pytest
 
   frontend:

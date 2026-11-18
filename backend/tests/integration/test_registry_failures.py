@@ -94,7 +94,6 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     monkeypatch.setenv("CHRIS_PUBLIC_URL", CHRIS_ORIGIN)
     monkeypatch.setenv("CHRIS_A2A_URL", f"{CHRIS_ORIGIN}/chris/a2a/")
     monkeypatch.setenv("REGISTRY_A2A_URL", f"{REGISTRY_ORIGIN}/a2a/registry")
-    monkeypatch.setenv("CHRIS_SELECTION_ONLY", "true")
     monkeypatch.setenv("REGISTRY_A2A_TIMEOUT_SECONDS", "3")
     monkeypatch.setattr(
         registry_client,
@@ -110,7 +109,12 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     )
 
     async def no_gemini(*args):
-        raise AssertionError("Gemini must not answer in selection-only mode")
+        raise gemini.GeminiUnavailable("Fallback unavailable.")
+
+    async def expert_answer(*args):
+        return "Expert answer."
+
+    monkeypatch.setattr("app.chris.expert_client.send_message", expert_answer)
 
     monkeypatch.setattr(gemini, "answer", no_gemini)
     backend_app.dependency_overrides[get_db] = override_get_db
@@ -139,9 +143,9 @@ class TestWellFormedReply:
         assert body["routing"]["status"] == "selected"
         assert body["routing"]["agent"]["id"] == "math-expert"
 
-    def test_none_is_no_match(self, monkeypatch, tmp_path) -> None:
+    def test_none_is_unavailable_without_fallback(self, monkeypatch, tmp_path) -> None:
         body = ask(serve(monkeypatch, tmp_path, text_reply('{"agent":"none"}')))
-        assert body["routing"]["status"] == "no_match"
+        assert_visible_error(body, "no_match")
 
 
 MALFORMED = {
@@ -344,10 +348,10 @@ class TestRegistryTransportFailures:
         assert_visible_error(body, "registry_not_configured")
 
 
-class TestLegacyFallbackSwitch:
-    """CHRIS_SELECTION_ONLY=false restores Gemini for no-match and failures only."""
+class TestAnswerDispatch:
+    """Gemini answers no-match and registry failures when available."""
 
-    def test_the_fallback_answers_a_failure_when_enabled(
+    def test_the_fallback_answers_a_registry_failure(
         self, monkeypatch, tmp_path
     ) -> None:
         def refuse(request, *args):
@@ -359,12 +363,11 @@ class TestLegacyFallbackSwitch:
             return "A direct Gemini answer."
 
         monkeypatch.setattr(gemini, "answer", answer)
-        monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
         body = ask(client)
         assert body["response"] == "A direct Gemini answer."
         assert body["routing"] is None  # a plain answer, not a routing result
 
-    def test_a_real_selection_is_still_only_reported(
+    def test_a_real_selection_dispatches_to_expert(
         self, monkeypatch, tmp_path
     ) -> None:
         client = serve(
@@ -379,5 +382,10 @@ class TestLegacyFallbackSwitch:
                 },
             ),
         )
-        monkeypatch.setenv("CHRIS_SELECTION_ONLY", "false")
-        assert ask(client)["routing"]["status"] == "selected"
+        async def expert_answer(endpoint, message, history):
+            return "Expert answer."
+
+        monkeypatch.setattr("app.chris.expert_client.send_message", expert_answer)
+        body = ask(client)
+        assert body["routing"]["status"] == "selected"
+        assert body["response"] == "Expert answer."

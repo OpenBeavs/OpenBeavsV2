@@ -10,7 +10,7 @@ do not implement those flows. Current behavior is described below and in
 The legacy repository was built as a direct fork of **Open WebUI**, inheriting over 20 tables, dual ORMs (`Peewee` and `SQLAlchemy`), embedded vector databases (`ChromaDB`), and local password authentication. Because OpenBeavs is fundamentally an **A2A (Agent-to-Agent) protocol discovery hub and orchestrator for Oregon State University**, more than 80% of the inherited schema was dead weight.
 
 OpenBeavs v2 has **5 core tables** managed by **SQLAlchemy 2.0** and **Alembic**.
-The chat service records relational conversation turns; Chris receives message
+The public chat service stores no conversation turns; Chris receives message
 text/history over A2A and does not access these tables. Streaming, history pagination,
 verified Microsoft SSO, and envelope encryption are not implemented by the
 current API. Cold-start and capacity benefits have not been measured here.
@@ -52,12 +52,12 @@ Both models attempted to call `create_all(bind=engine)` inside their constructor
 ## 3. OpenBeavs V2 Database Architecture
 
 ### 3.1 Design Principles
-1. **Single Responsibility:** The hub stores only registry discovery metadata, routing state, conversation history, and user session references.
+1. **Single Responsibility:** The active hub stores registry discovery metadata; conversation tables remain as legacy schema.
 2. **Single Modern ORM:** SQLAlchemy 2.0 (async/sync) with Alembic for migrations. No dual ORM wrappers.
 3. **Relational Messages:** Conversations are broken down into indexed, sequential message rows rather than monolithic JSON blobs.
 4. **Identity & Privacy:** Schema fields reserve space for OIDC identity and
-   encryption. The current guest flow stores plaintext and sets a two-hour
-   expiry; cleanup must be explicitly invoked, not automatically scheduled.
+   encryption. Guest chat is now stateless. Cleanup of previously stored guest
+   transcripts is handled by the database owner.
 5. **Multi-Environment Parity:** Standard relational schema that runs on SQLite for fast local development and PostgreSQL on Google Cloud SQL in production.
 
 ---
@@ -112,7 +112,7 @@ erDiagram
         string session_type "authenticated | guest | a2a"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
-        bigint expires_at "2-hour guest expiry; cleanup must be invoked"
+        bigint expires_at "Legacy expiry (guest storage removed)"
     }
 
     MESSAGES {
@@ -188,7 +188,7 @@ Represents conversation sessions started from the web app or embedded Floating A
 - **`session_type`** (`String`, NOT NULL): `'authenticated'`, `'guest'`, or `'a2a'`.
 - **`created_at`** (`BigInteger`): Session start epoch.
 - **`updated_at`** (`BigInteger`): Timestamp of the last received message.
-- **`expires_at`** (`BigInteger`, NULL): Set to `created_at + 86400` (24h) for guest sessions; NULL for authenticated users.
+- **`expires_at`** (`BigInteger`, NULL): Legacy expiry timestamp; no new guest sessions are stored.
 
 ### 4.4 `messages`
 Individual conversational turns replacing monolithic JSON arrays.
@@ -217,18 +217,16 @@ Support and bug feedback tracking.
 
 ## 5. Security, Privacy & Retention Architecture
 
-1. **Guest sessions and cleanup:** The frontend creates an in-memory random
-   `guest_session_id`. Chat sets `expires_at` to creation time plus two hours.
-   `purge_expired_chats()` deletes expired chats and related messages when
-   invoked by the maintenance endpoint. No scheduler is installed; expiry is
-   not checked when accepting a subsequent message.
-2. **Current ownership checks:** Guest continuations must match a stored guest
-   identifier. A caller-supplied `user_id` is looked up in the users table, but
-   this does not verify identity. The frontend never supplies one. SSO and
-   automatic guest-to-user promotion remain unimplemented.
-3. **Encryption fields:** `kms_key_ref` and `encrypted_dek` are schema fields for
-   future work. The current chat service persists plaintext content and does
-   not perform envelope encryption.
+1. **Stateless public chat:** `/chat/message` uses bounded request history and
+   does not read or write `chats` or `messages`. Guest identifiers and claimed
+   user IDs cannot enable persistence. The browser keeps transcripts in memory.
+2. **Legacy data removal:** The database owner handles cleanup of existing
+   `session_type = 'guest'` chats and their messages after the stateless chat app
+   is deployed. The expiry maintenance endpoint has been removed.
+3. **Retained schema:** Chat/message tables and their legacy guest/expiry columns
+   remain for migration compatibility. They do not imply an active persistence
+   feature. SSO and account-backed history are not implemented. Encryption columns
+   remain reserved schema fields; the public chat service stores no transcripts.
 
 ---
 

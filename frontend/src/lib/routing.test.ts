@@ -15,7 +15,7 @@ const failure = {
   reason: null,
   error: { code: 'registry_timeout', retryable: true, source: 'chris' }
 };
-const payload: ChrisRequest = { message: 'Hi', history: [], guest_session_id: 'g', source_domain: 'localhost' };
+const payload: ChrisRequest = { message: 'Hi', history: [], source_domain: 'localhost' };
 const reply = (routing: unknown) => ({
   response: 'The registry selected Math Expert.', chat_id: 'c', routed_to: null, agent_name: null,
   routing_confidence: null, routing_reason: null, routing

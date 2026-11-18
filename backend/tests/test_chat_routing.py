@@ -94,15 +94,10 @@ class TestChrisSerialization:
                 parse_routing(routing.to_chat_payload(result)).status == result.status
             )
 
-    def test_the_summary_never_reads_like_an_answer(self) -> None:
-        assert routing.summary_text(self.SELECTED) == "I found a specialist for your question."
-
     @pytest.mark.parametrize("failure", [routing.chris_error("registry_timeout", True), routing.registry_error("selection_busy")])
     def test_failures_cannot_be_forwarded_as_messages(self, failure) -> None:
         with pytest.raises(ValueError):
             routing.to_chat_payload(failure)
-        with pytest.raises(ValueError):
-            routing.summary_text(failure)
 
 
 class TestRegistryContractParsing:

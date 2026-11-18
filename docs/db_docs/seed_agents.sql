@@ -25,7 +25,7 @@ INSERT INTO agents (
     '8f695b47-27a7-4ce7-9932-975fc618ba1d',
     'osu_rag_agent',
     'An Oregon State University expert agent that answers questions using a RAG knowledge base of oregonstate.edu content.',
-    'https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent/',
+    'https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent',
     'https://osu-rag-agent-716080272371.us-west1.run.app/a2a/osu_rag_agent',
     'public',
     NULL,

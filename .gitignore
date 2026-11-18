@@ -25,6 +25,7 @@ frontend/playwright-report/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+/frontend/vite.config.ts.timestamp-*.mjs
 
 .env
 docs/imgs/registry-a2a-flow.png

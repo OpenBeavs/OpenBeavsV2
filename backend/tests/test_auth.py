@@ -199,8 +199,8 @@ def test_login_redirect_unconfigured(monkeypatch):
 
 
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
-def test_authenticated_chat_persistence(mock_send, test_db: Session):
-    """Verify chat turn with Bearer token sets user_id and session_type=authenticated."""
+def test_authenticated_chat_message(mock_send):
+    """Verify authenticated user can interact with chat endpoint using Bearer token."""
     mock_send.return_value = ChrisReply(
         text="Hello from Chris to authenticated user!", routing=None
     )
@@ -215,44 +215,9 @@ def test_authenticated_chat_persistence(mock_send, test_db: Session):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert msg_resp.status_code == 200
-    chat_id = msg_resp.json()["chat_id"]
-    assert chat_id is not None
-
-    db_chat = test_db.get(Chat, chat_id)
-    assert db_chat is not None
-    assert db_chat.user_id == "chat.beav"
-    assert db_chat.session_type == "authenticated"
-    assert db_chat.expires_at is None  # Authenticated chats do not expire after 2h
-
-
-@patch("app.chat.service.send_message", new_callable=AsyncMock)
-def test_idor_protection_with_auth_tokens(mock_send, test_db: Session):
-    """Verify user cannot append messages to another user's authenticated chat."""
-    mock_send.return_value = ChrisReply(text="Response", routing=None)
-
-    client = TestClient(app)
-    # User 1 creates a chat
-    u1_login = client.post("/auth/dev/login", json={"email": "user1@oregonstate.edu"})
-    u1_token = u1_login.json()["access_token"]
-    u1_resp = client.post(
-        "/chat/message",
-        json={"message": "User 1 confidential chat"},
-        headers={"Authorization": f"Bearer {u1_token}"},
-    )
-    chat_id = u1_resp.json()["chat_id"]
-
-    # User 2 logs in
-    u2_login = client.post("/auth/dev/login", json={"email": "user2@oregonstate.edu"})
-    u2_token = u2_login.json()["access_token"]
-
-    # User 2 attempts to send a turn to User 1's chat
-    u2_hijack = client.post(
-        "/chat/message",
-        json={"message": "Attempted turn injection", "chat_id": chat_id},
-        headers={"Authorization": f"Bearer {u2_token}"},
-    )
-    assert u2_hijack.status_code == 403
-    assert "Access denied" in u2_hijack.json()["detail"]
+    data = msg_resp.json()
+    assert data["response"] == "Hello from Chris to authenticated user!"
+    assert data["chat_id"] is None
 
 
 def test_cookie_based_authentication(test_db: Session):

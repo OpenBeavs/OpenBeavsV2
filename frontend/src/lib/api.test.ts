@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkHealth, listAgents, sendMessage, type ChrisRequest } from './api';
 
-const payload: ChrisRequest = { message: 'Hello', history: [], guest_session_id: 'guest-test', source_domain: 'localhost' };
+const payload: ChrisRequest = { message: 'Hello', history: [], source_domain: 'localhost' };
 const reply = { response: 'Hello!', chat_id: 'chat-test', routed_to: null, agent_name: null, routing_confidence: null, routing_reason: null };
 afterEach(() => { vi.unstubAllGlobals(); });
 

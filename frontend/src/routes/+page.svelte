@@ -75,6 +75,9 @@
                 {message.content}
               {/if}
             </div>
+            {#if message.role === 'assistant' && message.routing?.agent_name?.trim()}
+              <p class="message-attribution muted">Answered by {message.routing.agent_name}</p>
+            {/if}
           </div>
         </div>
       {/each}
@@ -95,7 +98,6 @@
           {/if}
         </div>
       {/if}
-      {#if $conversation.storageUnavailable}<div class="notice" role="status">Conversation storage is unavailable. You can continue here until you refresh.</div>{/if}
       <form class="composer" bind:this={composer} bind:clientWidth={composerWidth} on:submit|preventDefault={send} aria-label="Chat composer">
         <label class="sr-only" for="chat-input">Message Chris</label>
         <textarea id="chat-input" bind:this={input} rows="1" placeholder="Message Chris…" value={$conversation.draft} on:input={(event) => conversation.setDraft(event.currentTarget.value)} on:keydown={handleKey} on:click={pulseComposer}></textarea>
