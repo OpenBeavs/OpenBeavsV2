@@ -21,7 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
-DEFAULT_PORTS = [8000, 8010, 8001, 5173]
+DEFAULT_PORTS = [8000, 8010, 8001, 5173, 8080, 3000]
 
 
 def get_backend_port() -> int:

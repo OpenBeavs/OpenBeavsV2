@@ -54,3 +54,13 @@ def health_check() -> dict[str, str]:
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/chat", tags=["chat"])
 app.include_router(registry_router, prefix="/registry", tags=["registry"])
+
+# Compatibility alias for Azure Entra ID registered callback path (/oauth/microsoft/callback)
+from app.auth.router import oauth_callback
+
+app.add_api_route(
+    "/oauth/microsoft/callback",
+    oauth_callback,
+    methods=["GET"],
+    include_in_schema=False,
+)
