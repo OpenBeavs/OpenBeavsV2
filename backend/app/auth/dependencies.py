@@ -27,6 +27,8 @@ async def get_optional_user(
     token: str | None = None
     if authorization and authorization.startswith("Bearer "):
         token = authorization[7:].strip()
+    elif "openbeavs_token" in request.cookies:
+        token = request.cookies.get("openbeavs_token")
 
     # 1. Try decoding as OpenBeavs internal session token (fast symmetric verification)
     if token:

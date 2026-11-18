@@ -234,3 +234,21 @@ def test_idor_protection_with_auth_tokens(mock_send, test_db: Session):
     )
     assert u2_hijack.status_code == 403
     assert "Access denied" in u2_hijack.json()["detail"]
+
+
+def test_cookie_based_authentication(test_db: Session):
+    """Verify openbeavs_token cookie authenticates GET /auth/me."""
+    client = TestClient(app)
+    login_resp = client.post(
+        "/auth/dev/login",
+        json={"email": "cookie.beav@oregonstate.edu", "display_name": "Cookie Beav", "role": "student"},
+    )
+    token = login_resp.json()["access_token"]
+
+    # Send request with cookie instead of Authorization header
+    client.cookies.set("openbeavs_token", token)
+    resp = client.get("/auth/me")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["email"] == "cookie.beav@oregonstate.edu"
+    assert data["display_name"] == "Cookie Beav"

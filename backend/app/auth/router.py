@@ -60,7 +60,16 @@ def _auth_popup_response(token: str, user_dict: dict, is_elevated: bool = False)
 </script>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    response = HTMLResponse(content=html)
+    response.set_cookie(
+        key="openbeavs_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=7 * 24 * 3600,
+    )
+    return response
 
 
 def _auth_error_response(message: str) -> HTMLResponse:
