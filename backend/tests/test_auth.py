@@ -21,8 +21,10 @@ from app.models import Chat, User
 
 @pytest.fixture(autouse=True)
 def setup_auth_env(monkeypatch):
-    """Enable dev bypass for auth tests by default so tests run deterministically in CI."""
+    """Enable dev bypass and mock MS auth config for auth tests by default so tests run deterministically in CI."""
     monkeypatch.setenv("AUTH_BYPASS_DEV", "true")
+    monkeypatch.setenv("MICROSOFT_CLIENT_ID", "mock-client-id")
+    monkeypatch.setenv("MICROSOFT_CLIENT_TENANT_ID", "mock-tenant-id")
 
 
 @pytest.fixture
@@ -185,6 +187,15 @@ def test_login_redirect():
     resp = client.get("/auth/login", follow_redirects=False)
     assert resp.status_code == 307
     assert "login.microsoftonline.com" in resp.headers["location"]
+
+
+def test_login_redirect_unconfigured(monkeypatch):
+    """Verify GET /auth/login returns 503 if Microsoft SSO is not configured."""
+    monkeypatch.setenv("MICROSOFT_CLIENT_ID", "")
+    client = TestClient(app)
+    resp = client.get("/auth/login", follow_redirects=False)
+    assert resp.status_code == 503
+    assert "Microsoft SSO is not configured" in resp.json()["detail"]
 
 
 @patch("app.chat.service.send_message", new_callable=AsyncMock)
