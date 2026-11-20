@@ -15,6 +15,7 @@ from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
 from app.config import ConfigError
 from app.history import bounded_history
 from app.models import Agent as DBAgent
+from app.models import User as DBUser
 from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ log = logging.getLogger(__name__)
 async def handle_message(
     form: ChrisMessageForm,
     db: Session,
+    caller: DBUser | None = None,
 ) -> ChrisMessageResponse:
     """Send a transient turn to Chris; never read or write stored conversations."""
     message = form.message.strip()
@@ -51,7 +53,10 @@ async def handle_message(
             detail="Chris is temporarily unavailable. Please try again shortly.",
         )
 
-    routing, text = reply.routing, reply.text
+    if hasattr(reply, "routing") and hasattr(reply, "text"):
+        routing, text = reply.routing, reply.text
+    else:
+        routing, text = None, str(reply)
     if routing is not None and routing.status == "selected" and routing.agent:
         # Chris reports only the selected agent's id; the display name and description
         # come from this application's own agents table.

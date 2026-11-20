@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
   const target = env.BACKEND_ORIGIN || 'http://127.0.0.1:8000';
   const proxy = {
     '^/chat/(message|agents)$': { target, changeOrigin: true },
+    '^/auth(?:/|$)': { target, changeOrigin: true },
+    '^/oauth(?:/|$)': { target, changeOrigin: true },
     '^/health$': { target, changeOrigin: true }
   };
   return {

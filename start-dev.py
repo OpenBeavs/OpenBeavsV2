@@ -8,12 +8,42 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PORTS = (8001, 8000, 8010, 5173)
+
+
+def get_frontend_port() -> int:
+    """Read frontend port from FRONTEND_PORT, MICROSOFT_REDIRECT_URI, or default 5173."""
+    if "FRONTEND_PORT" in os.environ:
+        try:
+            return int(os.environ["FRONTEND_PORT"])
+        except ValueError:
+            pass
+    env_file = ROOT / "backend/.env"
+    if env_file.is_file():
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("FRONTEND_PORT="):
+                        return int(line.split("=", 1)[1].strip())
+                    if line.startswith("MICROSOFT_REDIRECT_URI="):
+                        from urllib.parse import urlsplit
+
+                        p = urlsplit(line.split("=", 1)[1].strip()).port
+                        if p:
+                            return p
+        except Exception:
+            pass
+    return 5173
+
+
+def get_ports() -> tuple[int, ...]:
+    return (8001, 8000, 8010, get_frontend_port())
 
 
 def service_specs(python: str, node: str) -> list[tuple[str, Path, list[str]]]:
     """Keep Python services in backend so they share its dotenv and SQLite file."""
     backend = ROOT / "backend"
+    frontend_port = str(get_frontend_port())
     return [
         ("Registry", backend, [python, "-m", "uvicorn",
          "app.registry.a2a_app:create_standalone_app", "--factory",
@@ -23,7 +53,7 @@ def service_specs(python: str, node: str) -> list[tuple[str, Path, list[str]]]:
          "--host", "127.0.0.1", "--port", "8010"]),
         ("Frontend", ROOT / "frontend", [node,
          str(ROOT / "frontend/node_modules/vite/bin/vite.js"),
-         "--host", "127.0.0.1", "--port", "5173", "--strictPort"]),
+         "--host", "127.0.0.1", "--port", frontend_port, "--strictPort"]),
     ]
 
 
@@ -41,7 +71,7 @@ def local_environment() -> dict[str, str]:
 
 def check_ports() -> None:
     """Fail before starting anything when a required local port is occupied."""
-    for port in PORTS:
+    for port in get_ports():
         with socket.socket() as probe:
             try:
                 probe.bind(("127.0.0.1", port))
@@ -93,7 +123,8 @@ def main() -> int:
                     "startupinfo": startupinfo,
                 }
             processes.append(subprocess.Popen(command, cwd=cwd, env=env, **options))
-        print("Frontend: http://127.0.0.1:5173 | Backend: http://127.0.0.1:8010/docs\n"
+        f_port = get_frontend_port()
+        print(f"Frontend: http://localhost:{f_port} | Backend: http://127.0.0.1:8010/docs\n"
               "Services are starting. Keep this launcher open. "
               "Press Ctrl+C here to stop all four.", flush=True)
         while True:
