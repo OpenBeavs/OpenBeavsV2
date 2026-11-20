@@ -3,6 +3,11 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
 from app.auth.verifier import (
     create_state_token,
     verify_state_token,
@@ -12,10 +17,6 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models import User
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 
 @pytest.fixture(autouse=True)
