@@ -1,7 +1,9 @@
 """Cryptographic token creation, verification, and JWKS validation."""
 
 import logging
+import threading
 import time
+import uuid
 from typing import Any
 
 import jwt
@@ -108,10 +110,21 @@ def verify_microsoft_id_token(id_token: str) -> dict[str, Any]:
     return payload
 
 
+_consumed_states: dict[str, int] = {}
+_consumed_states_lock = threading.Lock()
+
+
+def clear_consumed_states() -> None:
+    """Clear consumed states cache (primarily for test isolation)."""
+    with _consumed_states_lock:
+        _consumed_states.clear()
+
+
 def create_state_token(user_id: str | None = None, purpose: str = "login") -> str:
     """Create a short-lived (5 min) anti-CSRF state token for the OAuth dance."""
     now = int(time.time())
     payload = {
+        "jti": str(uuid.uuid4()),
         "purpose": purpose,
         "user_id": user_id,
         "iat": now,
@@ -124,8 +137,17 @@ def create_state_token(user_id: str | None = None, purpose: str = "login") -> st
     )
 
 
-def verify_state_token(state: str, expected_purpose: str = "login") -> dict[str, Any] | None:
-    """Verify an anti-CSRF state token."""
+def verify_state_token(
+    state: str,
+    expected_purpose: str = "login",
+    single_use: bool = False,
+) -> dict[str, Any] | None:
+    """Verify an anti-CSRF state token.
+
+    If single_use is True, verifies that the state token has not been previously
+    consumed and records it as consumed.
+    """
+    now = int(time.time())
     try:
         payload = jwt.decode(
             state,
@@ -135,6 +157,21 @@ def verify_state_token(state: str, expected_purpose: str = "login") -> dict[str,
         )
         if payload.get("purpose") != expected_purpose:
             return None
+
+        if single_use:
+            token_id = payload.get("jti") or state
+            exp = payload.get("exp", now + 300)
+            with _consumed_states_lock:
+                expired_keys = [k for k, v in _consumed_states.items() if v < now]
+                for k in expired_keys:
+                    del _consumed_states[k]
+
+                if token_id in _consumed_states:
+                    log.warning("State token reuse detected (already consumed): %s", token_id)
+                    return None
+
+                _consumed_states[token_id] = exp
+
         return payload
     except PyJWTError:
         return None

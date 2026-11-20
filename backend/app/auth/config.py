@@ -1,8 +1,10 @@
 """Authentication configuration settings and endpoints."""
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from app.config import env_flag, get_env
+
+STATE_COOKIE_NAME = "openbeavs_auth_state"
 
 
 class AuthConfig:
@@ -25,6 +27,23 @@ class AuthConfig:
         return get_env(
             "MICROSOFT_REDIRECT_URI", "http://localhost:5173/auth/callback"
         )
+
+    @classmethod
+    def frontend_origin(cls) -> str:
+        """Return the trusted frontend origin for window.postMessage security.
+
+        Defaults to FRONTEND_ORIGIN if set, or derives the origin from
+        MICROSOFT_REDIRECT_URI, falling back to 'http://localhost:5173'.
+        """
+        configured = get_env("FRONTEND_ORIGIN", "")
+        if configured:
+            return configured.rstrip("/")
+        redirect = cls.redirect_uri()
+        if redirect:
+            parsed = urlparse(redirect)
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}"
+        return "http://localhost:5173"
 
     @classmethod
     def scope(cls) -> str:

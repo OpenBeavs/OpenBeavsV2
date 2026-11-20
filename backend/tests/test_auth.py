@@ -3,11 +3,6 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.auth.verifier import (
     create_state_token,
     verify_state_token,
@@ -17,6 +12,10 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models import User
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.fixture(autouse=True)
@@ -236,3 +235,119 @@ def test_cookie_based_authentication(test_db: Session):
     data = resp.json()
     assert data["email"] == "cookie.beav@oregonstate.edu"
     assert data["display_name"] == "Cookie Beav"
+
+
+def test_oauth_callback_error_is_html_escaped():
+    """Verify /auth/callback escapes user-controlled error parameter to prevent XSS."""
+    client = TestClient(app)
+    xss_payload = '<script>alert("xss")</script><img src=x onerror=alert(1)>'
+    resp = client.get("/auth/callback", params={"error": xss_payload})
+    assert resp.status_code == 400
+    assert "<script>" not in resp.text
+    assert "<img" not in resp.text
+    assert "&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;" in resp.text
+    assert "&lt;img src=x onerror=alert(1)&gt;" in resp.text
+
+
+def test_step_up_callback_error_is_html_escaped():
+    """Verify /auth/step-up/callback escapes user-controlled error parameter to prevent XSS."""
+    client = TestClient(app)
+    xss_payload = '<script>alert("stepup-xss")</script>'
+    resp = client.get("/auth/step-up/callback", params={"error": xss_payload})
+    assert resp.status_code == 400
+    assert "<script>" not in resp.text
+    assert "&lt;script&gt;alert(&quot;stepup-xss&quot;)&lt;/script&gt;" in resp.text
+
+
+def test_auth_popup_uses_configured_frontend_origin(monkeypatch):
+    """Verify _auth_popup_response does not use wildcard '*' and uses the configured frontend origin."""
+    from app.auth.router import _auth_popup_response
+
+    monkeypatch.setenv("FRONTEND_ORIGIN", "https://openbeavs.oregonstate.edu")
+    resp = _auth_popup_response("token123", {"email": "test@oregonstate.edu"})
+    content = resp.body.decode()
+
+    # Must NOT use wildcard targetOrigin
+    assert 'postMessage(payload, "*")' not in content
+    # Must use configured frontend origin
+    assert 'postMessage(payload, "https://openbeavs.oregonstate.edu")' in content
+
+
+def test_frontend_origin_derives_from_redirect_uri(monkeypatch):
+    """Verify AuthConfig.frontend_origin falls back to netloc of MICROSOFT_REDIRECT_URI."""
+    from app.auth.config import AuthConfig
+
+    monkeypatch.delenv("FRONTEND_ORIGIN", raising=False)
+    monkeypatch.setenv("MICROSOFT_REDIRECT_URI", "http://localhost:8080/oauth/microsoft/callback")
+    assert AuthConfig.frontend_origin() == "http://localhost:8080"
+
+
+def test_authorize_sets_browser_state_cookie():
+    """Verify GET /auth/authorize binds state to browser via openbeavs_auth_state cookie."""
+    from app.auth.config import STATE_COOKIE_NAME
+
+    client = TestClient(app)
+    resp = client.get("/auth/authorize")
+    assert resp.status_code == 200
+    state = resp.json()["state"]
+    assert STATE_COOKIE_NAME in client.cookies
+    assert client.cookies[STATE_COOKIE_NAME] == state
+
+
+def test_login_redirect_sets_browser_state_cookie():
+    """Verify GET /auth/login binds state to browser via openbeavs_auth_state cookie."""
+    from app.auth.config import STATE_COOKIE_NAME
+
+    client = TestClient(app)
+    resp = client.get("/auth/login", follow_redirects=False)
+    assert resp.status_code == 307
+    assert STATE_COOKIE_NAME in client.cookies
+    cookie_val = client.cookies[STATE_COOKIE_NAME]
+    assert "state=" in resp.headers["location"]
+    assert cookie_val in resp.headers["location"]
+
+
+def test_callback_rejects_cross_browser_state_login_csrf():
+    """Verify /auth/callback rejects valid state if the browser lacks the bound session cookie."""
+    client = TestClient(app)
+    # Generate valid state from "another browser"
+    valid_state_from_other_browser = create_state_token(purpose="login")
+
+    # Victim browser visits callback without having the cookie
+    resp = client.get(
+        "/auth/callback",
+        params={"code": "mock-code", "state": valid_state_from_other_browser},
+    )
+    assert resp.status_code == 400
+    assert "Invalid or expired session state token" in resp.text
+
+
+def test_callback_rejects_mismatched_state_cookie():
+    """Verify /auth/callback rejects state if the browser cookie has a different state."""
+    from app.auth.config import STATE_COOKIE_NAME
+
+    client = TestClient(app)
+    state1 = create_state_token(purpose="login")
+    state2 = create_state_token(purpose="login")
+
+    client.cookies.set(STATE_COOKIE_NAME, state1)
+    resp = client.get(
+        "/auth/callback",
+        params={"code": "mock-code", "state": state2},
+    )
+    assert resp.status_code == 400
+    assert "Invalid or expired session state token" in resp.text
+
+
+def test_state_token_is_single_use():
+    """Verify single_use=True invalidates the token upon first consumption to prevent replay."""
+    state = create_state_token(purpose="login")
+
+    # First verification with single_use=True succeeds
+    payload1 = verify_state_token(state, expected_purpose="login", single_use=True)
+    assert payload1 is not None
+    assert payload1["purpose"] == "login"
+
+    # Second verification with single_use=True must fail (replay attack prevented)
+    payload2 = verify_state_token(state, expected_purpose="login", single_use=True)
+    assert payload2 is None
