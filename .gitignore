@@ -1,19 +1,4 @@
-# Secrets and local environments
-backend/.env
-.env
-.venv/
-
-# Python caches
-__pycache__/
-*.pyc
-.pytest_cache/
-.ruff_cache/
-backend/*.egg-info/
-backend/build/
-
-# Local database files
-*.db
-*.sqlite3
+agent_registry with new repo
 
 # Frontend dependencies, generated output and browser-test artifacts
 node_modules/
@@ -24,3 +9,10 @@ frontend/playwright-report/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+/frontend/vite.config.ts.timestamp-*.mjs
+
+.env
+docs/imgs/registry-a2a-flow.png
+docs/imgs/registry-registration-current.png
+docs/imgs/registry-selection-current.png
+docs/imgs/registry-selection-current-v2.png
