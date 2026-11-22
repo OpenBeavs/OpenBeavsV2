@@ -5,9 +5,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.chat.a2a_client import ChrisReply, ChrisUnavailable
 from app.chris.routing import RoutingResult
@@ -17,17 +15,13 @@ from app.db.base import ChatSystemBase
 from app.db.session import get_db
 from app.main import app
 from app.models import Chat, Message, User
+from tests.databases import chat_system_engine
 
 
 @pytest.fixture
 def test_db():
-    """Create in-memory SQLite database for testing Chris router."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    ChatSystemBase.metadata.create_all(bind=engine)
+    """Create a database for testing Chris router (in-memory SQLite by default)."""
+    engine = chat_system_engine()
     TestingSessionLocal = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )

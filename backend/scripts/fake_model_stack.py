@@ -7,8 +7,12 @@ Starts, on loopback only:
 - Chris's A2A agent (real code) on 127.0.0.1:8102, pointed at that registry;
 - the Chat backend (real code) on 127.0.0.1:8100, pointed at that Chris.
 
-All share a fresh temporary SQLite database holding both owners' tables and three
-experts. No Gemini key is read
+The Chat backend and the registry each get a database of their own, holding only
+their own tables: by default two fresh temporary SQLite files. Set
+``TEST_CHAT_SYSTEM_DATABASE_URL`` and ``TEST_REGISTRY_DATABASE_URL`` to run them
+against a PostgreSQL server prepared with ``shared-resources/postgres/owners.sql``,
+each signed in as its own login; their tables there are dropped and created again.
+The registry's database holds three experts. No Gemini key is read
 (``PYTHON_DOTENV_DISABLED`` stops ``.env`` from loading). Expert dispatch and Gemini
 fallback use scripted replies.
 This proves the plumbing and the user interface; it says nothing about how the real model
@@ -51,10 +55,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Configure before importing the app: settings are read at import and call time.
 _tmp = tempfile.mkdtemp(prefix="openbeavs-fake-stack-")
+# One database per owner. The process's DATABASE_URL is the Chat backend's; the
+# registry is handed sessions on its own database (see ``main``).
+_chat_system_url = (
+    os.environ.get("TEST_CHAT_SYSTEM_DATABASE_URL", "").strip()
+    or f"sqlite:///{Path(_tmp, 'chat-system.db').as_posix()}"
+)
+_registry_url = (
+    os.environ.get("TEST_REGISTRY_DATABASE_URL", "").strip()
+    or f"sqlite:///{Path(_tmp, 'registry.db').as_posix()}"
+)
 os.environ.update(
     {
         "PYTHON_DOTENV_DISABLED": "1",
-        "DATABASE_URL": f"sqlite:///{Path(_tmp, 'stack.db').as_posix()}",
+        "DATABASE_URL": _chat_system_url,
         "CHRIS_PUBLIC_URL": "http://127.0.0.1:8102",
         "CHRIS_A2A_URL": "http://127.0.0.1:8102/chris/a2a/",
         "REGISTRY_A2A_URL": "http://127.0.0.1:8101/a2a/registry",
@@ -67,10 +81,12 @@ for name in ("REGISTRY_A2A_AUTH", "K_SERVICE", "GEMINI_API_KEY", "CHRIS_MODEL"):
 
 import uvicorn
 from fastapi import FastAPI
+from sqlalchemy import create_engine, make_url
+from sqlalchemy.orm import sessionmaker
 
 from app.chris import expert_client, gemini
 from app.chris.run import create_app as create_chris_app
-from app.db import SessionLocal, engine
+from app.db import engine
 from app.db.base import ChatSystemBase, RegistryBase
 from app.main import app as backend_app
 from app.models import Agent
@@ -81,17 +97,33 @@ from app.registry.llm import LLMError, ModelLimiter
 
 REGISTRY_PORT, BACKEND_PORT, CHRIS_PORT = 8101, 8100, 8102
 
+registry_engine = create_engine(
+    _registry_url,
+    connect_args=(
+        {"check_same_thread": False} if _registry_url.startswith("sqlite") else {}
+    ),
+    pool_pre_ping=True,
+)
+RegistrySession = sessionmaker(bind=registry_engine, expire_on_commit=False)
+
 
 def seed() -> None:
-    """Three eligible experts. Their endpoints are placeholders and are never called."""
-    ChatSystemBase.metadata.create_all(bind=engine)
-    RegistryBase.metadata.create_all(bind=engine)
+    """Three eligible experts. Their endpoints are placeholders and are never called.
+
+    Each owner's tables are created empty over that owner's own connection.
+    """
+    for metadata, owner_engine in (
+        (ChatSystemBase.metadata, engine),
+        (RegistryBase.metadata, registry_engine),
+    ):
+        metadata.drop_all(bind=owner_engine)  # a PostgreSQL server keeps the last run's
+        metadata.create_all(bind=owner_engine)
     rows = [
         ("math-expert", "Math Expert", "Arithmetic, percentages and unit conversions."),
         ("osu-expert", "OSU Expert", "Questions about Oregon State University."),
         ("flaky-expert", "Flaky Expert", "Used to test an expert revoked mid-selection."),
     ]
-    with SessionLocal() as db:
+    with RegistrySession() as db:
         for agent_id, name, description in rows:
             db.add(
                 Agent(
@@ -110,7 +142,7 @@ def seed() -> None:
 
 
 def _set_flaky(active: bool) -> None:
-    with SessionLocal() as db:
+    with RegistrySession() as db:
         agent = db.get(Agent, "flaky-expert")
         agent.is_active = active
         agent.status = "approved" if active else "revoked"
@@ -169,6 +201,11 @@ async def scripted_fallback(message: str, history: list[dict[str, str]]) -> str:
     return "Gemini answer."
 
 
+def _where(url: str) -> str:
+    """A database URL for the startup line, without its password."""
+    return make_url(url).render_as_string(hide_password=True)
+
+
 def main() -> int:
     expert_client.send_message = scripted_expert
     gemini.answer = scripted_fallback
@@ -179,7 +216,7 @@ def main() -> int:
         create_registry_a2a_app(
             base_url=f"http://127.0.0.1:{REGISTRY_PORT}",
             verifier=open_verifier,
-            session_factory=SessionLocal,
+            session_factory=RegistrySession,
             call_llm=scripted_model,
             limiter=ModelLimiter(8, 2),
         ),
@@ -190,7 +227,8 @@ def main() -> int:
     print(
         f"Fake-model stack ready: backend http://127.0.0.1:{BACKEND_PORT}, "
         f"Chris http://127.0.0.1:{CHRIS_PORT}, "
-        f"registry http://127.0.0.1:{REGISTRY_PORT} (database in {_tmp})",
+        f"registry http://127.0.0.1:{REGISTRY_PORT} "
+        f"(databases: {_where(_chat_system_url)} and {_where(_registry_url)})",
         flush=True,
     )
     try:

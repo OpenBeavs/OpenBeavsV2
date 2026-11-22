@@ -6,16 +6,15 @@ import time
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.base import RegistryBase
 from app.registry.llm import (
     DEFAULT_MAX_CONCURRENT,
     DEFAULT_WAIT_SECONDS,
     ModelBusyError,
     ModelLimiter,
 )
+from tests.databases import registry_engine
 
 from .a2a_helpers import Harness, add_agent, run
 
@@ -173,10 +172,7 @@ class TestSettings:
 def db(tmp_path: Path) -> Session:
     """A file database: these tests read it from several threads at once, which the
     shared in-memory connection used by the other registry tests cannot do safely."""
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'limits.db'}", connect_args={"check_same_thread": False}
-    )
-    RegistryBase.metadata.create_all(bind=engine)
+    engine = registry_engine(tmp_path / "limits.db")
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     yield session
     session.close()

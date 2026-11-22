@@ -4,9 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.auth.verifier import (
     create_state_token,
@@ -17,6 +15,7 @@ from app.db.base import ChatSystemBase
 from app.db.session import get_db
 from app.main import app
 from app.models import User
+from tests.databases import chat_system_engine
 
 
 @pytest.fixture(autouse=True)
@@ -29,13 +28,8 @@ def setup_auth_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def test_db():
-    """Create isolated in-memory SQLite database for auth tests."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    ChatSystemBase.metadata.create_all(bind=engine)
+    """Create an isolated database for auth tests (in-memory SQLite by default)."""
+    engine = chat_system_engine()
     TestingSessionLocal = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )

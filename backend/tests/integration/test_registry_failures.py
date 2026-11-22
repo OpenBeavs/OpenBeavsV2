@@ -19,6 +19,7 @@ from app.chris import gemini, registry_client
 from app.chris.run import create_app as create_chris_app
 from app.db.session import get_db
 from app.main import app as backend_app
+from tests.databases import chat_system_engine
 
 from .conftest import CHRIS_ORIGIN, REGISTRY_ORIGIN
 
@@ -77,19 +78,12 @@ def coded_error(code: str, rpc_code: int = -32603):
 
 def serve(monkeypatch, tmp_path, on_post, on_get=None):
     """Run Chat+Chris for real against a fake registry defined by two callables."""
-    from sqlalchemy import create_engine
-
-    from app.db.base import ChatSystemBase
-
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "GET":
             return on_get(request) if on_get else httpx.Response(200, json=CARD)
         return on_post(request, json.loads(request.content))
 
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'f.db'}", connect_args={"check_same_thread": False}
-    )
-    ChatSystemBase.metadata.create_all(bind=engine)
+    engine = chat_system_engine(tmp_path / "f.db")
     factory = sessionmaker(bind=engine, expire_on_commit=False)
 
     def override_get_db():

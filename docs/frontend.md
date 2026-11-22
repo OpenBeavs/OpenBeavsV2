@@ -137,7 +137,8 @@ browser tests. Secret scanning and production dependency-policy gates remain
 separate team work; this workflow does not claim to implement them.
 
 `test:pipeline` additionally starts the real Chat/Chris/registry code with a scripted
-model and a temporary SQLite database. It exercises selection, history, no match,
+model and temporary SQLite databases, one for Chat and one for the registry. It
+exercises selection, history, no match,
 revocation, malformed model output, and timeout/error recovery through the browser.
 Both suites run in CI; neither requires a real model key.
 

@@ -34,6 +34,10 @@ Run tests in a separate terminal from the servers. The backend suite includes re
 security/auth tests, Chris request-isolation tests, and the real-implementation pipeline
 with a fake model. No Gemini key is needed for these tests.
 
+The tests use SQLite. To run them against PostgreSQL, with the chat system and the
+registry each signed in under its own login and confined to its own schema, see
+[the shared PostgreSQL server](../shared-resources/postgres/README.md#test-against-it).
+
 Alternatively `uv sync --locked` installs the runtime from `uv.lock`; install the test
 tools from `requirements-dev.txt` as well. The lockfile includes the combined Chris
 and registry dependencies. Do not copy a virtual environment from the scratch folder.

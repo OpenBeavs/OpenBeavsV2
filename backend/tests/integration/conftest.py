@@ -1,5 +1,10 @@
 """A real Chat + Chris + registry pipeline in one process, with a fake model.
 
+Chat and the registry each get a database of their own, holding only their own tables,
+as two deployed services signed in to the shared server under separate logins would
+see it (``tests/databases.py``). Chat's sessions come from one and the registry's from
+the other, so a query from either into the other's tables fails here.
+
 What is real: the Chat router and service, Chris's ADK agent served over A2A from its
 own application, Chris's registry client, the registry's A2A application (card,
 executor, selection, limiter, eligibility checks) and its database queries. All three
@@ -22,13 +27,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.chat import a2a_client
 from app.chris import registry_client
 from app.chris.run import create_app as create_chris_app
-from app.db.base import ChatSystemBase, RegistryBase
 from app.db.session import get_db
 from app.main import app as backend_app
 from app.models import Agent
@@ -36,6 +39,7 @@ from app.registry.a2a import MOUNT_PATH
 from app.registry.a2a_app import create_registry_a2a_app
 from app.registry.a2a_auth import open_verifier
 from app.registry.llm import ModelLimiter
+from tests.databases import chat_system_engine, registry_engine
 
 REGISTRY_ORIGIN = "http://registry.test"
 CHRIS_ORIGIN = "http://testserver"
@@ -73,9 +77,12 @@ class SlowRegistryTransport(httpx.AsyncBaseTransport):
 class Pipeline:
     """Handles to the running pieces, plus a record of what the registry was asked."""
 
-    def __init__(self, client: TestClient, factory: sessionmaker) -> None:
+    def __init__(
+        self, client: TestClient, factory: sessionmaker, registry_factory: sessionmaker
+    ) -> None:
         self.client = client
-        self.factory = factory
+        self.factory = factory  # sessions on the chat system's database
+        self.registry_factory = registry_factory  # sessions on the registry's
         self.model: FakeModel = self._default_model
         self.prompts: list[tuple[str, str]] = []  # (system, user) per model call
         self.limiter: ModelLimiter | None = None
@@ -104,7 +111,7 @@ class Pipeline:
         return self.client.post("/chat/message", json={"message": message, **fields})
 
     def add_agent(self, agent_id: str, **overrides) -> None:
-        with self.factory() as db:
+        with self.registry_factory() as db:
             db.add(
                 Agent(
                     **{
@@ -124,7 +131,7 @@ class Pipeline:
             db.commit()
 
     def update_agent(self, agent_id: str, **fields) -> None:
-        with self.factory() as db:
+        with self.registry_factory() as db:
             agent = db.get(Agent, agent_id)
             for name, value in fields.items():
                 setattr(agent, name, value)
@@ -133,7 +140,7 @@ class Pipeline:
 
 @pytest.fixture
 def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeline]:
-    """Chat -> Chris -> registry, wired in memory, over one SQLite file."""
+    """Chat -> Chris -> registry, wired in memory, each owner on its own database."""
     for name in (
         "REGISTRY_A2A_AUTH",
         "REGISTRY_MODEL_TIMEOUT_SECONDS",
@@ -159,14 +166,10 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
     monkeypatch.setattr(expert_client, "send_message", expert_answer)
     monkeypatch.setattr(gemini, "answer", unavailable_fallback)
 
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'pipeline.db'}",
-        connect_args={"check_same_thread": False},
-    )
-    # One database holds both owners' tables, as the shared server does.
-    ChatSystemBase.metadata.create_all(bind=engine)
-    RegistryBase.metadata.create_all(bind=engine)
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    chat_engine = chat_system_engine(tmp_path / "chat-system.db")
+    agents_engine = registry_engine(tmp_path / "registry.db")
+    factory = sessionmaker(bind=chat_engine, expire_on_commit=False)
+    registry_factory = sessionmaker(bind=agents_engine, expire_on_commit=False)
 
     def override_get_db() -> Iterator[Session]:
         db = factory()
@@ -186,7 +189,7 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
         create_registry_a2a_app(
             base_url=REGISTRY_ORIGIN,
             verifier=open_verifier,
-            session_factory=factory,
+            session_factory=registry_factory,
             call_llm=model,
             limiter=ModelLimiter(4, 1),
         ),
@@ -210,11 +213,12 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
         lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris_app)),
     )
     with TestClient(backend_app) as client:
-        p = Pipeline(client, factory)
+        p = Pipeline(client, factory, registry_factory)
         state["p"] = p
         yield p
     backend_app.dependency_overrides.clear()
-    engine.dispose()
+    chat_engine.dispose()
+    agents_engine.dispose()
 
 
 @pytest.fixture

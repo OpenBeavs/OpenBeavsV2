@@ -1,7 +1,8 @@
 """Shared fixtures for the agent registry tests.
 
-Each test gets a fresh in-memory SQLite database and a client of the registry
-service whose card fetcher is replaced by a fake, so no test touches the network or
+Each test gets a fresh database (in-memory SQLite, or PostgreSQL when
+``tests/databases.py`` is given one) and a client of the registry service whose card
+fetcher is replaced by a fake, so no test fetches a card from the network or uses
 real DNS.
 """
 
@@ -10,15 +11,14 @@ from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.db.base import RegistryBase
 from app.db.session import get_db
 from app.registry.a2a_app import create_standalone_app
 from app.registry.cards import AgentCard, CardError
 from app.registry.router import get_card_fetcher
+from tests.databases import registry_engine
 
 
 @pytest.fixture(autouse=True)
@@ -80,13 +80,8 @@ class FakeFetcher:
 
 @pytest.fixture
 def db() -> Iterator[Session]:
-    """A fresh in-memory database holding the registry's tables and no others."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    RegistryBase.metadata.create_all(bind=engine)
+    """A fresh database holding the registry's tables and no others."""
+    engine = registry_engine()
     session = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )()

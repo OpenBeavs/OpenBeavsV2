@@ -8,21 +8,18 @@ model is tested in ``tests/registry/test_models.py``.
 import time
 
 import pytest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import ChatSystemBase
 from app.models import Chat, Message, Ticket, User
+from tests.databases import chat_system_engine
 
 
 @pytest.fixture
 def db_session() -> Session:
-    """Create an isolated in-memory SQLite database session for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-    )
-    ChatSystemBase.metadata.create_all(bind=engine)
+    """Create an isolated database session for each test (SQLite by default)."""
+    engine = chat_system_engine()
     TestingSessionLocal = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )
