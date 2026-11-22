@@ -97,6 +97,6 @@ I completed the personal validation for this revision. I reviewed the no-storage
 5. Browser behavior: `frontend/src/lib/conversation.ts` (now `chat-system/web-ui/src/lib/conversation.ts`), `frontend/src/lib/conversation.test.ts` (now `chat-system/web-ui/src/lib/conversation.test.ts`), and `frontend/tests/frontend.spec.ts` (now `chat-system/web-ui/tests/frontend.spec.ts`).
 6. Retention documentation: `docs/frontend.md` (now `chat-system/web-ui/README.md`) and `docs/db_docs/database-architecture.md`, including PR #25's changes.
 7. CI checks: `.github/workflows/checks.yml`; command definitions: `frontend/package.json` (now `chat-system/web-ui/package.json`) and `backend/pyproject.toml` (now `agent-registry/pyproject.toml`, `chat-system/conversation-agent/pyproject.toml`, `chat-system/application-services/pyproject.toml`, and `tests/end-to-end/pyproject.toml`).
-8. Repository confidentiality and human-review requirements: `AGENTS.md`.
+8. Repository confidentiality and human-review requirements: `AGENTS.md` (now `CLAUDE.md`).
 9. OWASP, [Insecure Direct Object Reference Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html), identifier complexity and access-control guidance, accessed 2026-11-20.
 10. W3C, [Privacy Principles](https://www.w3.org/TR/privacy-principles/), section 2.2, Data Minimization, accessed 2026-11-20.

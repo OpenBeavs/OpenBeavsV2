@@ -189,4 +189,4 @@ The launcher runs on Windows and opens each service in a console of its own. uv 
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before making changes. AI-generated changes remain unstaged and uncommitted for human review.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLAUDE.md](CLAUDE.md), which holds the instructions for AI coding agents, before making changes. AI-generated changes remain unstaged and uncommitted for human review.
