@@ -38,25 +38,10 @@ For issues that arise within the team, we recommend a simple escalation path:
 
 ## Getting Started
 
-See [the Web UI's README](chat-system/web-ui/README.md) for the complete local
-backend/frontend setup, configuration, checks, and static hosting requirements.
-
-### Prerequisites
-
-* Python 3.12 and uv, which manages the backend virtual environment.
-* [Node.js 22 or newer and npm](https://nodejs.org/).
-* Backend Gemini configuration for live answers. Docker and Google Cloud SDK
-  are not required for local development.
-
-### Running the app Locally
-
-From `agent-registry/` and then from `chat-system/application-services/`, run `uv sync`, then
-`uv run alembic upgrade head`. From `chat-system/conversation-agent/`, run `uv sync`;
-Chris has no database. From `chat-system/web-ui/`, run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
-with the launcher described in the [README](README.md): Chris and the registry each
-run as their own process, so starting `application_services.main:app` alone does not answer chat
-messages. The frontend proxies the chat API to FastAPI; the
-original Open WebUI backend is not used. Follow the linked guide for commands.
+The [README](README.md) gives every setup and launch command, in order:
+[Prerequisites](README.md#prerequisites), [Install](README.md#install),
+[Settings](README.md#settings), [Databases](README.md#databases),
+[Start](README.md#start), and [Tests](README.md#tests).
 
 ### Handling secrets
 
@@ -111,17 +96,16 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Python lint uses `uv run ruff check .` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `tests/end-to-end/`. Frontend `npm run lint` runs
-ESLint without rewriting files, followed by Svelte/TypeScript checks. Keep
+Python lint runs ruff in each Python folder, and the Web UI's `npm run lint` runs
+ESLint without rewriting files, followed by Svelte/TypeScript checks; the
+[README's Tests section](README.md#tests) gives the commands. Keep
 changes readable and limited to the feature being implemented.
 
 ## Testing
 
-Run `uv run pytest` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `tests/end-to-end/`, including their
-authorization tests. From `chat-system/web-ui/`,
-run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
-Playwright Chromium browser. Browser tests use API fixtures; a live Gemini
-conversation is a separate acceptance check. See the setup guide for details.
+Run every suite the [README's Tests section](README.md#tests) lists, including the
+authorization tests. Browser tests use API fixtures; a live Gemini
+conversation is a separate acceptance check.
 
 ## Definition of Done
 
@@ -174,7 +158,7 @@ To ensure equitable distribution of effort and accountability across all sprints
 | Work Type | Where It Lives | What "Accepted" Means |
 | :--- | :--- | :--- |
 | **Code & Unit Tests** | GitHub Repository (`OpenBeavs`) via feature branch & PR | • Meets the Definition of Done (DoD).<br>• All automated test suites and linting checks pass.<br>• Approved by at least one teammate other than the author.<br>• Successfully merged into `main`. |
-| **Architecture, ADRs & Technical Docs** | GitHub Repository (`docs/`, `ADR/`, or root `.md` files) | • Accurately documents design decisions, schemas, or guides.<br>• Reviewed and approved by the Quality Owner / team via PR. |
+| **Architecture, ADRs & Technical Docs** | GitHub Repository (`docs/`, `docs/RFCs/`, or root `.md` files) | • Accurately documents design decisions, schemas, or guides.<br>• Reviewed and approved by the Quality Owner / team via PR. |
 | **Sprint Management, Spikes & User Stories** | GitHub Projects Board & GitHub Issues | • Issue contains clear acceptance criteria.<br>• Tangible deliverable attached (e.g., research findings, spiked code demo).<br>• Verified by the Project Manager (PM) and moved to **Done**. |
 | **Partner Deliverables & Client Specs** | Partner Meeting Notes / Shared Drive & Demo Sessions | • Demonstrated to project sponsor (**John V. Sweet**) during sprint reviews.<br>• Confirmed to meet sponsor requirements or acknowledged in meeting notes. |
 
@@ -193,9 +177,13 @@ To ensure equitable distribution of effort and accountability across all sprints
 
 ## CI/CD
 
-The [Checks workflow](.github/workflows/checks.yml) runs backend Ruff and all
-backend tests, plus frontend lint/type checks, unit tests, build, and browser
-tests on pushes and pull requests. The table above continues to track the
+The [Checks workflow](.github/workflows/checks.yml) runs five jobs on pushes and
+pull requests. `agent-registry`, `conversation-agent`, and `application-services`
+each install one Python package into its own environment and run its ruff check
+and tests. `end-to-end` installs all three together and runs the end-to-end tests,
+the grants test, and the browser pipeline test against PostgreSQL 16, failing if
+any test is skipped. `web-ui` runs the Web UI's lint and type checks, unit tests,
+build, and browser tests. The table above continues to track the
 broader planned gates; secret scanning, dependency policy, and branch protection
 are not supplied by this workflow.
 

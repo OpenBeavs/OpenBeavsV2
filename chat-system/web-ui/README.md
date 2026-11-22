@@ -8,7 +8,7 @@ The SvelteKit app the Chat System serves to the browser. It draws the conversati
 - It draws each expert badge from the routing result Application Services returns with the reply, never from the reply's text.
 - **Later:** it sends a conversation ID and the new message, and draws each badge from the source stored with the message.
 
-Moves here from the dev branch: `frontend/`, and `docs/frontend.md`, which follows.
+Moved here from the dev branch: `frontend/`, and `docs/frontend.md`, which follows.
 
 This folder is the standalone OpenBeavs interface. It selectively
 adapts the original WebUI's Chris chat and sidebar presentation. It uses Svelte 4, SvelteKit 2, Vite 5, TypeScript and Tailwind 4.
@@ -16,51 +16,29 @@ The old Open WebUI Python backend is not required.
 
 ## Run locally
 
-Use Python 3.12, uv, and Node.js 22 or newer. From the repository root:
+The [root README](../../README.md#install) installs this folder with the rest of the
+repository and starts it with the other three services. Application Services answers
+a chat message only when the Conversation Agent and the Agent Registry are running too.
+
+To run only the Web UI, from the repository root, `make dev-front` starts Vite with the
+launcher's settings: its port (8080 when `MICROSOFT_REDIRECT_URI` names it, otherwise
+5173) and `BACKEND_ORIGIN=http://127.0.0.1:8010`, Application Services' address. With
+npm directly, from this folder:
 
 ```bash
-cd agent-registry
-uv sync
-uv run alembic upgrade head
-# Optional: seed the registry's initial expert agents.
-uv run python -m agent_registry.database.seed_agents
-cd ../chat-system/conversation-agent
-uv sync
-cd ../application-services
-uv sync
-uv run alembic upgrade head
-```
-Follow [the root README](../../README.md#run-locally-windows-powershell) for backend dependencies,
-migrations, model configuration, and the all-services launcher. It runs the backend at
-`http://127.0.0.1:8010`, Chris at port 8000, and the registry at port 8001. Chris and
-the registry are separate processes; the backend alone cannot answer a chat message.
-Use Python 3.12 and Node 22 or newer.
-
-In `chat-system/web-ui/`, after `npm ci`, start Vite with the backend proxy origin:
-
-```powershell
-$env:BACKEND_ORIGIN='http://127.0.0.1:8010'
-npm run dev
+BACKEND_ORIGIN=http://127.0.0.1:8010 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls `/health` and `/chat/message`. Vite proxies those requests to
-`BACKEND_ORIGIN` in development and preview, avoiding cross-origin browser
-requests. To use another backend, set the **non-secret server-side**
-`BACKEND_ORIGIN` when starting Vite:
+Open the local URL Vite prints (`http://127.0.0.1:5173` by default). The browser calls
+relative paths, and Vite proxies `/health`, `/chat/message`, `/auth/*`, and `/oauth/*`
+to `BACKEND_ORIGIN` in development and preview, so the browser makes no cross-origin
+requests. Always set `BACKEND_ORIGIN`: when it is unset Vite proxies to port 8000,
+where the launcher runs the Conversation Agent, not Application Services. It is a
+server-side setting, not a browser secret, and it must be an origin you control. Do
+not put model keys, database credentials, or login tokens in the Web UI's
+configuration.
 
-```bash
-BACKEND_ORIGIN=http://127.0.0.1:9000 npm run dev
-```
-Open the Local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`.
-Always set it: the fallback when it is unset is port 8000, where the launcher runs
-Chris, not the backend. It is a server-side setting, not a browser secret.
-Do not put model keys, database credentials, or login tokens in the Web UI's configuration.
-
-No backend API routes, CORS configuration, or database migrations are added by
-the Web UI. `BACKEND_ORIGIN` must be an origin you control; it is not embedded
-as a browser API URL.
+The Web UI adds no API routes, CORS configuration, or database migrations.
 
 ## Supported behavior
 
@@ -98,7 +76,7 @@ never retried automatically. Requests time out after 90 seconds; a backend may
 still finish after the browser stops waiting, so a manual retry can duplicate a
 turn.
 
-An agent directory, SSO, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
+An agent directory, a sign-in screen, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
 Arena Mode, model controls, and administration are outside this initial port.
 
 ## Build, preview, and hosting
@@ -112,10 +90,10 @@ npm run preview
 The static application is emitted into `chat-system/web-ui/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes. Its reverse proxy must
-send only the exact paths `/chat/message` and `/health` to FastAPI
+send `/chat/message`, `/health`, `/auth/*`, and `/oauth/*` to Application Services
 **before** applying the SPA fallback. Vite's proxy configuration does not ship
-inside the static files. Proxy only the supported public routes.
-This change does not deploy a cloud service or establish production auth.
+inside the static files. Proxy only these routes.
+This folder holds no deployment configuration.
 
 ## Checks
 
@@ -138,30 +116,26 @@ navigation, rendering safety, input, errors, refresh, mobile keyboard behavior,
 and the absence of unsupported API calls. These test dependencies are retained
 only for development; no browser AI or Open WebUI runtime packages are needed.
 
-From `chat-system/application-services/`, and again from `tests/end-to-end/`, whose
-environment `test:pipeline` uses to start the stack:
+`npm run test:pipeline` additionally starts the real Application Services, Chris, and
+registry code with a scripted model, using `tests/end-to-end/`'s environment, so run
+`uv sync --locked` in that folder first. It uses temporary SQLite databases, one for
+Chat and one for the registry, unless `TEST_CHAT_SYSTEM_DATABASE_URL` and
+`TEST_REGISTRY_DATABASE_URL` name a PostgreSQL server
+([Test against it](../../shared-resources/postgres/README.md#test-against-it)). It
+exercises selection, history, no match, revocation, malformed model output, and
+timeout/error recovery through the browser. Neither suite requires a real model key.
 
-```bash
-uv sync --locked
-uv run ruff check .
-PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
-```
+In `.github/workflows/checks.yml`, the `web-ui` job runs the lint and type checks, unit
+tests, build, and browser tests, and the `end-to-end` job runs the pipeline test against
+PostgreSQL 16, with each owner signed in under its own login. Secret scanning and
+production dependency-policy gates remain separate team work; this workflow does not
+claim to implement them.
 
-`.github/workflows/checks.yml` runs the Application Services and end-to-end suites (including security-related
-authorization cases), Ruff, Web UI lint/type checks, unit tests, build, and
-browser tests. Secret scanning and production dependency-policy gates remain
-separate team work; this workflow does not claim to implement them.
-
-`test:pipeline` additionally starts the real Chat/Chris/registry code with a scripted
-model and temporary SQLite databases, one for Chat and one for the registry. It
-exercises selection, history, no match,
-revocation, malformed model output, and timeout/error recovery through the browser.
-Both suites run in CI; neither requires a real model key.
-
-For live acceptance, follow the runbook and ask an OSU question followed by a related
-question in the same chat. Expect the selected expert's answer and attribution. Confirm
-prior successful turns are sent from browser memory.
-This requires a working registry model/key and is distinct from deterministic tests.
+For live acceptance, start the stack as the [root README](../../README.md#start) says
+and ask an OSU question followed by a related question in the same chat. Expect the
+selected expert's answer and attribution ([What to expect](../../README.md#what-to-expect)).
+Confirm prior successful turns are sent from browser memory. This requires a working
+model and key and is distinct from deterministic tests.
 
 ## Attribution
 

@@ -1,4 +1,4 @@
-<!-- docs/rfcs/0001-chris-chat-persistence.md -->
+<!-- docs/rfcs/0001-chris-chat-persistence.md (now docs/RFCs/2026-10-23-chris-chat-persistence.md) -->
 
 # RFC: Should Chris save chat history before authentication exists?
 
@@ -17,7 +17,7 @@ PR #2 (`feat/database-simplification`) makes Chris write every exchange to two n
 
 - `chat_id`, `user_id` and `guest_session_id` come from the request body. `_persist_turn` loads a chat by the client's `chat_id` and appends to it with no ownership check.
 - Sending any `user_id` marks the chat "authenticated" and leaves `expires_at` empty, which skips the 2-hour guest limit.
-- Nothing in the backend reads `expires_at`, so no guest chat is ever deleted, although `docs/chris.md` describes cascading deletion on purge.
+- Nothing in the backend reads `expires_at`, so no guest chat is ever deleted, although `docs/chris.md` (now `chat-system/conversation-agent/README.md`) describes cascading deletion on purge.
 - Message text is stored in plain text. An `encrypted_dek` column exists but nothing uses it.
 
 This decision is hard to reverse for three reasons. Stored conversations cannot be un-stored. The schema, and especially which value identifies a user, is what every later migration must preserve. And PR #1 deliberately set `store: false` on Gemini requests so Google would not keep student conversations; saving them ourselves reverses that choice.
@@ -73,7 +73,7 @@ I used Claude (Anthropic) to read the PR #2 branch, list risks, find sources, an
 Handing code reading to the tool was reasonable because every claim can be checked against the repo. Points where I stopped and validated myself:
 
 - I opened `router.py`, `models/chat.py`, `llm.py` and `seed_agents.py` on the branch and confirmed the four behaviors in Problem and Context [VERIFY before submitting].
-- I confirmed there is no authentication code in `backend/app` and no purge code reading `expires_at` [VERIFY before submitting].
+- I confirmed there is no authentication code in `backend/app` (now `agent-registry/agent_registry/`, `chat-system/conversation-agent/conversation_agent/`, and `chat-system/application-services/application_services/`) and no purge code reading `expires_at` [VERIFY before submitting].
 - I read the OWASP, FERPA and Privacy by Design sources myself and kept only claims they support [VERIFY before submitting].
 - Not yet validated: the four tests in the verification plan are a plan. I have not run them, and v2 has no CI yet, so review by a teammate is the only gate today.
 

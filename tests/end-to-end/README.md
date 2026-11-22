@@ -2,7 +2,7 @@
 
 Tests that run more than one package together, such as a full turn from the API through the Registry to an expert. A test that exercises one component lives in that component's `tests/` folder.
 
-Moves here from the dev branch: `backend/tests/integration/`, `backend/scripts/fake_model_stack.py`, the database grants test, and the tests that run two packages together.
+Moved here from the dev branch: `backend/tests/integration/`, `backend/scripts/fake_model_stack.py`, and the tests that run two packages together. The database grants test was added here with `shared-resources/postgres/`.
 
 This folder holds no application code. Each Python service is its own package with its
 own tests: [Application Services](../../chat-system/application-services/README.md),
@@ -34,7 +34,9 @@ On Windows:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ..\..\agent-registry -e ..\..\chat-system\conversation-agent -e ..\..\chat-system\application-services -r requirements-dev.txt
+# --group needs pip 25.1 or later.
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e ..\..\agent-registry -e ..\..\chat-system\conversation-agent -e ..\..\chat-system\application-services --group dev
 $env:PYTHON_DOTENV_DISABLED='1'
 $env:DATABASE_URL='sqlite:///:memory:'
 .\.venv\Scripts\python.exe -m ruff check .

@@ -15,7 +15,7 @@ It is its own Python package, `conversation_agent`, in this folder, with its own
 
 **Later:** it interprets the question itself and decides when an expert would help; and it passes the user's identity from the session to the expert.
 
-Moves here from the dev branch: `backend/app/chris/`, its tests from `backend/tests/`, and `docs/chris.md`, which follows.
+Moved here from the dev branch: `backend/app/chris/`, its tests from `backend/tests/`, and `docs/chris.md`, which follows.
 
 Chris is a custom Google ADK `BaseAgent` exposed over A2A 1.0. The chat API owns
 transient conversation history; Chris owns the deterministic registry-first
@@ -214,7 +214,7 @@ card) to that service's address.
 The [root README](../../README.md) launcher starts all of them locally, Chris from this
 folder with its own environment. To start Chris by hand, from `chat-system/conversation-agent/`:
 
-```powershell
+```zsh
 uv sync --locked
 uv run python -m conversation_agent.run
 ```
@@ -234,7 +234,7 @@ card advertises it, and point the chat API's `CHRIS_A2A_URL` at
 another port (the launcher uses 8010). One browser message produces a
 `/chat/message` access-log entry in the chat API's console and a `/chris/a2a/` entry
 in Chris's. Cloud-ready startup, a container definition, and service-to-service token
-authentication are not implemented by this branch. No A2A client attaches an IAM
+authentication are not implemented in this repository. No A2A client attaches an IAM
 ID token, and Chris's endpoint has no caller-authentication middleware.
 Chris advertises no streaming; both clients use non-streaming calls.
 
@@ -260,6 +260,6 @@ tests/                                Chris's tests, run in this folder's enviro
 The chat API that calls Chris, and its contract with the browser, are in
 [Application Services](../application-services/README.md#frontend-api).
 
-A2A caller authentication, authenticated expert invocation, mixed-version expert routing, verified SSO, streaming in the frontend, saved-chat retrieval, and
+A2A caller authentication, authenticated expert invocation, mixed-version expert routing, streaming in the Web UI, saved-chat retrieval, and
 automated TTL cleanup remain future work. See [registry](../../agent-registry/README.md) and
 [the Web UI](../web-ui/README.md) for their separate responsibilities.

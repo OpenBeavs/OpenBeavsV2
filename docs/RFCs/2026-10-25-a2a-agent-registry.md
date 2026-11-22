@@ -113,15 +113,15 @@ Project evidence inspected November 20, 2026 in the local OpenBeavsV2 developmen
 
 [P2] Partner-supplied "OpenBeavs Architecture = WebUI+Chris Perspective - v2026-1113a - TECHNICAL REVIEW," sections "Agent Registry" and "The Conversation Agent." Supplied design guidance; not proof that every depicted boundary is implemented.
 
-[P3] `backend/app/registry/a2a_app.py`, `a2a.py`, `selection.py`; `backend/app/chris/agent.py`, `registry_client.py`, `expert_client.py`; `docs/registry.md`.
+[P3] `backend/app/registry/a2a_app.py` (now `agent-registry/agent_registry/a2a_app.py`), `a2a.py`, `selection.py`; `backend/app/chris/agent.py` (now `chat-system/conversation-agent/conversation_agent/agent.py`), `registry_client.py`, `expert_client.py`; `docs/registry.md` (now `agent-registry/README.md`).
 
-[P4] `backend/app/registry/service.py`: `_routable_conditions`, `get_routable_agent`, `approval_mode`, and `submit_agent`.
+[P4] `backend/app/registry/service.py` (now `agent-registry/agent_registry/service.py`): `_routable_conditions`, `get_routable_agent`, `approval_mode`, and `submit_agent`.
 
-[P5] `backend/app/registry/a2a_auth.py`, `auth.py`; `backend/app/chris/registry_client.py`. Receiver verification, management-auth gap, and absent outgoing registry credential.
+[P5] `backend/app/registry/a2a_auth.py` (now `agent-registry/agent_registry/a2a_auth.py`), `auth.py`; `backend/app/chris/registry_client.py` (now `chat-system/conversation-agent/conversation_agent/registry_client.py`). Receiver verification, management-auth gap, and absent outgoing registry credential.
 
-[P6] `backend/alembic/versions/a7c3e91d5b02_add_agent_registry_review_columns.py`; `backend/app/registry/service.py`; `docs/registry.md`. Shared catalog and legacy approval backfill.
+[P6] `backend/alembic/versions/a7c3e91d5b02_add_agent_registry_review_columns.py` (removed in the refactor); `backend/app/registry/service.py` (now `agent-registry/agent_registry/service.py`); `docs/registry.md` (now `agent-registry/README.md`). Shared catalog and legacy approval backfill.
 
-[P7] `backend/tests/registry/test_a2a_auth.py`, `test_selection.py`, `test_chris_gating.py`, `test_migration.py`; `backend/tests/integration/test_pipeline.py`, `test_registry_failures.py`; `.github/workflows/checks.yml`. Existing test definitions and configured CI, not a claim that all proposed gates passed.
+[P7] `backend/tests/registry/test_a2a_auth.py` (now `agent-registry/tests/test_a2a_auth.py`), `test_selection.py`, `test_chris_gating.py`, `test_migration.py`; `backend/tests/integration/test_pipeline.py` (now `tests/end-to-end/tests/integration/test_pipeline.py`), `test_registry_failures.py`; `.github/workflows/checks.yml`. Existing test definitions and configured CI, not a claim that all proposed gates passed.
 
 Focused execution evidence: November 20, 2026, Python pytest with `-B -p no:cacheprovider`, environment-file loading disabled and an in-memory SQLite database. Selected suites: `test_a2a_auth.py`, `test_selection.py`, `test_chris_gating.py`, `test_pipeline.py`, and `test_registry_failures.py`. Result: 196 passed, one dependency deprecation warning, 20.03 seconds. Migration tests were inspected but were not included in this focused run; Google verification and model calls use test doubles where specified by the suites.
 

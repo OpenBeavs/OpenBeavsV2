@@ -81,8 +81,8 @@ We recommend **Option A: Clean-Slate Database Simplification to a 5-Table Schema
 
 ### Verification Plan and Acceptance Criteria
 The decision will be validated against four concrete gates:
-1. **Schema Integrity and Test Coverage (Week 5):** Pytest test suites (`tests/test_models.py`, `tests/test_db.py`) must pass 100% in CI, asserting relational integrity and `ON DELETE CASCADE` from `chats` to `messages`.
-2. **A2A Agent Orchestration Integration (Week 6):** Verify that "Chris" queries live entries from `agents` rather than mock stubs (`tests/test_chris_db.py`), and that `POST /chris/message` persists turns into `messages` with turn latency under 50ms (p95).
+1. **Schema Integrity and Test Coverage (Week 5):** Pytest test suites (`tests/test_models.py` (now `chat-system/application-services/tests/test_models.py` and `agent-registry/tests/test_models.py`), `tests/test_db.py` (now `chat-system/application-services/tests/test_db.py`)) must pass 100% in CI, asserting relational integrity and `ON DELETE CASCADE` from `chats` to `messages`.
+2. **A2A Agent Orchestration Integration (Week 6):** Verify that "Chris" queries live entries from `agents` rather than mock stubs (`tests/test_chris_db.py` (now `chat-system/application-services/tests/test_chris_db.py` and `tests/end-to-end/tests/test_chris_db.py`)), and that `POST /chris/message` persists turns into `messages` with turn latency under 50ms (p95).
 3. **Cloud Run Cold Start Metrics (Week 7 TA Demo):** Measure container cold starts in Google Cloud Logging. Acceptance criteria: Container startup to healthy `GET /health` must be <= 2.0 seconds (down from 12–18s in v1).
 4. **Zero-Downtime Migration Verification:** Automated Alembic round-trips (`alembic upgrade head` then `alembic downgrade base` and re-upgrade) must execute against SQLite and Cloud SQL PostgreSQL with zero errors.
 

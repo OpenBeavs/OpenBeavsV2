@@ -20,9 +20,10 @@ lacks the other. Each owner has its own Alembic history: the one in
 `chat-system/application-services/migrations/` creates the chat system's four tables,
 and the one in `agent-registry/migrations/` creates `agents` alone.
 The public chat service stores no conversation turns; Chris receives message
-text/history over A2A and does not access these tables. Streaming, history pagination,
-verified Microsoft SSO, and envelope encryption are not implemented by the
-current API. Cold-start and capacity benefits have not been measured here.
+text/history over A2A and does not access these tables. Microsoft Entra ID sign-in is
+built in Application Services and creates or updates a row in `users` for each person
+who signs in. Streaming, history pagination, and envelope encryption are not
+implemented by the current API. Cold-start and capacity benefits have not been measured here.
 
 ---
 
@@ -61,7 +62,7 @@ Both models attempted to call `create_all(bind=engine)` inside their constructor
 ## 3. OpenBeavs V2 Database Architecture
 
 ### 3.1 Design Principles
-1. **Single Responsibility:** The active hub stores registry discovery metadata; conversation tables remain as legacy schema.
+1. **Single Responsibility:** The registry stores discovery metadata, and the chat system stores the users who sign in; conversation tables remain as legacy schema.
 2. **Single Modern ORM:** SQLAlchemy 2.0 (async/sync) with Alembic for migrations. No dual ORM wrappers.
 3. **Relational Messages:** Conversations are broken down into indexed, sequential message rows rather than monolithic JSON blobs.
 4. **Identity & Privacy:** Schema fields reserve space for OIDC identity and
@@ -167,7 +168,7 @@ Unified table replacing legacy `agent` and `registry_agent`.
 - **`capabilities`** (`JSON`): Supported modes (streaming, audio, multimodal).
 - **`is_active`** (`Boolean`, default `True`): Allows soft deactivation.
 - **`is_featured`** (`Boolean`, default `False`): Curated agent highlight on the homepage.
-- **`status`** (`String`, NOT NULL, no database default): Registry review status. `pending` (submitted, not routable), `approved` or `provisional` (routable), `revoked` (not routable). The registry creates new rows as `pending`; only an admin review changes it. The chat directory lists only active public agents that are `approved` or `provisional` and have no required role. Chris uses the external A2A registry service for selection. See `agent-registry/README.md`.
+- **`status`** (`String`, NOT NULL, no database default): Registry review status. `pending` (submitted, not routable), `approved` or `provisional` (routable), `revoked` (not routable). The registry creates new rows as `pending`; only an admin review changes it. The registry offers Chris only active public agents that are `approved` or `provisional` and have no required role. Chris uses the external A2A registry service for selection. See `agent-registry/README.md`.
 - **`submitted_by`** (`String`, NULL): Email of the submitter; NULL for seeded agents.
 - **`reviewed_by`** (`String`, NULL): Email of the admin who last reviewed the agent.
 - **`reviewed_at`** (`BigInteger`, NULL): Epoch seconds of the last review.
@@ -233,7 +234,7 @@ Support and bug feedback tracking.
    is deployed. The expiry maintenance endpoint has been removed.
 3. **Retained schema:** Chat/message tables and their legacy guest/expiry columns
    remain for migration compatibility. They do not imply an active persistence
-   feature. SSO and account-backed history are not implemented. Encryption columns
+   feature. Sign-in records users; account-backed history is not implemented. Encryption columns
    remain reserved schema fields; the public chat service stores no transcripts.
 
 ---
@@ -249,7 +250,7 @@ Support and bug feedback tracking.
 | **Chat Storage** | Monolithic JSON/ciphertext blob | Relational `messages` with foreign keys |
 | **Message Storage** | Whole conversation JSON blob | Individual relational rows; API replies are not streamed |
 | **Vector DB in Hub** | ChromaDB SQLite + PgVector | **Zero** (delegated to A2A agents) |
-| **Authentication** | Local password auth + bcrypt bugs | Guest prototype; verified OIDC is future work |
+| **Authentication** | Local password auth + bcrypt bugs | Guest chat, and Microsoft Entra ID (OIDC) sign-in |
 | **Container Footprint** | Heavy (multi-GB Open WebUI base) | Minimal lightweight FastAPI service |
 | **Cloud Run Cold Start** | Legacy startup includes more initialization | Not benchmarked in this repository |
 
@@ -257,11 +258,11 @@ Support and bug feedback tracking.
 
 ## 7. Implementation status
 
-SQLAlchemy's synchronous engine, all five models, Alembic migrations, agent
-queries, and chat conversation persistence exist. The frontend integrates the
-existing API without adding migrations. Chat now calls Chris over A2A, and Chris
-calls the configured registry and falls back to Gemini on error or no match.
-Chris's ADK sessions/tasks are in memory and do not change these tables.
-Selected-specialist execution, A2A service authentication, verified SSO, user
-provisioning/promotion, encryption, streaming, saved-chat retrieval, and a
-scheduled cleanup service remain future backend work.
+SQLAlchemy's synchronous engine, all five models, each owner's Alembic migrations,
+and agent queries exist. The public chat stores no conversations. The Web UI
+integrates the existing API without adding migrations. Chat calls Chris over A2A;
+Chris asks the configured registry, calls the selected expert, and falls back to
+Gemini on error or no match. Chris's ADK sessions/tasks are in memory and do not
+change these tables. Sign-in creates and updates user records. A2A service
+authentication, role promotion, encryption, streaming, saved-chat retrieval, and a
+scheduled cleanup service remain future work.

@@ -9,7 +9,7 @@ The Chat System's conventional server code, with no LLM. Whatever must come out 
 
 Its tables live in the `chat_system` schema, created by `migrations/`.
 
-Moves here from the dev branch: `backend/app/chat/`, `backend/app/main.py`, `backend/app/auth/`, the user, chat, message, and ticket models, its own copy of `config.py`, `db/`, and `history.py`, its migrations and tests, and the chat API's documentation, which follows.
+Moved here from the dev branch: `backend/app/chat/`, `backend/app/main.py`, `backend/app/auth/`, the user, chat, message, and ticket models, its own copy of `config.py`, `db/`, and `history.py`, its migrations and tests, and the chat API's documentation, which follows.
 
 It is its own Python package, `application_services`, in this folder, with its own environment, lock file, database, and migrations. Its tests run in that environment, and one of them checks that neither the Conversation Agent nor the Agent Registry can be imported there. The service is `application_services.main:app`, on port 8010 under the launcher.
 
@@ -88,6 +88,7 @@ Account-backed chat storage is not implemented.
 The Microsoft settings (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`,
 `MICROSOFT_CLIENT_TENANT_ID`, `MICROSOFT_REDIRECT_URI`), `AUTH_SECRET_KEY`, and
 `FRONTEND_ORIGIN` are read from the environment or the `.env` at the repository root.
+The Web UI has no sign-in screen yet; these routes are the API it will call.
 
 ## Layout
 
@@ -176,8 +177,7 @@ delete `backend/openbeavs.db`.
 
 ## Run and test locally
 
-Use the root README ([macOS](../../README.md#run-locally-macos) or
-[Windows](../../README.md#run-locally-windows-powershell)) for dependencies, private
+Use the [root README](../../README.md#install) for dependencies, private
 configuration, and launching all four services. Application Services has its own
 environment and its own database. Set them up from this folder:
 

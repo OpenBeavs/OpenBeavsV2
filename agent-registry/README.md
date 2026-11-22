@@ -9,7 +9,7 @@ A separate system: an A2A server whose callers are agents. No person chats with 
 
 A new expert joins OpenBeavs by gaining an entry here, with no change to the Chat System's code.
 
-Moves here from the dev branch: `backend/app/registry/`, `backend/app/models/agent.py`, `backend/app/db/seed_agents.py`, the registry scripts, and `backend/tests/registry/`.
+Moved here from the dev branch: `backend/app/registry/`, `backend/app/models/agent.py`, `backend/app/db/seed_agents.py`, the registry scripts, and `backend/tests/registry/`.
 
 The registry is how an A2A agent gets into OpenBeavs and how Chris decides it may
 route to it. An agent is submitted by URL and must pass a set of automated checks.
@@ -97,10 +97,10 @@ expert should handle a user's question. The registry never calls the expert and 
 answers the question. It reads only agents that are currently routable
 (`routable_agents()`: active, `approved` or `provisional`, public, no required role).
 
-**Status.** The local frontend -> Chat -> Chris -> registry A2A selection flow is
-built and tested. Chris returns a plain selection acknowledgement or a Gemini answer.
-Backend errors stay in terminal logs; if no answer is available the UI shows a generic notice.
-Chris calls the selected expert and returns its answer. See [Local registry development](#local-registry-development)
+**Status.** The local Web UI -> Application Services -> Chris -> registry flow is
+built and tested. Chris calls the selected expert and returns its answer, or answers
+with Gemini when no expert fits or selection fails. Errors stay in terminal logs; if
+no answer is available the Web UI shows a generic notice. See [Local registry development](#local-registry-development)
 for registry setup and [Registry validation](#registry-validation) for testing.
 
 ```text
@@ -385,16 +385,17 @@ Restrictions this creates for the MVP:
   authentication, which is not implemented, so the registry routes answer 501 there
   (see Authentication). This is a property of the current MVP configuration, not a
   permanent guarantee.
-- Nothing calls a stored agent endpoint yet (Chris's A2A client is a stub). The
-  endpoint is validated only when the agent is submitted. **Before any code calls
-  `endpoint_url`** (the A2A client), it must re-validate the address and connect to
-  the validated IP, otherwise a rebinding agent could redirect the call to an internal
-  service. Seeded agents are trusted and were not fetched by the registry.
+- Chris calls a stored `endpoint_url` only after revalidating its address with its
+  own copy of these rules (`chat-system/conversation-agent/conversation_agent/security.py`),
+  but it connects by name, not to the validated IP, so a rebinding agent could still
+  redirect the call to an internal service. Seeded agents are trusted and were not
+  fetched by the registry.
 
 ## Authentication
 
-v2 has no authentication yet (SSO is Phase 4 of the database plan). The registry
-reads the caller through one function, `current_principal` in
+The registry's admin API has no verified sign-in yet. Microsoft Entra ID sign-in is
+built in Application Services, but the registry, a separate service, does not accept
+its sessions. The registry reads the caller through one function, `current_principal` in
 `agent_registry/auth.py`. Replace it with verification of the OSU Microsoft SSO
 token and nothing else in the registry changes.
 
@@ -513,8 +514,7 @@ room for discovery and database work. Coordinate caller deadlines with the
 
 ## Local registry development
 
-Use the root README ([macOS](../README.md#run-locally-macos) or
-[Windows](../README.md#run-locally-windows-powershell)) for dependencies, private model
+Use the [root README](../README.md#install) for dependencies, private model
 configuration, and launching all four services. The registry has its own environment
 and its own database. Set it up from this folder:
 
@@ -550,7 +550,8 @@ $env:REGISTRY_A2A_AUTH='dev'
 .\.venv\Scripts\python.exe -m uvicorn agent_registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
 ```
 
-Do not run this separately when the all-services launcher already owns port 8001.
+On macOS, `make dev-registry` from the repository root starts it with the launcher's
+settings. Do not run this separately when the all-services launcher already owns port 8001.
 Check `http://127.0.0.1:8001/ready`; a 503 means a database, auth, public URL,
 model or key configuration check failed. Readiness does not call Gemini and
 cannot establish that the provider accepts the model or key.
@@ -580,7 +581,7 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8001/registry/agents/$($ag
 Invoke-RestMethod -Uri "http://127.0.0.1:8001/registry/agents/$($agent.id)" -Headers $adminHeaders | Select-Object id, name, status, is_active
 ```
 
-Ask a question matching that expert in the frontend. Selection reads the agents table
+Ask a question matching that expert in the Web UI. Selection reads the agents table
 on each request, so a newly eligible expert can be considered without restarting the
 registry. For the full submission/review rules, see [How an agent gets in](#how-an-agent-gets-in).
 
