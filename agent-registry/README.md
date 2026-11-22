@@ -401,13 +401,14 @@ token and nothing else in the registry changes.
 
 **Production approval is not operational yet.** Without verified authentication the
 registry routes (including approve, provisional and revoke) answer 501 in a
-deployment; agents there are managed by seeds and migrations only. The review code
+deployment, as they do locally until `REGISTRY_DEV_AUTH` is on; agents in a deployment
+are managed by seeds and migrations only. The review code
 and its tests are in place for when SSO replaces `current_principal`.
 
 | Variable | Purpose |
 |---|---|
-| `REGISTRY_DEV_AUTH` | `true` reads the caller from the `X-User-Id` and `X-User-Email` headers. **Local development and tests only: these headers are trivially forged.** Unset (the default) makes every route return 501 |
-| `REGISTRY_ADMIN_EMAILS` | Comma-separated admin emails (not a secret) |
+| `REGISTRY_DEV_AUTH` | `true` (or `1` or `yes`) reads the caller from the `X-User-Id` and `X-User-Email` headers, and answers 401 when either is missing. **Local development and tests only: these headers are trivially forged.** Any other value, including `false` and no value at all, makes every admin route answer 501 |
+| `REGISTRY_ADMIN_EMAILS` | Comma-separated admin emails, matched without regard to case (not a secret). Only an admin may review; any other caller with both headers may submit and list |
 | `REGISTRY_ALLOW_HTTP` | `true` allows plain `http` card URLs. Local development only |
 | `REGISTRY_APPROVAL_MODE` | `auto` (default) or `manual`; see Approval mode |
 (The A2A settings are listed under "The registry as an A2A agent".)
@@ -558,6 +559,10 @@ cannot establish that the provider accepts the model or key.
 
 ### Submit and review an expert agent
 
+Every route below answers 501 until development authentication is on, so start the
+registry with `REGISTRY_DEV_AUTH=true` and `REGISTRY_ADMIN_EMAILS=admin@example.test`
+in its environment. On macOS, from the repository root, with no stack running:
+`REGISTRY_DEV_AUTH=true REGISTRY_ADMIN_EMAILS=admin@example.test make dev-registry`.
 With the registry service running on port 8001, use a separate PowerShell terminal
 (the service's OpenAPI description is at `http://127.0.0.1:8001/openapi.json`; it has
 no interactive docs page). The headers below are synthetic local-development identities.
@@ -573,7 +578,7 @@ $agent | Select-Object id, name, status, is_active
 
 In default `auto` mode, a clean card becomes active and `provisional`; flagged cards
 remain pending. An already registered card returns HTTP 409. To approve a pending
-entry, configure `REGISTRY_DEV_AUTH=true` and `REGISTRY_ADMIN_EMAILS=admin@example.test` in the registry service's local environment before starting it:
+entry, call the review route as the admin that `REGISTRY_ADMIN_EMAILS` names:
 
 ```powershell
 $adminHeaders = @{ 'X-User-Id'='registry-admin'; 'X-User-Email'='admin@example.test' }

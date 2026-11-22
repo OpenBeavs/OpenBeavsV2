@@ -62,7 +62,7 @@ Then set these privately in `.env`; never commit it, and never paste a key into 
 - `REGISTRY_MODEL`: the Gemini model the Registry uses to choose an expert.
 - `CHRIS_MODEL`: the Gemini model the Conversation Agent answers with when no expert fits.
 
-The services start without these three, but a chat gets no answer until all three are set. Every other line can stay as `.env.example` has it: it runs the Registry without caller authentication (`REGISTRY_A2A_AUTH=dev`), which works only on this machine, and enables the development login (`AUTH_BYPASS_DEV=true`). Microsoft sign-in needs the `MICROSOFT_` settings of an app registered in Entra ID; without them `/auth/login` answers 503.
+The services start without these three, but a chat gets no answer until all three are set. Every other line can stay as `.env.example` has it: it runs the Registry without caller authentication (`REGISTRY_A2A_AUTH=dev`), which works only on this machine, enables the development login (`AUTH_BYPASS_DEV=true`), and leaves the Registry's admin API answering 501 (`REGISTRY_DEV_AUTH=false`) until you turn it on as [Agent Registry admin API](#agent-registry-admin-api) describes. Microsoft sign-in needs the `MICROSOFT_` settings of an app registered in Entra ID; without them `/auth/login` answers 503.
 
 ## Databases
 
@@ -103,7 +103,7 @@ The script runs the launcher, `start-dev.py`, with Application Services' Python 
 
 | Service | Address |
 |---|---|
-| Agent Registry | `http://127.0.0.1:8001` (A2A selection at `/a2a/registry/`, the admin API at `/registry/agents`, readiness at `/ready`) |
+| Agent Registry | `http://127.0.0.1:8001` (A2A selection at `/a2a/registry/`, the admin API at `/registry/agents`, which answers 501 until [development authentication](#agent-registry-admin-api) is on, readiness at `/ready`) |
 | Conversation Agent | `http://127.0.0.1:8000/chris/a2a/` |
 | Application Services | `http://127.0.0.1:8010` (API documentation at `/docs`) |
 | Web UI | port 8080 when `MICROSOFT_REDIRECT_URI` names it, as `.env.example` does; otherwise 5173. `FRONTEND_PORT` overrides both |
@@ -133,10 +133,31 @@ The `Makefile` gives the same commands short names:
 | `make migrate` | Run both owners' migrations |
 | `make seed` | Seed the Registry's default agents |
 | `make lint` | Run ruff in every Python folder, then the Web UI's ESLint and type checks |
-| `make test` | Run every Python suite, then the Web UI's unit tests |
+| `make test` | Run every Python suite, then the Web UI's unit tests, with the settings in `.env` (see [Tests](#tests)) |
 | `make help` | List the targets |
 
 Each `make dev-*` target runs in its own terminal, so run each of the four in a terminal of its own to assemble the stack by hand.
+
+### Agent Registry admin API
+
+The Registry's admin API, at `http://127.0.0.1:8001/registry/agents`, answers every request with 501 until development authentication is on, because the Registry has no verified sign-in of its own yet. Two settings turn it on:
+
+- `REGISTRY_DEV_AUTH`: `true` (or `1` or `yes`) makes the Registry take the caller's identity from each request's `X-User-Id` and `X-User-Email` headers, and answer 401 when either is missing. Any other value leaves the API answering 501.
+- `REGISTRY_ADMIN_EMAILS`: a comma-separated list of the email addresses that count as admins. Any caller with both headers may submit an agent and list the agents it may see; only an admin may review one, and anyone else gets 403.
+
+The Registry believes whatever the headers say, so anyone who can reach it can claim any identity. Use development authentication only on your own machine: the Registry refuses to start with it on Cloud Run or with a `DATABASE_URL` that names another machine. Set the two settings in the command that starts the Registry, rather than in `.env`, so that they never travel into a deployment with a copied `.env`. With no stack running, start the Registry alone:
+
+```zsh
+REGISTRY_DEV_AUTH=true REGISTRY_ADMIN_EMAILS=admin@example.test make dev-registry
+```
+
+In another terminal, list the registered agents as the admin:
+
+```zsh
+curl -H 'X-User-Id: admin' -H 'X-User-Email: admin@example.test' http://127.0.0.1:8001/registry/agents
+```
+
+It answers 200 with the seeded agents; the same request without the headers answers 401. To run the whole stack with the API on, put the same two settings before `bash start-dev-mac.sh`. The Agent Registry's README lists [the routes](agent-registry/README.md#endpoints) and walks through [submitting and reviewing an expert](agent-registry/README.md#submit-and-review-an-expert-agent).
 
 ## What to expect
 
@@ -158,6 +179,8 @@ Run each package's lint and tests from its own folder, in a terminal separate fr
 ```
 
 On SQLite the end-to-end suite skips the 16 grants tests, which need PostgreSQL.
+
+`make test` runs the same Python suites, then the Web UI's unit tests, without `PYTHON_DOTENV_DISABLED=1` or the in-memory `DATABASE_URL`, so the Python tests load `.env` as the services do, and every setting in it reaches them. They build their own databases, so the local database files stay unchanged. The commands above are the ones CI runs.
 
 The Web UI's lint and type checks, unit tests, production build, and browser tests:
 
@@ -199,7 +222,7 @@ The Registry's own service serves its admin API, at `/registry/agents`; Applicat
 
 **The Web UI's host** serves the files in `build/`, falls back to `index.html` for other paths, and sends `/chat/message`, `/health`, `/auth/*`, and `/oauth/*` to Application Services before that fallback.
 
-**What is untested on a host.** None of these services has been deployed from this layout, and the repository holds no container definition. Two gaps block expert selection in a deployment today. The Conversation Agent attaches no credential when it calls the Registry, so a Registry in `google` mode (`REGISTRY_A2A_AUTH`), which verifies Google ID tokens, refuses every selection. The Registry refuses `dev` mode, which accepts unauthenticated calls, on Cloud Run or with a database on another machine. In either case every question gets Chris's general answer. The Registry's admin API also answers 501 in a deployment, because it has no verified sign-in of its own, so agents there come only from the seed. Cloud Run, Cloud SQL, IAM, and Microsoft sign-in against a deployed redirect address have not been verified.
+**What is untested on a host.** None of these services has been deployed from this layout, and the repository holds no container definition. Two gaps block expert selection in a deployment today. The Conversation Agent attaches no credential when it calls the Registry, so a Registry in `google` mode (`REGISTRY_A2A_AUTH`), which verifies Google ID tokens, refuses every selection. The Registry refuses `dev` mode, which accepts unauthenticated calls, on Cloud Run or with a database on another machine. In either case every question gets Chris's general answer. The Registry's admin API answers 501 in a deployment, as it does locally until [development authentication](#agent-registry-admin-api) is on, and the Registry refuses to start with development authentication there. It has no verified sign-in of its own, so agents in a deployment come only from the seed. Cloud Run, Cloud SQL, IAM, and Microsoft sign-in against a deployed redirect address have not been verified.
 
 ## Windows
 

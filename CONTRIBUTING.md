@@ -96,10 +96,15 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Python lint runs ruff in each Python folder, and the Web UI's `npm run lint` runs
-ESLint without rewriting files, followed by Svelte/TypeScript checks; the
-[README's Tests section](README.md#tests) gives the commands. Keep
-changes readable and limited to the feature being implemented.
+Lint runs `uv run ruff check .` in each Python folder and `npm run lint` in
+`chat-system/web-ui/`, which runs ESLint and then the Svelte and TypeScript checks.
+Neither rewrites a file. `make lint` runs all of them from the repository root, and
+CI runs the same checks on every push and pull request; the
+[README's Tests section](README.md#tests) gives each folder's commands.
+
+The repository configures no formatter and no git hook, so nothing reformats code or
+runs a check when you commit. Run `make lint` before you push. Keep changes readable
+and limited to the feature being implemented.
 
 ## Testing
 
