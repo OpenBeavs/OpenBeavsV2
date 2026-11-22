@@ -447,9 +447,13 @@ migrations (`backend/alembic/`), which also created the chat tables. Their revis
 `a7c3e91d5b02` added the review columns and backfilled existing agents to `approved`,
 and `d4f1b8a2c967` removed the `chris` row the early seed had inserted. At that history's
 head, `e6b2c4a9f815`, the `agents` table is exactly the one `182d32a2edcd` creates. Such a
-database adopts the registry's history without changing a row:
+database adopts the registry's history without changing a row. How depends on where the
+earlier migrations left the tables.
 
-1. Take a backup (on Cloud SQL, a backup of the instance).
+**SQLite** holds both owners' tables in one file. Each owner takes a copy of the file and
+removes the other owner's tables from its copy. For the registry's copy:
+
+1. Keep the original file as the backup, and work on the copy.
 2. Check read-only that `SELECT version_num FROM alembic_version;` returns
    `e6b2c4a9f815`. If it returns an earlier revision, bring it to that head with the
    shared migrations, which this tree no longer holds. Find the commit that removed
@@ -459,15 +463,26 @@ database adopts the registry's history without changing a row:
    `uv sync --locked` and `uv run alembic upgrade head`.
 3. From `agent-registry/`, with the same `DATABASE_URL`, record the registry's revision:
    `uv run alembic stamp --purge 182d32a2edcd`. `--purge` replaces the old history's
-   version row, which the registry's history does not know. Do this only where the
-   database's `alembic_version` table belongs to the registry alone: a database (or,
-   under PostgreSQL, a schema) that the Chat System's migrations do not use. The Chat
-   System adopts its own copy (see [Application Services' README](../chat-system/application-services/README.md#a-database-built-by-the-earlier-shared-migrations)).
+   version row, which the registry's history does not know. Do this only on the
+   registry's own copy. The Chat System adopts a copy of its own (see
+   [Application Services' README](../chat-system/application-services/README.md#a-database-built-by-the-earlier-shared-migrations)).
 4. Remove the Chat System's tables from the registry's copy, in this order:
    `DROP TABLE messages; DROP TABLE tickets; DROP TABLE chats; DROP TABLE users;`.
 5. Verify: `uv run alembic current` prints `182d32a2edcd (head)`, `uv run alembic check`
    reports no new upgrade operations, and
    `SELECT id, name, status, is_active FROM agents;` lists the same agents as before.
+
+**PostgreSQL** holds both owners' tables in the schema `public`, and
+`shared-resources/postgres/owners.sql` confines the `registry` login to the schema
+`registry`. Signed in as `registry`, the steps above find no `agents` table. So the
+tables move into their owners' schemas first, both owners' in one transaction, with the
+services stopped from before `owners.sql` is applied until the move is verified.
+[`shared-resources/postgres/README.md`](../shared-resources/postgres/README.md#a-database-built-by-the-earlier-shared-migrations)
+has the whole procedure: when to stop the services, the statements that move the tables,
+and the login that runs each. The registry's part of it is step 3's command and step 5's
+checks above, run from this folder with `DATABASE_URL` signing in as `registry`. Step 4
+has no counterpart there: the move leaves the Chat System's tables in the Chat System's
+schema, where the `registry` login cannot reach them.
 
 Locally, a fresh `agent-registry/openbeavs.db` is simpler: run the migrations and the
 seed. To keep the agents an existing `backend/openbeavs.db` holds, copy that file to

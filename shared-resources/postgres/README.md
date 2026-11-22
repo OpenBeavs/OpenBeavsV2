@@ -8,7 +8,7 @@ To add an owner, copy one owner's block in `owners.sql`.
 
 ## Apply it
 
-Run `owners.sql` once, as an admin user that owns the `openbeavs` database and holds CREATEROLE. Cloud SQL's `postgres` user is such a user. It is not a superuser, and the file needs none. From the repository's root, with `ADMIN_DATABASE_URL` set to that user's connection (`postgresql://<admin>:<password>@<host>:5432/openbeavs`):
+Run `owners.sql` once, as an admin user that owns the database the services use and holds CREATEROLE. Cloud SQL's `postgres` user is such a user. It is not a superuser, and the file needs none. The file names no database: it acts on the one the session is connected to. From the repository's root, with `ADMIN_DATABASE_URL` set to that user's connection to that database (`postgresql://<admin>:<password>@<host>:5432/<database>`):
 
 ```bash
 psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f shared-resources/postgres/owners.sql
@@ -25,6 +25,8 @@ SQL
 
 Each login's `search_path` is its own schema, so the tables it creates land there and the code names no schema.
 
+`owners.sql` closes the schema `public` and the database to every login it does not name. If the database already holds tables there, created by the migrations the owners once shared, stop the services before applying it and follow [the last section](#a-database-built-by-the-earlier-shared-migrations).
+
 ## Test against it
 
 The Agent Registry's, Application Services', and end-to-end tests run on SQLite unless they are given a PostgreSQL server prepared as above. Give them one URL per login, and they create each owner's tables signed in as that owner and run each owner's code under its own login:
@@ -37,7 +39,7 @@ export TEST_REGISTRY_DATABASE_URL="postgresql+psycopg2://registry:$REGISTRY_PASS
 (cd tests/end-to-end && uv run pytest)
 ```
 
-The registry's own tests read only `TEST_REGISTRY_DATABASE_URL`, and Application Services' only `TEST_CHAT_SYSTEM_DATABASE_URL`. These two URLs begin `postgresql+psycopg2://` because SQLAlchemy reads them, and `psycopg2` is the PostgreSQL driver the packages install. A URL that begins `postgresql://` asks SQLAlchemy for a driver they lack.
+`openbeavs` in these URLs is the test database the next section creates. The registry's own tests read only `TEST_REGISTRY_DATABASE_URL`, and Application Services' only `TEST_CHAT_SYSTEM_DATABASE_URL`. These two URLs begin `postgresql+psycopg2://` because SQLAlchemy reads them, and `psycopg2` is the PostgreSQL driver the packages install. A URL that begins `postgresql://` asks SQLAlchemy for a driver they lack.
 
 `tests/end-to-end/tests/test_database_grants.py` tests the boundary itself: each login works in its own schema and is refused on the other's. Without the two URLs those tests are skipped, and the rest of the suite runs on SQLite. With the same two variables set, `npm run test:pipeline` in `chat-system/web-ui/` runs the browser pipeline against the server as well.
 
@@ -53,3 +55,47 @@ CREATE DATABASE openbeavs OWNER openbeavs_admin;
 ```
 
 Then apply `owners.sql` as `openbeavs_admin`. Applied as the superuser it would succeed even where Cloud SQL would refuse it.
+
+## A database built by the earlier, shared migrations
+
+Before each owner had its own migrations, one history (`backend/alembic/`, since removed) created every owner's tables in the schema `public` and kept one `alembic_version` table for all of them. `owners.sql` confines each login to its own schema, so in such a database neither owner finds its tables until they are moved there. The move changes no row. Both owners move together, in one transaction.
+
+1. Stop every service that uses the database: the single backend server that ran before the owners had services of their own, or Application Services and the Agent Registry. Leave them stopped until step 7. Step 4 takes away the access of the login they have been using, unless that login owns the database, and step 5 moves the tables out of the schema where they look for them.
+2. Take a backup (on Cloud SQL, a backup of the instance).
+3. As the admin user, check that the earlier history is at its head: `SELECT version_num FROM public.alembic_version;` returns `e6b2c4a9f815`. Note `SELECT count(*)` for `agents`, `users`, `chats`, `messages`, and `tickets`, for step 7. The tables belong to the login that created them. If the admin user is not that login, PostgreSQL refuses it here, and will again in step 5, until it is a member of that login: `GRANT <that login> TO CURRENT_USER;`. If the revision is an earlier one, bring the database to the head with the shared migrations now, signed in as the login that has been running them. The [Agent Registry's README](../../agent-registry/README.md#a-database-built-by-the-earlier-shared-migrations), step 2, says where to find them.
+4. Apply `owners.sql` and set the two passwords, as [Apply it](#apply-it) says, if that is not already done.
+5. As the admin user, move each owner's tables into its schema and give them to its login:
+
+```bash
+psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction <<'SQL'
+DO $$ BEGIN
+  IF (SELECT version_num FROM public.alembic_version) IS DISTINCT FROM 'e6b2c4a9f815' THEN
+    RAISE EXCEPTION 'the shared migrations are not at their head, e6b2c4a9f815';
+  END IF;
+END $$;
+ALTER TABLE public.users    SET SCHEMA chat_system;
+ALTER TABLE public.chats    SET SCHEMA chat_system;
+ALTER TABLE public.messages SET SCHEMA chat_system;
+ALTER TABLE public.tickets  SET SCHEMA chat_system;
+ALTER TABLE chat_system.users    OWNER TO chat_system;
+ALTER TABLE chat_system.chats    OWNER TO chat_system;
+ALTER TABLE chat_system.messages OWNER TO chat_system;
+ALTER TABLE chat_system.tickets  OWNER TO chat_system;
+ALTER TABLE public.agents   SET SCHEMA registry;
+ALTER TABLE registry.agents OWNER TO registry;
+DROP TABLE public.alembic_version;
+SQL
+```
+
+`SET SCHEMA` moves a table with its rows, indexes, and constraints, and `OWNER TO` gives it to the owner's login. The admin user may do both because `owners.sql` made it a member of both logins. The first statement stops the transaction unless the earlier history is at its head. The last drops the shared `alembic_version` table: its one row names a revision neither owner's history knows, and from step 6 each owner keeps a version table of its own in its own schema. The transaction does all of this or none of it.
+
+6. Record each owner's first revision, signed in as that owner, and check it. With `REGISTRY_DATABASE_URL` and `CHAT_SYSTEM_DATABASE_URL` set to each login's connection (`postgresql+psycopg2://registry:<password>@<host>:5432/<database>`, and the same for `chat_system`), from the repository's root:
+
+```bash
+(cd agent-registry && export DATABASE_URL="$REGISTRY_DATABASE_URL" && uv run alembic stamp --purge 182d32a2edcd && uv run alembic current && uv run alembic check)
+(cd chat-system/application-services && export DATABASE_URL="$CHAT_SYSTEM_DATABASE_URL" && uv run alembic stamp --purge 34fddc6e996d && uv run alembic current && uv run alembic check)
+```
+
+`stamp` creates the owner's `alembic_version` table in its schema and writes the revision there without running it. `current` then prints `182d32a2edcd (head)` for the registry and `34fddc6e996d (head)` for the chat system, and each `check` reports no new upgrade operations: the moved tables are the ones the owner's first revision creates.
+
+7. Verify, then start each service with its own login in `DATABASE_URL`. Signed in as `registry`, `SELECT count(*) FROM agents;` returns the count from step 3, and signed in as `chat_system` so do `users`, `chats`, `messages`, and `tickets`. As the admin user, `SELECT tablename FROM pg_tables WHERE schemaname = 'public';` returns no rows.
