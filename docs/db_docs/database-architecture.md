@@ -167,7 +167,7 @@ Unified table replacing legacy `agent` and `registry_agent`.
 - **`capabilities`** (`JSON`): Supported modes (streaming, audio, multimodal).
 - **`is_active`** (`Boolean`, default `True`): Allows soft deactivation.
 - **`is_featured`** (`Boolean`, default `False`): Curated agent highlight on the homepage.
-- **`status`** (`String`, NOT NULL, no database default): Registry review status. `pending` (submitted, not routable), `approved` or `provisional` (routable), `revoked` (not routable). The registry creates new rows as `pending`; only an admin review changes it. The chat directory lists only active public agents that are `approved` or `provisional` and have no required role. Chris uses the external A2A registry service for selection. See `docs/registry.md`.
+- **`status`** (`String`, NOT NULL, no database default): Registry review status. `pending` (submitted, not routable), `approved` or `provisional` (routable), `revoked` (not routable). The registry creates new rows as `pending`; only an admin review changes it. The chat directory lists only active public agents that are `approved` or `provisional` and have no required role. Chris uses the external A2A registry service for selection. See `agent-registry/README.md`.
 - **`submitted_by`** (`String`, NULL): Email of the submitter; NULL for seeded agents.
 - **`reviewed_by`** (`String`, NULL): Email of the admin who last reviewed the agent.
 - **`reviewed_at`** (`BigInteger`, NULL): Epoch seconds of the last review.

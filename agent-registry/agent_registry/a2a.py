@@ -8,7 +8,8 @@ internal details.
 
 The executor reads eligible agents, asks the selector, and rechecks the chosen row
 before replying. It neither answers the question nor calls the expert. See
-docs/registry.md for protocol details, limits and authentication.
+``../README.md``, the registry's README, for protocol details, limits and
+authentication.
 """
 
 import asyncio

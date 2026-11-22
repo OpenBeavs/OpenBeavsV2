@@ -362,11 +362,11 @@ def build_presentation(output_path):
     add_header(slide5, "Implementation Roadmap & Next Steps", "EXECUTION PLAN FOR OPENBEAVS V2")
 
     steps_data = [
-        ("1. Setup DB Core", "backend/app/db/",
+        ("1. Setup DB Core", "agent-registry/agent_registry/database, chat-system/application-services/application_services/database",
          "Initialize modern SQLAlchemy 2.0 engine, async session factory, and Alembic migration directory."),
-        ("2. Define Models", "backend/app/models/",
+        ("2. Define Models", "agent-registry/agent_registry/models.py, chat-system/application-services/application_services/models/",
          "Implement the 5 clean declarative classes: Agent, User, Chat, Message, Ticket with proper indices."),
-        ("3. Connect Chris", "backend/app/chris/",
+        ("3. Connect Chris", "chat-system/conversation-agent/conversation_agent/",
          "Swap out hardcoded MOCK_AGENTS for live queries against the agents table; pass candidate agents to LLM."),
         ("4. Persist Chats", "POST /chris/message",
          "Store user turns and agent responses into chats and messages tables with session tracking and guest TTL.")
