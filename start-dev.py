@@ -54,6 +54,7 @@ def service_specs(node: str) -> list[tuple[str, Path, list[str]]]:
     application_services = ROOT / "chat-system/application-services"
     registry = ROOT / "agent-registry"
     conversation_agent = ROOT / "chat-system/conversation-agent"
+    web_ui = ROOT / "chat-system/web-ui"
     frontend_port = str(get_frontend_port())
     return [
         ("Registry", registry, [str(venv_python(registry)), "-m", "uvicorn",
@@ -64,8 +65,8 @@ def service_specs(node: str) -> list[tuple[str, Path, list[str]]]:
         ("Backend", application_services, [str(venv_python(application_services)),
          "-m", "uvicorn", "application_services.main:app",
          "--host", "127.0.0.1", "--port", "8010"]),
-        ("Frontend", ROOT / "frontend", [node,
-         str(ROOT / "frontend/node_modules/vite/bin/vite.js"),
+        ("Frontend", web_ui, [node,
+         str(web_ui / "node_modules/vite/bin/vite.js"),
          "--host", "127.0.0.1", "--port", frontend_port, "--strictPort"]),
     ]
 
@@ -111,11 +112,11 @@ def main() -> int:
     folders = (ROOT / "agent-registry", ROOT / "chat-system/conversation-agent",
                ROOT / "chat-system/application-services")
     if not all(venv_python(f).is_file() for f in folders) or (
-        not node or not (ROOT / "frontend/node_modules/vite/bin/vite.js").is_file()
+        not node or not (ROOT / "chat-system/web-ui/node_modules/vite/bin/vite.js").is_file()
     ):
         print("Missing agent-registry/.venv, chat-system/conversation-agent/.venv, "
-              "chat-system/application-services/.venv, Node.js, or frontend "
-              "dependencies. Follow README.md first.")
+              "chat-system/application-services/.venv, Node.js, or "
+              "chat-system/web-ui/node_modules. Follow README.md first.")
         return 1
 
     processes = []

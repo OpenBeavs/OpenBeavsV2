@@ -1,6 +1,16 @@
-# Frontend setup and integration
+# Web UI
 
-The `frontend/` directory is the standalone OpenBeavs interface. It selectively
+The SvelteKit app the Chat System serves to the browser. It draws the conversation and sends the person's actions to Application Services through the API.
+
+- It builds with `adapter-static`, so in production every line runs in the browser. Server-side code belongs in `application-services/`.
+- It runs on a machine the user controls, so it enforces nothing. A hidden tab or a sign-in screen changes what a person sees; Application Services makes the real check on every API call.
+- It keeps the conversation in browser memory and sends the new message with the conversation's history.
+- It draws each expert badge from the routing result Application Services returns with the reply, never from the reply's text.
+- **Later:** it sends a conversation ID and the new message, and draws each badge from the source stored with the message.
+
+Moves here from the dev branch: `frontend/`, and `docs/frontend.md`, which follows.
+
+This folder is the standalone OpenBeavs interface. It selectively
 adapts the original WebUI's Chris chat and sidebar presentation. It uses Svelte 4, SvelteKit 2, Vite 5, TypeScript and Tailwind 4.
 The old Open WebUI Python backend is not required.
 
@@ -20,13 +30,13 @@ cd ../application-services
 uv sync
 uv run alembic upgrade head
 ```
-Follow [the root README](../README.md#run-locally-windows-powershell) for backend dependencies,
+Follow [the root README](../../README.md#run-locally-windows-powershell) for backend dependencies,
 migrations, model configuration, and the all-services launcher. It runs the backend at
 `http://127.0.0.1:8010`, Chris at port 8000, and the registry at port 8001. Chris and
 the registry are separate processes; the backend alone cannot answer a chat message.
 Use Python 3.12 and Node 22 or newer.
 
-In `frontend/`, after `npm ci`, start Vite with the backend proxy origin:
+In `chat-system/web-ui/`, after `npm ci`, start Vite with the backend proxy origin:
 
 ```powershell
 $env:BACKEND_ORIGIN='http://127.0.0.1:8010'
@@ -46,10 +56,10 @@ Open the Local URL printed by Vite (normally `http://127.0.0.1:5173`). The brows
 calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`.
 Always set it: the fallback when it is unset is port 8000, where the launcher runs
 Chris, not the backend. It is a server-side setting, not a browser secret.
-Do not put model keys, database credentials, or login tokens in frontend configuration.
+Do not put model keys, database credentials, or login tokens in the Web UI's configuration.
 
 No backend API routes, CORS configuration, or database migrations are added by
-this frontend. `BACKEND_ORIGIN` must be an origin you control; it is not embedded
+the Web UI. `BACKEND_ORIGIN` must be an origin you control; it is not embedded
 as a browser API URL.
 
 ## Supported behavior
@@ -94,12 +104,12 @@ Arena Mode, model controls, and administration are outside this initial port.
 ## Build, preview, and hosting
 
 ```bash
-cd frontend
+cd chat-system/web-ui
 npm run build
 npm run preview
 ```
 
-The static application is emitted into `frontend/build/`. Preview includes the
+The static application is emitted into `chat-system/web-ui/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
 fall back to `index.html` for UI routes. Its reverse proxy must
 send only the exact paths `/chat/message` and `/health` to FastAPI
@@ -110,7 +120,7 @@ This change does not deploy a cloud service or establish production auth.
 ## Checks
 
 ```bash
-cd frontend
+cd chat-system/web-ui
 npm run lint
 npm run test
 npm run build
@@ -138,7 +148,7 @@ PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
 ```
 
 `.github/workflows/checks.yml` runs the Application Services and backend suites (including security-related
-authorization cases), Ruff, frontend lint/type checks, unit tests, build, and
+authorization cases), Ruff, Web UI lint/type checks, unit tests, build, and
 browser tests. Secret scanning and production dependency-policy gates remain
 separate team work; this workflow does not claim to implement them.
 
@@ -155,7 +165,7 @@ This requires a working registry model/key and is distinct from deterministic te
 
 ## Attribution
 
-`frontend/static/THIRD_PARTY_NOTICES.txt` preserves the original repository's MIT
+`static/THIRD_PARTY_NOTICES.txt` preserves the original repository's MIT
 and Open WebUI BSD notices. The favicon, Chris presentation, sidebar styling,
 and small icon patterns were adapted from that repository. This port does not
 import a newer upstream Open WebUI release.

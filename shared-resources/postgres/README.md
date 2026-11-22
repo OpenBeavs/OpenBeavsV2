@@ -39,7 +39,7 @@ export TEST_REGISTRY_DATABASE_URL="postgresql+psycopg2://registry:$REGISTRY_PASS
 
 The registry's own tests read only `TEST_REGISTRY_DATABASE_URL`, and Application Services' only `TEST_CHAT_SYSTEM_DATABASE_URL`. These two URLs begin `postgresql+psycopg2://` because SQLAlchemy reads them, and `psycopg2` is the PostgreSQL driver the packages install. A URL that begins `postgresql://` asks SQLAlchemy for a driver they lack.
 
-`tests/test_database_grants.py` tests the boundary itself: each login works in its own schema and is refused on the other's. Without the two URLs those tests are skipped, and the rest of the suite runs on SQLite. With the same two variables set, `npm run test:pipeline` in `frontend/` runs the browser pipeline against the server as well.
+`tests/test_database_grants.py` tests the boundary itself: each login works in its own schema and is refused on the other's. Without the two URLs those tests are skipped, and the rest of the suite runs on SQLite. With the same two variables set, `npm run test:pipeline` in `chat-system/web-ui/` runs the browser pipeline against the server as well.
 
 The tests drop and recreate each owner's tables, so give them a database kept for testing.
 

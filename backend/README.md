@@ -1,8 +1,8 @@
 # OpenBeavs v2 end-to-end tests
 
 This folder holds the tests that run the Chat System and the Agent Registry together,
-and the fake-model stack (`scripts/fake_model_stack.py`) that the frontend's
-`npm run test:pipeline` starts. It holds no application code. Each system is its own
+and the fake-model stack (`scripts/fake_model_stack.py`) that the Web UI's
+`npm run test:pipeline` (in `chat-system/web-ui/`) starts. It holds no application code. Each system is its own
 package with its own tests:
 [Application Services](../chat-system/application-services/README.md),
 [Chris, the Conversation Agent](../chat-system/conversation-agent/README.md), and

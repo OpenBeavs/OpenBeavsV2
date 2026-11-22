@@ -19,16 +19,16 @@ chat-system/application-services/build/
 *.sqlite3
 agent_registry with new repo
 
-# Frontend dependencies, generated output and browser-test artifacts
+# Web UI dependencies, generated output and browser-test artifacts
 node_modules/
 .svelte-kit/
-frontend/build/
-frontend/test-results/
-frontend/playwright-report/
-frontend/.env
-frontend/.env.*
-!frontend/.env.example
-/frontend/vite.config.ts.timestamp-*.mjs
+chat-system/web-ui/build/
+chat-system/web-ui/test-results/
+chat-system/web-ui/playwright-report/
+chat-system/web-ui/.env
+chat-system/web-ui/.env.*
+!chat-system/web-ui/.env.example
+/chat-system/web-ui/vite.config.ts.timestamp-*.mjs
 
 .env
 docs/imgs/registry-a2a-flow.png

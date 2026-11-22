@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "chat-system" / "application-services"
 REGISTRY_DIR = ROOT_DIR / "agent-registry"
-FRONTEND_DIR = ROOT_DIR / "frontend"
+FRONTEND_DIR = ROOT_DIR / "chat-system" / "web-ui"
 
 DEFAULT_PORTS = [8000, 8010, 8001, 5173, 8080, 3000]
 

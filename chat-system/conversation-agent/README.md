@@ -262,4 +262,4 @@ The chat API that calls Chris, and its contract with the browser, are in
 
 A2A caller authentication, authenticated expert invocation, mixed-version expert routing, verified SSO, streaming in the frontend, saved-chat retrieval, and
 automated TTL cleanup remain future work. See [registry](../../agent-registry/README.md) and
-[frontend integration](../../docs/frontend.md) for their separate responsibilities.
+[the Web UI](../web-ui/README.md) for their separate responsibilities.

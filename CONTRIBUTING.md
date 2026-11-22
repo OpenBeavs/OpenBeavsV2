@@ -38,7 +38,7 @@ For issues that arise within the team, we recommend a simple escalation path:
 
 ## Getting Started
 
-See [Frontend setup and integration](docs/frontend.md) for the complete local
+See [the Web UI's README](chat-system/web-ui/README.md) for the complete local
 backend/frontend setup, configuration, checks, and static hosting requirements.
 
 ### Prerequisites
@@ -52,7 +52,7 @@ backend/frontend setup, configuration, checks, and static hosting requirements.
 
 From `agent-registry/` and then from `chat-system/application-services/`, run `uv sync`, then
 `uv run alembic upgrade head`. From `chat-system/conversation-agent/`, run `uv sync`;
-Chris has no database. From `frontend/`, run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
+Chris has no database. From `chat-system/web-ui/`, run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
 with the launcher described in the [README](README.md): Chris and the registry each
 run as their own process, so starting `application_services.main:app` alone does not answer chat
 messages. The frontend proxies the chat API to FastAPI; the
@@ -118,7 +118,7 @@ changes readable and limited to the feature being implemented.
 ## Testing
 
 Run `uv run pytest` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `backend/`, including their
-authorization tests. From `frontend/`,
+authorization tests. From `chat-system/web-ui/`,
 run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
 Playwright Chromium browser. Browser tests use API fixtures; a live Gemini
 conversation is a separate acceptance check. See the setup guide for details.

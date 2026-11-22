@@ -598,7 +598,7 @@ describes. Live model calls verify
 provider configuration separately; they are not a repeatable accuracy benchmark.
 See the [end-to-end checks](../backend/README.md#dependencies-and-checks) for the
 tests that run the registry with Application Services and Chris,
-and [frontend documentation](../docs/frontend.md) for browser validation.
+and [the Web UI's README](../chat-system/web-ui/README.md) for browser validation.
 
 ## Not done yet
 

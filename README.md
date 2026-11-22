@@ -2,11 +2,10 @@
 
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
-- `frontend/`: Svelte chat interface.
-- `chat-system/`: the OpenBeavs Chat System. `chat-system/application-services/` holds Application Services (the chat REST API and sign-in), a Python package with its own environment, database and migrations. `chat-system/conversation-agent/` holds Chris, the Conversation Agent (an ADK agent served over A2A), a Python package with its own environment. Each runs as its own service.
+- `chat-system/`: the OpenBeavs Chat System. `chat-system/web-ui/` holds the Web UI, the Svelte chat interface. `chat-system/application-services/` holds Application Services (the chat REST API and sign-in), a Python package with its own environment, database and migrations. `chat-system/conversation-agent/` holds Chris, the Conversation Agent (an ADK agent served over A2A), a Python package with its own environment. Each runs as its own service.
 - `backend/`: the end-to-end tests, which run the Chat System and the registry together, and the fake-model stack the browser pipeline test starts.
 - `agent-registry/`: the Agent Registry (expert selection over A2A, and registry management), a Python package with its own environment, database and migrations, run as its own service.
-- `docs/`: API, frontend setup, and database documentation.
+- `docs/`: design, requirements, risk, and database documentation, and the RFCs.
 
 Start with local setup for [macOS](#run-locally-macos) or
 [Windows](#run-locally-windows-powershell), then see
@@ -33,9 +32,9 @@ cd ../application-services
 uv sync --locked --python 3.12
 cd ../..
 [ -f .env ] || cp .env.example .env
-cd frontend
+cd chat-system/web-ui
 npm ci
-cd ..
+cd ../..
 ```
 
 In `.env` at the repository root, set `GEMINI_API_KEY`, `CHRIS_MODEL`, and `REGISTRY_MODEL`
@@ -92,9 +91,9 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e . --group dev
 cd ..\..
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
-cd .\frontend
+cd .\chat-system\web-ui
 npm install
-cd ..
+cd ..\..
 ```
 
 Edit the ignored `.env` at the repository root privately. Configure `CHRIS_MODEL` and

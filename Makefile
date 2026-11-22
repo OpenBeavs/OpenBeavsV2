@@ -21,7 +21,7 @@ dev-registry:
 	cd agent-registry && python -m uvicorn agent_registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
 
 dev-front:
-	cd frontend && npm run dev
+	cd chat-system/web-ui && npm run dev
 
 # ── Testing & Quality ─────────────────────────────────────────────────────────
 test: test-registry test-backend test-frontend
@@ -33,12 +33,12 @@ test-backend:
 	cd backend && python -m pytest
 
 test-frontend:
-	cd frontend && npm test
+	cd chat-system/web-ui && npm test
 
 lint:
 	cd agent-registry && python -m ruff check .
 	cd backend && python -m ruff check .
-	cd frontend && npm run check
+	cd chat-system/web-ui && npm run check
 
 # ── Database ──────────────────────────────────────────────────────────────────
 seed:

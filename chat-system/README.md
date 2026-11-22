@@ -14,5 +14,3 @@ The system people talk to. It relays each question to the expert that fits and r
 | `web-ui/` | Presents the conversation in the browser | No |
 | `application-services/` | Turn handling and sign-in; later, conversation storage | No |
 | `conversation-agent/` | Asks the Registry about each message, calls the one expert it returns, relays its answer or answers itself | Yes |
-
-Until it moves into this folder, the Web UI is in `frontend/`, at the repository root.

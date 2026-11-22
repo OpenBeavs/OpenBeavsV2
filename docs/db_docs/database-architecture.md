@@ -5,7 +5,7 @@
 This document presents the legacy database analysis and the five-table v2
 schema. The schema supports future identity/encryption work, but columns alone
 do not implement those flows. Current behavior is described below and in
-[Chris](../../chat-system/conversation-agent/README.md) and [the frontend guide](../frontend.md).
+[Chris](../../chat-system/conversation-agent/README.md) and [the Web UI's README](../../chat-system/web-ui/README.md).
 
 The legacy repository was built as a direct fork of **Open WebUI**, inheriting over 20 tables, dual ORMs (`Peewee` and `SQLAlchemy`), embedded vector databases (`ChromaDB`), and local password authentication. Because OpenBeavs is fundamentally an **A2A (Agent-to-Agent) protocol discovery hub and orchestrator for Oregon State University**, more than 80% of the inherited schema was dead weight.
 
