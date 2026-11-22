@@ -14,8 +14,8 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from google.genai import types
 
-from app.chris import expert_client, gemini, registry_client, routing
-from app.config import ConfigError
+from conversation_agent import expert_client, gemini, registry_client, routing
+from conversation_agent.config import ConfigError
 
 log = logging.getLogger(__name__)
 

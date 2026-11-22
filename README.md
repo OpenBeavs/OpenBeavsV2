@@ -3,13 +3,14 @@
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
 - `frontend/`: Svelte chat interface.
-- `backend/`: chat REST API and persistence, and Chris's ADK/A2A agent.
+- `backend/`: chat REST API, sign-in, and persistence.
+- `chat-system/`: the OpenBeavs Chat System. `chat-system/conversation-agent/` holds Chris, the Conversation Agent (an ADK agent served over A2A), a Python package with its own environment, run as its own service.
 - `agent-registry/`: the Agent Registry (expert selection over A2A, and registry management), a Python package with its own environment, database and migrations, run as its own service.
 - `docs/`: API, frontend setup, and database documentation.
 
 Start with local setup for [macOS](#run-locally-macos) or
 [Windows](#run-locally-windows-powershell), then see
-[Chris's API](docs/chris.md). Chat calls Chris over A2A; Chris asks the standalone
+[Chris's API](chat-system/conversation-agent/README.md). Chat calls Chris over A2A; Chris asks the standalone
 registry to select an expert. By default Chris answers with Gemini when no expert
 matches or the registry fails. Selected public
 HTTPS experts are invoked over A2A (0.3 by default; configure
@@ -26,7 +27,9 @@ From the repository root, set up the dependencies once:
 ```zsh
 cd agent-registry
 uv sync --locked --python 3.12
-cd ../backend
+cd ../chat-system/conversation-agent
+uv sync --locked --python 3.12
+cd ../../backend
 uv sync --locked --python 3.12
 cd ..
 [ -f .env ] || cp .env.example .env
@@ -61,8 +64,8 @@ bash start-dev-mac.sh
 ```
 
 Open [OpenBeavs](http://127.0.0.1:5173). The script runs all four services in one
-terminal. The registry uses `agent-registry/openbeavs.db`, and Chat and Chris use
-`backend/openbeavs.db`. Press **Ctrl+C** there to stop them.
+terminal. The registry uses `agent-registry/openbeavs.db`, and Chat uses
+`backend/openbeavs.db`; Chris has no database. Press **Ctrl+C** there to stop them.
 
 ## Run locally (Windows PowerShell)
 
@@ -75,9 +78,13 @@ py -3.12 -m venv .venv
 # --group needs pip 25.1 or later.
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e . --group dev
-cd ..\backend
+cd ..\chat-system\conversation-agent
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ..\agent-registry -e . -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e . --group dev
+cd ..\..\backend
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ..\agent-registry -e ..\chat-system\conversation-agent -e . -r requirements-dev.txt
 cd ..
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 cd .\frontend
@@ -136,8 +143,9 @@ $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
 .\backend\.venv\Scripts\python.exe .\start-dev.py
 ```
 
-The launcher runs the registry from `agent-registry/`, with its environment, and Chris and
-the backend from `backend/`, so both forms use the same two local databases. It starts each service in a separate Windows console:
+The launcher runs the registry from `agent-registry/` and Chris from
+`chat-system/conversation-agent/`, each with its own environment, and the backend from
+`backend/`, so both forms use the same two local databases. It starts each service in a separate Windows console:
 
 | Service | Local address | Purpose |
 |---|---|---|

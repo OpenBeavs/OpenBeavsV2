@@ -14,7 +14,9 @@ uv sync
 uv run alembic upgrade head
 # Optional: seed the registry's initial expert agents.
 uv run python -m agent_registry.db.seed_agents
-cd ../backend
+cd ../chat-system/conversation-agent
+uv sync
+cd ../../backend
 uv sync
 uv run alembic upgrade head
 ```

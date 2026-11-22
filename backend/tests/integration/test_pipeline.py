@@ -14,11 +14,11 @@ from pathlib import Path
 import httpx
 import pytest
 from agent_registry.models import Agent
+from conversation_agent import expert_client, gemini
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.chris import expert_client, gemini
 from app.db.base import ChatSystemBase
 from app.db.session import get_db
 from app.history import bounded_history
@@ -331,7 +331,7 @@ class TestChatDeadline:
     def test_chris_taking_too_long_is_a_503_with_a_fixed_message(
         self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from app.chris import registry_client
+        from conversation_agent import registry_client
 
         async def stuck(message, history):
             await asyncio.sleep(5)
@@ -348,9 +348,9 @@ class TestChatDeadline:
 
     def test_the_deadlines_nest_correctly_by_default(self) -> None:
         from agent_registry import llm
+        from conversation_agent import registry_client
 
         from app.chat import a2a_client
-        from app.chris import registry_client
 
         registry_worst_case = 2 + llm.request_timeout()  # configured: 2 s queue + 8 s
         assert registry_client.DEFAULT_TIMEOUT_SECONDS > 2 + 8
@@ -477,7 +477,7 @@ def test_display_database_failure_preserves_successful_selection(experts, monkey
 
 
 def test_cli_reads_the_registry_text_contract(experts, monkeypatch):
-    from app.chris import registry_client
+    from conversation_agent import registry_client
 
     async def create(url, config):
         from a2a.client import ClientFactory
@@ -502,7 +502,7 @@ def test_expert_dispatch_through_chat_registry_and_sdk(experts, monkeypatch, fai
     experts.choose("math-expert")
     monkeypatch.setenv("CHRIS_EXPERT_A2A_VERSION", "1.0")
     monkeypatch.setattr(
-        "agent_registry.security.default_resolver", lambda host: ["8.8.8.8"]
+        "conversation_agent.security.default_resolver", lambda host: ["8.8.8.8"]
     )
     requests = []
 

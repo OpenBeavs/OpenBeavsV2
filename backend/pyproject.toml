@@ -8,7 +8,7 @@ include = ["app*"]
 [project]
 name = "openbeavs-backend"
 version = "0.1.0"
-description = "OpenBeavs v2 backend (prototype): Chris orchestrator."
+description = "OpenBeavs v2 backend (prototype): the chat API."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
@@ -19,20 +19,19 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "python-dotenv>=1.0.0",
     "pyjwt[crypto]>=2.8.0",
-    # Chris is a Google ADK agent served over A2A (app/chris). ADK's A2A support is
-    # marked experimental by Google, so pin the ADK and A2A SDK versions together.
-    "google-adk[a2a]==2.13.0",
+    # Chat calls Chris over A2A with the SDK client. Pinned to the version Chris uses.
     "a2a-sdk[http-server]==1.3.0",
-    # Chris calls Gemini directly when registry selection/delegation is unavailable.
-    "google-genai>=2.30,<3",
-    # The Agent Registry is its own package (../agent-registry). Until the Chat System
-    # has packages of its own, the code and tests here that start the registry or check
-    # an expert's URL import it from this editable install.
+    # The Agent Registry (../agent-registry) and the Conversation Agent
+    # (../chat-system/conversation-agent) are packages of their own. The pipeline stack
+    # and the tests here that run them beside the chat API import them from these
+    # editable installs; the chat API's own code imports neither.
     "openbeavs-agent-registry",
+    "openbeavs-conversation-agent",
 ]
 
 [tool.uv.sources]
 openbeavs-agent-registry = { path = "../agent-registry", editable = true }
+openbeavs-conversation-agent = { path = "../chat-system/conversation-agent", editable = true }
 
 [dependency-groups]
 dev = [

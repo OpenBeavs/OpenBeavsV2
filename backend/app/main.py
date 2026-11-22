@@ -13,7 +13,7 @@ from app.chat.router import router as chat_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Configure logging. Chris runs as its own process (``app.chris.run``)."""
+    """Configure logging. Chris runs as its own process (``conversation_agent.run``)."""
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("app").setLevel(logging.INFO)
     yield

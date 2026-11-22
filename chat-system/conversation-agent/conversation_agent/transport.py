@@ -11,7 +11,7 @@ from a2a.utils.errors import UnsupportedOperationError
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
 from starlette.types import Receive, Scope, Send
 
-from app.chris.agent import chris_agent
+from conversation_agent.agent import chris_agent
 
 
 class MessageOnlyTaskStore(InMemoryTaskStore):

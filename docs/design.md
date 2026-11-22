@@ -183,7 +183,7 @@ The public chat endpoint is stateless. Requests contain `message`, prior success
 Chris. Responses contain text and routing information, with `chat_id: null` for
 compatibility. No guest IDs, transcripts or routing decisions are persisted.
 Legacy identity/chat fields are ignored and cannot authorize stored-history access.
-See [the current API contract](chris.md#frontend-api) for response and error details.
+See [the current API contract](../chat-system/conversation-agent/README.md#frontend-api) for response and error details.
 
 
 ### 4.2 REST API: Agent Registry Service

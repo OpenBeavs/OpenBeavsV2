@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from conversation_agent.routing import RoutingResult
+from conversation_agent.run import create_app as create_chris_app
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.chat.a2a_client import ChrisReply, ChrisUnavailable
-from app.chris.routing import RoutingResult
-from app.chris.run import create_app as create_chris_app
 from app.config import ConfigError
 from app.db.base import ChatSystemBase
 from app.db.session import get_db
@@ -89,9 +89,9 @@ def test_chris_a2a_endpoint_is_not_served_here():
 def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
     """The frontend API calls the real A2A agent without storing its response."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))
-    monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
+    monkeypatch.setattr("conversation_agent.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
-    monkeypatch.setattr("app.chris.gemini.answer", answer)
+    monkeypatch.setattr("conversation_agent.gemini.answer", answer)
     history = [
         {"role": "user", "content": "Earlier question"},
         {"role": "assistant", "content": "Earlier answer"},
@@ -142,7 +142,7 @@ def test_unavailable_registry_gemini_reply_is_not_saved(
 ):
     """A missing registry uses Gemini's answer without storing a turn."""
     answer = AsyncMock(return_value="Gemini answer.")
-    monkeypatch.setattr("app.chris.gemini.answer", answer)
+    monkeypatch.setattr("conversation_agent.gemini.answer", answer)
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setenv("REGISTRY_A2A_URL", "http://registry.example.test/")
     chris = create_chris_app()
@@ -155,7 +155,7 @@ def test_unavailable_registry_gemini_reply_is_not_saved(
         raise httpx.ConnectError("Registry is not running", request=request)
 
     monkeypatch.setattr(
-        "app.chris.registry_client._http_client",
+        "conversation_agent.registry_client._http_client",
         lambda timeout: httpx.AsyncClient(
             transport=httpx.MockTransport(unavailable)
         ),

@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.chris import gemini
-from app.config import ConfigError
+from conversation_agent import gemini
+from conversation_agent.config import ConfigError
 
 
 @pytest.fixture

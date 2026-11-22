@@ -1,20 +1,21 @@
 """Exercise Chris through its real standalone ADK app and A2A SDK, without a model."""
 
 import asyncio
+import sys
 import threading
 import time
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 import uvicorn
 from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import Message, Part, Role, SendMessageRequest, TaskState
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
-from app.chris.routing import RoutingResult
-from app.chris.run import create_app
+from conversation_agent.routing import RoutingResult
+from conversation_agent.run import create_app
 
 CARD_PATH = "/chris/a2a/.well-known/agent-card.json"
 RPC_PATH = "/chris/a2a/"
@@ -55,9 +56,9 @@ def test_generated_card_and_repeated_startup():
 def test_sdk_discovery_and_message(text, monkeypatch):
     """A real SDK client discovers Chris's endpoint and receives its result."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))
-    monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
+    monkeypatch.setattr("conversation_agent.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
-    monkeypatch.setattr("app.chris.gemini.answer", answer)
+    monkeypatch.setattr("conversation_agent.gemini.answer", answer)
     history = [{"role": "assistant", "content": "Earlier answer"}]
     app = create_app()
 
@@ -96,12 +97,15 @@ def test_sdk_discovery_and_message(text, monkeypatch):
             finally:
                 await agent_client.close()
 
-    with (
-        patch("app.chat.service.handle_message", new_callable=AsyncMock) as chat,
-        TestClient(app) as client,
-    ):
+    with TestClient(app) as client:
         responses = client.portal.call(send)
-    chat.assert_not_awaited()
+    # Chris never calls back into the chat service: no Application Services code is
+    # even loaded in his process.
+    assert not [
+        name
+        for name in sys.modules
+        if name.split(".")[0] in ("application_services", "app")
+    ]
     assert len(responses) == 1
     task = responses[0].task
     if text.strip():
@@ -156,7 +160,7 @@ def test_uvicorn_factory_serves_on_the_chosen_host_and_port(monkeypatch):
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "https://chris.example.test")
     server = uvicorn.Server(
         uvicorn.Config(
-            "app.chris.run:create_app",
+            "conversation_agent.run:create_app",
             factory=True,
             host="127.0.0.1",
             port=0,  # any free port: the point is that the caller chooses

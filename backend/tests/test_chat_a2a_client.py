@@ -6,20 +6,20 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from conversation_agent.routing import RoutingResult
+from conversation_agent.run import create_app
 from fastapi.testclient import TestClient
 
 from app.chat.a2a_client import ChrisUnavailable, send_message
-from app.chris.routing import RoutingResult
-from app.chris.run import create_app
 from app.config import ConfigError
 
 
 def test_chat_client_calls_real_chris(monkeypatch):
     """Chat's production client speaks to the actual ADK agent in its own app."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))
-    monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
+    monkeypatch.setattr("conversation_agent.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
-    monkeypatch.setattr("app.chris.gemini.answer", answer)
+    monkeypatch.setattr("conversation_agent.gemini.answer", answer)
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     chris = create_app()

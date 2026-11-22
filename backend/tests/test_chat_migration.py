@@ -32,7 +32,9 @@ def app_loggers_stay_enabled() -> Iterator[None]:
     """
     yield
     for name, logger in logging.Logger.manager.loggerDict.items():
-        if name.startswith("app.") and isinstance(logger, logging.Logger):
+        if name.startswith(("app.", "conversation_agent.")) and isinstance(
+            logger, logging.Logger
+        ):
             logger.disabled = False
 
 

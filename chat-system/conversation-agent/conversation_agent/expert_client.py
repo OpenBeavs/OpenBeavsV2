@@ -25,10 +25,10 @@ from a2a.types import (
     TaskState,
 )
 from a2a.utils.errors import JSON_RPC_ERROR_CODE_MAP, A2AError
-from agent_registry.security import UnsafeURLError, validate_agent_url
 
-from app.config import get_env
-from app.history import bounded_history
+from conversation_agent.config import get_env
+from conversation_agent.history import bounded_history
+from conversation_agent.security import UnsafeURLError, validate_agent_url
 
 log = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_SECONDS = 30.0

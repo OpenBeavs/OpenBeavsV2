@@ -11,12 +11,12 @@ import json
 
 import httpx
 import pytest
+from conversation_agent import gemini, registry_client
+from conversation_agent.run import create_app as create_chris_app
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 from app.chat import a2a_client
-from app.chris import gemini, registry_client
-from app.chris.run import create_app as create_chris_app
 from app.db.session import get_db
 from app.main import app as backend_app
 from tests.databases import chat_system_engine
@@ -117,7 +117,7 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     async def expert_answer(*args):
         return "Expert answer."
 
-    monkeypatch.setattr("app.chris.expert_client.send_message", expert_answer)
+    monkeypatch.setattr("conversation_agent.expert_client.send_message", expert_answer)
 
     monkeypatch.setattr(gemini, "answer", no_gemini)
     backend_app.dependency_overrides[get_db] = override_get_db
@@ -423,7 +423,7 @@ class TestAnswerDispatch:
         async def expert_answer(endpoint, message, history):
             return "Expert answer."
 
-        monkeypatch.setattr("app.chris.expert_client.send_message", expert_answer)
+        monkeypatch.setattr("conversation_agent.expert_client.send_message", expert_answer)
         body = ask(client)
         assert body["routing"]["status"] == "selected"
         assert body["response"] == "Expert answer."

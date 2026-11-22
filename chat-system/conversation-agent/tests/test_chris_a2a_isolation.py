@@ -6,12 +6,12 @@ import weakref
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi.testclient import TestClient
 from google.adk.sessions import InMemorySessionService
+from starlette.testclient import TestClient
 
-from app.chris.routing import RoutingResult
-from app.chris.run import create_app
-from app.chris.transport import MessageOnlyTaskStore
+from conversation_agent.routing import RoutingResult
+from conversation_agent.run import create_app
+from conversation_agent.transport import MessageOnlyTaskStore
 
 RPC_PATH = "/chris/a2a/"
 HEADERS = {"A2A-Version": "1.0"}
@@ -22,11 +22,11 @@ def local_chris(monkeypatch):
     """Keep registry and Gemini calls local while exercising real SDK handlers."""
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setattr(
-        "app.chris.registry_client.select_agent",
+        "conversation_agent.registry_client.select_agent",
         AsyncMock(return_value=RoutingResult(status="no_match")),
     )
     monkeypatch.setattr(
-        "app.chris.gemini.answer", AsyncMock(return_value="Private answer")
+        "conversation_agent.gemini.answer", AsyncMock(return_value="Private answer")
     )
 
 
@@ -127,7 +127,7 @@ def test_finished_requests_release_task_and_session_stores(monkeypatch):
         sessions.append(weakref.ref(service))
         return service
 
-    monkeypatch.setattr("app.chris.transport.MessageOnlyTaskStore", task_store)
+    monkeypatch.setattr("conversation_agent.transport.MessageOnlyTaskStore", task_store)
     monkeypatch.setattr(
         "google.adk.a2a.utils.agent_to_a2a.InMemorySessionService", session_service
     )

@@ -11,6 +11,7 @@ __pycache__/
 *.egg-info/
 backend/build/
 agent-registry/build/
+chat-system/conversation-agent/build/
 
 # Local database files
 *.db

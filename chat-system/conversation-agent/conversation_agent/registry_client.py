@@ -49,9 +49,9 @@ from a2a.helpers import get_text_parts, new_data_part, new_message, new_text_par
 from a2a.types import Role, SendMessageRequest, TaskState
 from a2a.utils.errors import A2AError
 
-from app.chris import routing
-from app.config import ConfigError, get_env
-from app.history import bounded_history
+from conversation_agent import routing
+from conversation_agent.config import ConfigError, get_env
+from conversation_agent.history import bounded_history
 
 log = logging.getLogger(__name__)
 

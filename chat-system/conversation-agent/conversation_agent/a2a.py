@@ -1,6 +1,6 @@
 """Build Chris's SDK-backed A2A application and generated discovery card.
 
-``app.chris.run`` serves it as a standalone process; no other server mounts it.
+``conversation_agent.run`` serves it as a standalone process; no other server mounts it.
 """
 
 from urllib.parse import urlsplit
@@ -11,9 +11,9 @@ from google.adk.a2a.utils.agent_card_builder import AgentCardBuilder
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-from app.chris.agent import chris_agent
-from app.chris.transport import RequestScopedA2A
-from app.config import get_env
+from conversation_agent.agent import chris_agent
+from conversation_agent.config import get_env
+from conversation_agent.transport import RequestScopedA2A
 
 MOUNT_PATH = "/chris/a2a"
 DEFAULT_PUBLIC_URL = "http://localhost:8000"

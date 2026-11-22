@@ -86,12 +86,12 @@ from agent_registry.a2a_auth import open_verifier
 from agent_registry.db.base import RegistryBase
 from agent_registry.llm import LLMError, ModelLimiter
 from agent_registry.models import Agent
+from conversation_agent import expert_client, gemini
+from conversation_agent.run import create_app as create_chris_app
 from fastapi import FastAPI
 from sqlalchemy import create_engine, make_url
 from sqlalchemy.orm import sessionmaker
 
-from app.chris import expert_client, gemini
-from app.chris.run import create_app as create_chris_app
 from app.db import engine
 from app.db.base import ChatSystemBase
 from app.main import app as backend_app

@@ -203,7 +203,7 @@ its URL and DNS safety before connecting. The seeded experts were checked to adv
 A2A 0.3.0, so `CHRIS_EXPERT_A2A_VERSION` defaults to `0.3`; set it to `1.0` for a
 deployment of 1.0 experts. No discovery path is guessed: the Math and OSU experts
 publish their cards at different paths. Mixed-version routing and authenticated
-expert calls remain future work. See [expert dispatch](../docs/chris.md#expert-dispatch).
+expert calls remain future work. See [expert dispatch](../chat-system/conversation-agent/README.md#expert-dispatch).
 
 ### Authentication
 
@@ -479,7 +479,7 @@ Chris calls the registry over A2A with a question and optional bounded history.
 The registry returns a selected agent's ID, endpoint, name and description, no match, or a
 coded error.
 It never invokes the selected expert. See [the wire contract](#the-contract-chris-builds-against)
-for payloads and [Chris's documentation](../docs/chris.md) for caller behavior and fallback.
+for payloads and [Chris's documentation](../chat-system/conversation-agent/README.md) for caller behavior and fallback.
 
 ### Registry caller timeout
 
@@ -594,7 +594,7 @@ and [frontend documentation](../docs/frontend.md) for browser validation.
 
 ## Not done yet
 
-- **Authenticated and mixed-version expert invocation.** Chris calls public HTTPS experts with a deadline, but does not attach credentials; one configured A2A version applies to all experts. See [expert dispatch](../docs/chris.md#expert-dispatch).
+- **Authenticated and mixed-version expert invocation.** Chris calls public HTTPS experts with a deadline, but does not attach credentials; one configured A2A version applies to all experts. See [expert dispatch](../chat-system/conversation-agent/README.md#expert-dispatch).
 - **Deployed A2A authentication.** The registry can verify Google ID tokens, but Chris
   does not fetch/attach them. Cloud Run/IAM and Cloud SQL have not been verified.
 - **No real authentication, so no production approval** (see above).

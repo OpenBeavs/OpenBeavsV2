@@ -2,8 +2,8 @@
 
 Two routes serve the same application:
 
-- ``python -m app.chris.run`` binds ``127.0.0.1:8000``, for local development.
-- ``uvicorn app.chris.run:create_app --factory --host <host> --port <port>`` binds the
+- ``python -m conversation_agent.run`` binds ``127.0.0.1:8000``, for local development.
+- ``uvicorn conversation_agent.run:create_app --factory --host <host> --port <port>`` binds the
   address the deployer chooses.
 """
 
@@ -15,8 +15,8 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-from app.chris.a2a import MOUNT_PATH, build_chris_a2a_app
-from app.config import env_flag
+from conversation_agent.a2a import MOUNT_PATH, build_chris_a2a_app
+from conversation_agent.config import env_flag
 
 
 def _build_a2a_app() -> Starlette:
@@ -40,9 +40,9 @@ def create_app() -> Starlette:
     ``uvicorn --factory`` target.
     """
     logging.basicConfig(level=logging.WARNING)
-    logging.getLogger("app").setLevel(logging.INFO)
+    logging.getLogger("conversation_agent").setLevel(logging.INFO)
     if env_flag("CHRIS_EXPERT_DEBUG"):
-        logging.getLogger("app.chris.expert_client").setLevel(logging.DEBUG)
+        logging.getLogger("conversation_agent.expert_client").setLevel(logging.DEBUG)
     return Starlette(routes=[Mount(MOUNT_PATH, app=_build_a2a_app())])
 
 

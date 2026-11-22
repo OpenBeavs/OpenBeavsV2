@@ -5,7 +5,7 @@ import asyncio
 from google import genai
 from google.genai import types
 
-from app.config import require_env
+from conversation_agent.config import require_env
 
 TIMEOUT_SECONDS = 15
 SYSTEM_INSTRUCTION = (

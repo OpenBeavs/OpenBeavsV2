@@ -30,13 +30,13 @@ from agent_registry.a2a_app import create_registry_a2a_app
 from agent_registry.a2a_auth import open_verifier
 from agent_registry.llm import ModelLimiter
 from agent_registry.models import Agent
+from conversation_agent import registry_client
+from conversation_agent.run import create_app as create_chris_app
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.chat import a2a_client
-from app.chris import registry_client
-from app.chris.run import create_app as create_chris_app
 from app.db.session import get_db
 from app.main import app as backend_app
 from tests.databases import chat_system_engine, registry_engine
@@ -155,7 +155,7 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
     monkeypatch.setenv("REGISTRY_A2A_TIMEOUT_SECONDS", "5")
     monkeypatch.setenv("CHRIS_A2A_TIMEOUT_SECONDS", "10")
 
-    from app.chris import expert_client, gemini
+    from conversation_agent import expert_client, gemini
 
     async def expert_answer(endpoint, message, history):
         return "Expert answer."

@@ -1,4 +1,21 @@
-# Chris agent and chat API
+# Conversation Agent
+
+The one part of the Chat System with an LLM. It takes each message from Application Services, asks the Agent Registry which expert fits, and relays that expert's answer or answers itself.
+
+- Ask the Agent Registry over A2A about every message, sending bounded conversation text. The Registry decides whether an expert fits.
+- Call the one expert the Registry returns.
+- Relay the expert's answer unchanged, or, when the Registry finds no expert or fails, answer from general knowledge with Gemini, with no expert badge.
+- When an expert is slow, down, or refuses, fail the turn, so the user sees a notice that Chris is unavailable instead of an answer.
+
+Conventional code inside this component makes each A2A call and reports which expert answered, in the routing data it returns to Application Services. The model's output never supplies the source.
+
+It has no database. Application Services hands it the message and the bounded history each turn, and the agent keeps its own bound on the history it sends the Registry and the expert.
+
+It is its own Python package, `conversation_agent`, in this folder, with its own environment and lock file. Its tests run in that environment, and one of them checks that neither Application Services nor the Agent Registry can be imported there.
+
+**Later:** it interprets the question itself and decides when an expert would help; and it passes the user's identity from the session to the expert.
+
+Moves here from the dev branch: `backend/app/chris/`, its tests from `backend/tests/`, and `docs/chris.md`, which follows.
 
 Chris is a custom Google ADK `BaseAgent` exposed over A2A 1.0. The chat API owns
 transient conversation history; Chris owns the deterministic registry-first
@@ -116,8 +133,8 @@ Verified SSO and account-backed chat storage are not implemented.
 - `GET /chris/a2a/.well-known/agent-card.json`: ADK-generated discovery card.
 - `POST /chris/a2a/`: JSON-RPC A2A 1.0 endpoint; use the SDK's `SendMessageRequest`.
 
-Chris's own process serves both (`python -m app.chris.run`, port 8000 locally, or
-`uvicorn app.chris.run:create_app --factory` on a chosen host and port); the chat
+Chris's own process serves both (`python -m conversation_agent.run`, port 8000 locally, or
+`uvicorn conversation_agent.run:create_app --factory` on a chosen host and port); the chat
 API's server does not. The old handwritten `/chris/.well-known/agent.json` route
 is removed. The card advertises text input/output, protocol 1.0 and no streaming. Discovery is
 shared, but each RPC initializes a separate ADK application with its own in-memory
@@ -151,7 +168,7 @@ also tolerates `metadata.history`, but only when no data part has a history).
 The registry replies with one message whose single **text part** is compact JSON,
 trimmed to what Chris needs:
 `{"agent": {"id": "...", "endpoint_url": "...", "name": "...", "description": "..." or null}}`
-or `{"agent": "none"}` (see [the Agent Registry](../agent-registry/README.md)). Chris validates it strictly: exact
+or `{"agent": "none"}` (see [the Agent Registry](../../agent-registry/README.md)). Chris validates it strictly: exact
 keys, non-empty strings for `id` and `endpoint_url`, a string `name` (it may be blank;
 the expert still answers and the interface shows no "Answered by" line), a string or
 null `description`, no coercion; anything else is `registry_invalid_reply` and Chris never
@@ -174,7 +191,7 @@ deployed registry is not implemented.
 
 ## Expert dispatch
 
-`app/chris/expert_client.py` calls the exact RPC URL supplied by the registry;
+`conversation_agent/expert_client.py` calls the exact RPC URL supplied by the registry;
 there is no inferred discovery path or redirected destination. The registry contract
 contains no protocol version, so `CHRIS_EXPERT_A2A_VERSION` selects `0.3` (default,
 SDK `message/send`, matching the seeded experts) or `1.0` (SDK `SendMessage`). This setting applies to all experts
@@ -190,7 +207,8 @@ polling, or automatic retry.
 
 Only public HTTPS destinations are supported. Chris revalidates DNS and URL safety
 at dispatch, rejects credentials, queries, fragments and malformed URLs, and disables
-redirects and environment proxies. The shared registry validator still has a
+redirects and environment proxies. These checks are the agent's own copy of the
+registry's registration rules (`conversation_agent/security.py`), and they share its
 DNS-rebinding gap between validation and connection; production egress restrictions
 are needed to close it. Private/loopback endpoints are not supported by this path.
 No user credentials or service tokens are forwarded. Authenticated expert endpoints
@@ -204,7 +222,7 @@ type. URLs, credentials and response bodies are omitted; callers receive a gener
 
 ## Gemini fallback (enabled by default)
 
-`app/chris/gemini.py` uses the asynchronous `google-genai` SDK's `generate_content`
+`conversation_agent/gemini.py` uses the asynchronous `google-genai` SDK's `generate_content`
 API. It supplies Chris's system instruction, maps assistant history to the model
 role, and appends the current user message once. The call has a 15-second deadline
 and one attempt. Credentials are read when fallback is needed, not at startup.
@@ -215,7 +233,7 @@ this branch does not establish a provider-retention guarantee.
 Chat's overall A2A deadline is 50 seconds (`CHRIS_A2A_TIMEOUT_SECONDS`), Chris's registry
 deadline is 14 seconds, expert dispatch is bounded to 30 seconds, optional Gemini
 fallback to 15 seconds, and the frontend waits up to 90 seconds; see
-[the registry timeout settings](../agent-registry/README.md#registry-caller-timeout) for the selection deadline.
+[the registry timeout settings](../../agent-registry/README.md#registry-caller-timeout) for the selection deadline.
 Timeouts in different layers do not prove a downstream operation was canceled;
 there are no automatic frontend POST retries.
 
@@ -235,14 +253,14 @@ Set these privately in the process environment or the ignored `.env` at the repo
 | `CHRIS_EXPERT_A2A_VERSION` | `0.3`; use `1.0` for experts implementing `SendMessage`. |
 | `GEMINI_API_KEY` | Used for Gemini fallback; never put its value in docs, logs or commits. |
 | `CHRIS_MODEL` | Gemini model ID, used for fallback. |
-| `DATABASE_URL` | Chat/registry database; defaults to `sqlite:///./openbeavs.db`. |
+| `DATABASE_URL` | Chat's and the registry's databases, `sqlite:///./openbeavs.db` by default; Chris has no database and reads none. |
 
 The registry URL is operator configuration, never a frontend-supplied destination.
 With no registry listening, Chris logs `registry_unreachable` and tries Gemini.
 `CHRIS_USE_MOCK_AGENTS` and the old local mock list have been removed.
 
 Dependencies: `google-adk[a2a]==2.13.0`, `a2a-sdk[http-server]==1.3.0`, and
-`google-genai>=2.30,<3`, with resolved versions in `backend/uv.lock`. ADK's A2A
+`google-genai>=2.30,<3`, with resolved versions in this folder's `uv.lock`. ADK's A2A
 integration emits experimental warnings; those warnings alone are not failures.
 
 ## Running and deployment status
@@ -253,12 +271,12 @@ deployment therefore runs Chris as a separate service beside the chat API and th
 registry, and sets `CHRIS_A2A_URL` (for chat) and `CHRIS_PUBLIC_URL` (for Chris's
 card) to that service's address.
 
-The [root README](../README.md) launcher starts all of them locally. To start Chris
-by hand, from `backend/`:
+The [root README](../../README.md) launcher starts all of them locally, Chris from this
+folder with its own environment. To start Chris by hand, from `chat-system/conversation-agent/`:
 
 ```powershell
 uv sync --locked
-python -m app.chris.run
+uv run python -m conversation_agent.run
 ```
 
 That runner binds `127.0.0.1:8000`, the local development address; it reads no host
@@ -266,7 +284,7 @@ or port setting. A deployment that needs another address serves the same applica
 with uvicorn, exactly as the registry and the chat API are served:
 
 ```bash
-uvicorn app.chris.run:create_app --factory --host 0.0.0.0 --port 8080
+uv run uvicorn conversation_agent.run:create_app --factory --host 0.0.0.0 --port 8080
 ```
 
 Both routes build the same app and configure the same logging, including
@@ -282,21 +300,32 @@ Chris advertises no streaming; both clients use non-streaming calls.
 
 ## Layout and remaining work
 
+Chris, in this folder:
+
 ```text
-app/chat/router.py          frontend REST routes
-app/chat/schemas.py         frontend request/response models
-app/chat/service.py         transient history, response assembly
-app/chat/a2a_client.py      SDK client adapter that calls Chris
-app/chris/agent.py          registry-first expert dispatch or Gemini fallback
-app/chris/expert_client.py  validated direct RPC call, deadline, text extraction
-app/chris/registry_client.py SDK discovery, selection request and failure classification
-app/chris/routing.py        registry contract validation and Chris's routing result
-app/chris/gemini.py         direct Gemini generation
-app/chris/a2a.py            generated card and A2A app
-app/chris/transport.py      request-scoped SDK stores; task enumeration denied
-app/chris/run.py            standalone entrypoint and app factory
+conversation_agent/agent.py           registry-first expert dispatch or Gemini fallback
+conversation_agent/expert_client.py   validated direct RPC call, deadline, text extraction
+conversation_agent/registry_client.py SDK discovery, selection request and failure classification
+conversation_agent/routing.py         registry contract validation and Chris's routing result
+conversation_agent/gemini.py          direct Gemini generation
+conversation_agent/a2a.py             generated card and A2A app
+conversation_agent/transport.py       request-scoped SDK stores; task enumeration denied
+conversation_agent/run.py             standalone entrypoint and app factory
+conversation_agent/config.py          the settings Chris reads, from the environment or .env
+conversation_agent/history.py         the bound on the history Chris sends the registry and experts
+conversation_agent/security.py        the safe-URL checks applied before an expert is called
+tests/                                Chris's tests, run in this folder's environment
+```
+
+The chat API, in `backend/app/chat/` at the repository root:
+
+```text
+router.py          frontend REST routes
+schemas.py         frontend request/response models
+service.py         transient history, response assembly
+a2a_client.py      SDK client adapter that calls Chris
 ```
 
 A2A caller authentication, authenticated expert invocation, mixed-version expert routing, verified SSO, streaming in the frontend, saved-chat retrieval, and
-automated TTL cleanup remain future work. See [registry](../agent-registry/README.md) and
-[frontend integration](frontend.md) for their separate responsibilities.
+automated TTL cleanup remain future work. See [registry](../../agent-registry/README.md) and
+[frontend integration](../../docs/frontend.md) for their separate responsibilities.

@@ -53,12 +53,14 @@ def service_specs(python: str, node: str) -> list[tuple[str, Path, list[str]]]:
     """
     backend = ROOT / "backend"
     registry = ROOT / "agent-registry"
+    conversation_agent = ROOT / "chat-system/conversation-agent"
     frontend_port = str(get_frontend_port())
     return [
         ("Registry", registry, [str(venv_python(registry)), "-m", "uvicorn",
          "agent_registry.a2a_app:create_standalone_app", "--factory",
          "--host", "127.0.0.1", "--port", "8001"]),
-        ("Chris", backend, [python, "-m", "app.chris.run"]),
+        ("Chris", conversation_agent, [str(venv_python(conversation_agent)), "-m",
+         "conversation_agent.run"]),
         ("Backend", backend, [python, "-m", "uvicorn", "app.main:app",
          "--host", "127.0.0.1", "--port", "8010"]),
         ("Frontend", ROOT / "frontend", [node,
@@ -106,11 +108,12 @@ def main() -> int:
     """Use separate Windows consoles while retaining direct child supervision."""
     python = venv_python(ROOT / "backend")
     node = shutil.which("node")
-    if not python.is_file() or not venv_python(ROOT / "agent-registry").is_file() or (
+    folders = (ROOT / "agent-registry", ROOT / "chat-system/conversation-agent")
+    if not python.is_file() or not all(venv_python(f).is_file() for f in folders) or (
         not node or not (ROOT / "frontend/node_modules/vite/bin/vite.js").is_file()
     ):
-        print("Missing agent-registry/.venv, backend/.venv, Node.js, or frontend "
-              "dependencies. Follow README.md first.")
+        print("Missing agent-registry/.venv, chat-system/conversation-agent/.venv, "
+              "backend/.venv, Node.js, or frontend dependencies. Follow README.md first.")
         return 1
 
     processes = []
