@@ -33,6 +33,13 @@ class TestParseRouting:
         )
         assert info.confidence is None and info.reason is None
 
+    @pytest.mark.parametrize("name", ["", "   "])
+    def test_a_blank_name_is_accepted(self, name: str) -> None:
+        """A selected expert whose registered name is blank is still a selection."""
+        info = parse_routing({**GOOD, "agent": {**GOOD["agent"], "name": name}})
+        assert info.status == "selected"
+        assert (info.agent.id, info.agent.name) == ("math", name)
+
     def test_a_null_description_is_accepted(self) -> None:
         agent = {**GOOD["agent"], "description": None}
         info = parse_routing({**GOOD, "agent": agent})
@@ -67,7 +74,7 @@ class TestParseRouting:
             {**GOOD, "agent": {**GOOD["agent"], "id": 7}},
             {**GOOD, "agent": {}},
             {**GOOD, "agent": {"id": "math"}},  # the id alone is no longer enough
-            {**GOOD, "agent": {**GOOD["agent"], "name": ""}},
+            {**GOOD, "agent": {**GOOD["agent"], "name": 7}},
             {**GOOD, "agent": {**GOOD["agent"], "description": 7}},
             {**GOOD, "agent": {**GOOD["agent"], "endpoint_url": "https://x.test"}},
             {
@@ -142,6 +149,27 @@ class TestRegistryContractParsing:
         assert result.status == "selected"
         assert result.agent.name == "M" and result.agent.description is None
 
+    @pytest.mark.parametrize("name", ["", "   "])
+    def test_selected_with_a_blank_name(self, name: str) -> None:
+        """The registry's record may hold a blank name; the expert is still selected."""
+        result = routing.parse_registry_text(
+            json.dumps(
+                {
+                    "agent": {
+                        "id": "m",
+                        "endpoint_url": "https://x.test/rpc",
+                        "name": name,
+                        "description": None,
+                    }
+                }
+            )
+        )
+        assert result.status == "selected"
+        assert (result.agent.endpoint_url, result.agent.name) == (
+            "https://x.test/rpc",
+            name,
+        )
+
     def test_none(self) -> None:
         assert routing.parse_registry_text('{"agent":"none"}').status == "no_match"
 
@@ -159,7 +187,7 @@ class TestRegistryContractParsing:
             '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "M"}}',
             '{"agent": {"id": "m", "endpoint_url": "", "name": "M", "description": null}}',
             '{"agent": {"id": " ", "endpoint_url": "https://x.test/rpc", "name": "M", "description": null}}',
-            '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "", "description": null}}',
+            '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": 5, "description": null}}',
             '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "M", "description": 5}}',
             '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "M", "description": null, "card_url": "https://x.test/card"}}',
             '{"agent": "none", "reason": "x"}',

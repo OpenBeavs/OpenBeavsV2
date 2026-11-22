@@ -369,6 +369,20 @@ class TestDisplayFieldsComeFromTheRegistry:
         assert body["response"] == "Expert answer."
         assert body["agent_name"] == "Math Wizard"
 
+    @pytest.mark.parametrize("name", ["", "   "])
+    def test_a_blank_name_still_routes_to_the_expert(
+        self, experts: Pipeline, name: str
+    ) -> None:
+        """A blank registered name is no reason to drop the selection."""
+        experts.choose("math-expert")
+        experts.update_agent("math-expert", name=name)
+        body = experts.ask("What is 2+2?").json()
+        assert body["response"] == "Expert answer."
+        assert body["routing"]["status"] == "selected"
+        assert body["routed_to"] == "math-expert"
+        assert body["routing"]["agent"]["name"] == name
+        assert body["agent_name"] == name
+
     def test_chat_needs_no_agents_table_to_name_the_expert(
         self, experts: Pipeline, tmp_path
     ) -> None:

@@ -428,8 +428,9 @@ def chris_accepts(text: str) -> object:
     assert set(agent) == {"id", "endpoint_url", "name", "description"}
     assert all(
         isinstance(agent[key], str) and agent[key].strip()
-        for key in ("id", "endpoint_url", "name")
+        for key in ("id", "endpoint_url")
     )
+    assert isinstance(agent["name"], str)
     assert agent["description"] is None or isinstance(agent["description"], str)
     return agent
 

@@ -9,8 +9,9 @@ exactly one of::
                "name": "<display name>", "description": "<text>" or null}}    an expert fits
     {"agent": "none"}                                                        nothing fits
 
-``parse_registry_text`` validates it strictly (exact keys, non-empty strings, no
-coercion). Anything else becomes ``registry_invalid_reply``; Chris never guesses what a
+``parse_registry_text`` validates it strictly (exact keys, a non-empty id and endpoint,
+a string name, no coercion). The name may be blank: such an expert still answers, and
+the interface shows no attribution for it. Anything else becomes ``registry_invalid_reply``; Chris never guesses what a
 malformed reply meant. A registry that cannot select answers with an A2A/JSON-RPC *error*
 whose message is a short code (see ``REGISTRY_ERRORS``); ``registry_client`` turns it into
 an ``error`` result. The reply carries no confidence or reason. The name and description
@@ -128,7 +129,8 @@ def parse_registry_text(text: str) -> RoutingResult:
         and set(agent) == {"id", "endpoint_url", "name", "description"}
         and _non_empty_text(agent["id"])
         and _non_empty_text(agent["endpoint_url"])
-        and _non_empty_text(agent["name"])
+        # A blank name is the registry's record as it stands, not a malformed reply.
+        and isinstance(agent["name"], str)
         and (agent["description"] is None or isinstance(agent["description"], str))
     ):
         return RoutingResult(

@@ -118,6 +118,13 @@ test('shows the guest reply in a normal bubble without routing debug output', as
   await expect(page.getByTestId('message')).toHaveText(['Find research', response.response]);
 });
 
+test('shows an expert reply without attribution when the expert has a blank name', async ({ page }) => {
+  await page.route('**/chat/message', (route) => route.fulfill({ json: { ...response, routed_to: 'library', agent_name: '   ' } }));
+  await page.goto('/'); await send(page, 'Find research');
+  await expect(page.getByTestId('message')).toHaveText(['Find research', response.response]);
+  await expect(page.getByText('Answered by', { exact: false })).toHaveCount(0);
+});
+
 test('calls only supported backend endpoints and never restores legacy auth', async ({ page }) => {
   const apiPaths: string[] = [];
   page.on('request', (request) => {

@@ -157,6 +157,18 @@ class TestWellFormedReply:
         }
         assert body["agent_name"] == "Math Expert"
 
+    @pytest.mark.parametrize("name", ["", "   "])
+    def test_a_blank_name_is_still_a_selection(
+        self, name, monkeypatch, tmp_path
+    ) -> None:
+        """The expert answers; the blank name reaches the browser, which shows no badge."""
+        blank = {"agent": {**GOOD["agent"], "name": name}}
+        body = ask(serve(monkeypatch, tmp_path, text_reply(json.dumps(blank))))
+        assert body["response"] == "Expert answer."
+        assert body["routing"]["status"] == "selected"
+        assert body["routed_to"] == "math-expert"
+        assert body["agent_name"] == name
+
     def test_none_is_unavailable_without_fallback(self, monkeypatch, tmp_path) -> None:
         body = ask(serve(monkeypatch, tmp_path, text_reply('{"agent":"none"}')))
         assert_visible_error(body, "no_match")
@@ -187,8 +199,8 @@ MALFORMED = {
     "agent without a name": [
         '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "description": null}}'
     ],
-    "agent with an empty name": [
-        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "", "description": null}}'
+    "name that is not text": [
+        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": 5, "description": null}}'
     ],
     "agent without a description key": [
         '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "Math"}}'

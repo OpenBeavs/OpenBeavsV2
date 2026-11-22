@@ -152,8 +152,9 @@ The registry replies with one message whose single **text part** is compact JSON
 trimmed to what Chris needs:
 `{"agent": {"id": "...", "endpoint_url": "...", "name": "...", "description": "..." or null}}`
 or `{"agent": "none"}` (see [registry.md](registry.md)). Chris validates it strictly: exact
-keys, non-empty strings for `id`, `endpoint_url` and `name`, a string or null
-`description`, no coercion; anything else is `registry_invalid_reply` and Chris never
+keys, non-empty strings for `id` and `endpoint_url`, a string `name` (it may be blank;
+the expert still answers and the interface shows no "Answered by" line), a string or
+null `description`, no coercion; anything else is `registry_invalid_reply` and Chris never
 guesses. There is no confidence or reason on the wire. Chris keeps the endpoint for
 dispatch and forwards the id, name and description to Chat in the
 `openbeavs.chris.routing.v1` data part

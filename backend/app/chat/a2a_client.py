@@ -88,13 +88,12 @@ def parse_routing(data: object) -> RoutingInfo:
         fields = payload.model_dump(exclude={"schema_"})
         agent = fields["agent"]
         # Chris forwards the registry's id, name and description for the expert; the
-        # endpoint stays with Chris.
+        # endpoint stays with Chris. The name may be blank (no attribution is shown).
         if agent is not None and (
             set(agent) != {"id", "name", "description"}
             or not isinstance(agent["id"], str)
             or not agent["id"]
             or not isinstance(agent["name"], str)
-            or not agent["name"]
             or not (
                 agent["description"] is None or isinstance(agent["description"], str)
             )
