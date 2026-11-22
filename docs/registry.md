@@ -7,8 +7,10 @@ in **manual** mode it waits for an admin to approve it.
 
 It is a module of the backend (`backend/app/registry/`) that writes to the unified
 `agents` table described in `docs/db_docs/database-architecture.md`. There is no
-separate registry database. Registry management remains in the main backend; A2A
-selection runs as a standalone service sharing the configured `agents` table.
+separate registry database. The registry runs as its own service
+(`app.registry.a2a_app:create_standalone_app`, port 8001 locally), which serves both
+registry management (`/registry/*`) and A2A selection (`/a2a/registry/`). The main
+backend (`app.main:app`) serves neither.
 
 ## How an agent gets in
 
@@ -105,6 +107,7 @@ answers A2A 0.3 clients that send `A2A-Version: 0.3`.
 |---|---|
 | Agent Card (public) | `GET /a2a/registry/.well-known/agent-card.json` (also `.../agent.json`) |
 | A2A endpoint | `POST /a2a/registry/` (use the `url` from the card; the trailing slash matters) |
+| Admin API | `/registry/agents...` (see [Endpoints](#endpoints)); the same process and database |
 
 Run the registry separately from Chat/Chris with
 `uvicorn app.registry.a2a_app:create_standalone_app --factory`.
@@ -252,7 +255,9 @@ unusable replies are logged as field names and error kinds only.
 | File | Responsibility |
 |---|---|
 | `a2a.py` | Agent Card, request/reply adapter, database eligibility recheck |
-| `a2a_app.py` | Standalone service, origin validation, health/readiness |
+| `a2a_app.py` | Standalone service: mounts the A2A agent and the admin API; origin validation, health/readiness |
+| `router.py`, `service.py`, `auth.py` | Admin API routes, their database logic, and who the caller is |
+| `cards.py`, `security.py` | Card fetch and validation, safe-URL rules |
 | `a2a_auth.py` | Google/local caller verification and request body limit |
 | `selection.py` | Prompt/schema construction and decision validation |
 | `llm.py` | Gemini request, overall deadline and per-process concurrency limit |
@@ -273,6 +278,9 @@ from its private process environment. Never paste tokens into commands or logs.
 Chris itself does not attach that token yet.
 
 ## Endpoints
+
+The registry service serves these itself (locally `http://127.0.0.1:8001`). The main
+backend does not serve them.
 
 | Method and path | Who | What |
 |---|---|---|
@@ -386,7 +394,7 @@ and its tests are in place for when SSO replaces `current_principal`.
 (The A2A settings are listed under "The registry as an A2A agent".)
 
 `REGISTRY_DEV_AUTH` is refused, with a 501 and a logged reason, when the process looks
-like a deployment, and the app refuses to start in that combination:
+like a deployment, and the registry service refuses to start in that combination:
 
 - a Cloud Run variable (`K_SERVICE`, `K_REVISION` or `K_CONFIGURATION`) is set; or
 - `DATABASE_URL` is not SQLite or a Postgres server on this machine. Every host the
@@ -492,26 +500,27 @@ cannot establish that the provider accepts the model or key.
 
 ### Submit and review an expert agent
 
-With the backend running on port 8010, open `http://127.0.0.1:8010/docs`, or use a
-separate PowerShell terminal. The headers below are synthetic local-development identities.
+With the registry service running on port 8001, use a separate PowerShell terminal
+(the service's OpenAPI description is at `http://127.0.0.1:8001/openapi.json`; it has
+no interactive docs page). The headers below are synthetic local-development identities.
 Use a reachable public HTTPS agent/card URL; loopback and private addresses remain
 blocked by the registration safety checks.
 
 ```powershell
 $headers = @{ 'X-User-Id'='registry-demo'; 'X-User-Email'='submitter@example.test' }
 $cardUrl = Read-Host 'Public HTTPS agent or Agent Card URL'
-$agent = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8010/registry/agents' -Headers $headers -ContentType 'application/json' -Body (@{ url=$cardUrl } | ConvertTo-Json)
+$agent = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8001/registry/agents' -Headers $headers -ContentType 'application/json' -Body (@{ url=$cardUrl } | ConvertTo-Json)
 $agent | Select-Object id, name, status, is_active
 ```
 
 In default `auto` mode, a clean card becomes active and `provisional`; flagged cards
 remain pending. An already registered card returns HTTP 409. To approve a pending
-entry, configure `REGISTRY_DEV_AUTH=true` and `REGISTRY_ADMIN_EMAILS=admin@example.test` in the local backend environment before starting it:
+entry, configure `REGISTRY_DEV_AUTH=true` and `REGISTRY_ADMIN_EMAILS=admin@example.test` in the registry service's local environment before starting it:
 
 ```powershell
 $adminHeaders = @{ 'X-User-Id'='registry-admin'; 'X-User-Email'='admin@example.test' }
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8010/registry/agents/$($agent.id)/review" -Headers $adminHeaders -ContentType 'application/json' -Body (@{ action='approve' } | ConvertTo-Json)
-Invoke-RestMethod -Uri "http://127.0.0.1:8010/registry/agents/$($agent.id)" -Headers $adminHeaders | Select-Object id, name, status, is_active
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8001/registry/agents/$($agent.id)/review" -Headers $adminHeaders -ContentType 'application/json' -Body (@{ action='approve' } | ConvertTo-Json)
+Invoke-RestMethod -Uri "http://127.0.0.1:8001/registry/agents/$($agent.id)" -Headers $adminHeaders | Select-Object id, name, status, is_active
 ```
 
 Ask a question matching that expert in the frontend. Selection reads the agents table

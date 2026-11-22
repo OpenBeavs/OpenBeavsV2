@@ -1,10 +1,12 @@
-"""Standalone registry A2A app, public discovery, authentication and health probes.
+"""Standalone registry service: A2A selection, the admin API and health probes.
 
 The main Chat/Chris backend does not mount this service. Start it separately with
 uvicorn app.registry.a2a_app:create_standalone_app --factory.
 """
 
 import logging
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -17,10 +19,12 @@ from a2a.server.tasks import InMemoryTaskStore
 from fastapi import FastAPI
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import ConfigError, get_env
+from app.db import get_db
 from app.models import Agent
 from app.registry.a2a import (
     MOUNT_PATH,
@@ -34,7 +38,9 @@ from app.registry.a2a_auth import (
     auth_config_problem,
     build_verifier,
 )
+from app.registry.auth import check_dev_auth_config
 from app.registry.llm import LLMCall, ModelLimiter
+from app.registry.router import router as admin_router
 
 log = logging.getLogger(__name__)
 
@@ -146,10 +152,20 @@ def create_registry_a2a_app(
     return app
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Refuse to start with development auth enabled outside local development."""
+    check_dev_auth_config()
+    yield
+
+
 def create_standalone_app(
     session_factory: SessionFactory | None = None,
 ) -> FastAPI:
-    """The registry A2A agent on its own, for running as a separate service.
+    """The whole registry, for running as its own service.
+
+    It serves the A2A selection agent under ``/a2a/registry`` and the admin API
+    (submit, list, review) under ``/registry``, both over the same database.
 
     ``/health`` is liveness (the process answers). ``/ready`` is readiness: it checks
     the database and required configuration, never calls Gemini, and answers 503
@@ -166,7 +182,23 @@ def create_standalone_app(
     except ConfigError:
         base = None  # create_registry_a2a_app logs this and serves 503s
 
-    root = FastAPI(title="OpenBeavs Agent Registry", docs_url=None, redoc_url=None)
+    root = FastAPI(
+        title="OpenBeavs Agent Registry",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=_lifespan,
+    )
+
+    def admin_session() -> Iterator[Session]:
+        """Give the admin routes sessions from the same factory as selection."""
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    root.dependency_overrides[get_db] = admin_session
+    root.include_router(admin_router, prefix="/registry", tags=["registry"])
 
     @root.get("/health")
     def health() -> dict[str, str]:

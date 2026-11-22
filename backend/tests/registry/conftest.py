@@ -1,7 +1,8 @@
 """Shared fixtures for the agent registry tests.
 
-Each test gets a fresh in-memory SQLite database and a FastAPI client whose card
-fetcher is replaced by a fake, so no test touches the network or real DNS.
+Each test gets a fresh in-memory SQLite database and a client of the registry
+service whose card fetcher is replaced by a fake, so no test touches the network or
+real DNS.
 """
 
 import logging
@@ -15,7 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.db.session import get_db
-from app.main import app
+from app.registry.a2a_app import create_standalone_app
 from app.registry.cards import AgentCard, CardError
 from app.registry.router import get_card_fetcher
 
@@ -106,7 +107,7 @@ def fetcher() -> FakeFetcher:
 def client(
     db: Session, fetcher: FakeFetcher, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
-    """An API client with dev authentication on and the fake fetcher installed."""
+    """A client of the registry service, with dev authentication on and the fake fetcher."""
     monkeypatch.setenv("REGISTRY_DEV_AUTH", "true")
     monkeypatch.setenv("REGISTRY_ADMIN_EMAILS", ADMIN_EMAIL)
     # The default is auto approval; most tests exercise the manual review flow, so
@@ -116,10 +117,12 @@ def client(
     def override_get_db() -> Iterator[Session]:
         yield db
 
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_card_fetcher] = lambda: fetcher
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+    registry = create_standalone_app(
+        session_factory=sessionmaker(bind=db.get_bind(), expire_on_commit=False)
+    )
+    registry.dependency_overrides[get_db] = override_get_db
+    registry.dependency_overrides[get_card_fetcher] = lambda: fetcher
+    yield TestClient(registry)
 
 
 def as_user(email: str = USER_EMAIL) -> dict[str, str]:

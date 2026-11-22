@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.registry.a2a_app import create_standalone_app
 from app.registry.auth import check_dev_auth_config, dev_auth_blocked_reason
 from tests.registry.conftest import ADMIN_EMAIL, as_user
 
@@ -103,7 +103,7 @@ class TestStartupCheck:
     def test_app_refuses_to_start(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REGISTRY_DEV_AUTH", "true")
         monkeypatch.setenv("K_SERVICE", "openbeavs")
-        with pytest.raises(RuntimeError), TestClient(app):
+        with pytest.raises(RuntimeError), TestClient(create_standalone_app()):
             pass
 
     def test_passes_when_disabled_even_on_cloud_run(

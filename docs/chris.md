@@ -37,9 +37,9 @@ Every valid message attempts registry selection once, including greetings. The
 sequence is enforced in Python, not by a model prompt. The registry owns its own
 selection instructions; Chris sends the current message and conversation history.
 
-The configured registry is a separate A2A service. The existing `/registry/*`
-FastAPI routes manage stored agents and reviews; they do not implement this A2A
-selection service (that is `app.registry.a2a_app`, run on its own).
+The configured registry is a separate service (`app.registry.a2a_app`, run on its
+own). It serves this A2A selection and also the `/registry/*` routes that manage
+stored agents and reviews; the chat API serves neither.
 
 Chris logs selection details and failure types in its terminal. Chris calls the
 selected expert once. Chat returns the answer with the expert's name and description,

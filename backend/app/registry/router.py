@@ -1,4 +1,4 @@
-"""Registry HTTP routes (mounted at ``/registry``).
+"""Registry admin HTTP routes (served by the registry service at ``/registry``).
 
 POST /registry/agents              submit an agent by URL (becomes ``pending``)
 GET  /registry/agents              list the entries the caller may see

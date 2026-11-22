@@ -11,16 +11,13 @@ from starlette.routing import Mount
 from app.auth.router import router as auth_router
 from app.chat.router import router as chat_router
 from app.chris.a2a import MOUNT_PATH, build_chris_a2a_app
-from app.registry.auth import check_dev_auth_config
-from app.registry.router import router as registry_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Check registry auth and initialize Chris's isolated A2A endpoint."""
+    """Initialize Chris's isolated A2A endpoint."""
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("app").setLevel(logging.INFO)
-    check_dev_auth_config()
     chris_app = await build_chris_a2a_app()
     mount = Mount(MOUNT_PATH, app=chris_app)
     # Keep the mounted app's lifespan aligned with the parent application's.
@@ -53,7 +50,6 @@ def health_check() -> dict[str, str]:
 # Mount domain routers
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/chat", tags=["chat"])
-app.include_router(registry_router, prefix="/registry", tags=["registry"])
 
 # Compatibility alias for Azure Entra ID registered callback path (/oauth/microsoft/callback)
 from app.auth.router import oauth_callback

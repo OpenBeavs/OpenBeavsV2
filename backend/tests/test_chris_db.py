@@ -75,6 +75,13 @@ def test_health_check_endpoint():
     assert response.json() == {"status": "ok", "app": "OpenBeavs v2"}
 
 
+def test_registry_admin_api_is_not_served_here():
+    """The registry serves its own admin API from its own process."""
+    client = TestClient(app)
+    assert client.get("/registry/agents").status_code == 404
+    assert client.post("/registry/agents", json={"url": "https://x.test"}).status_code == 404
+
+
 def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
     """The frontend API calls the real A2A agent without storing its response."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))

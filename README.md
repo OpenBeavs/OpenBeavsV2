@@ -3,7 +3,7 @@
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
 - `frontend/`: Svelte chat interface.
-- `backend/`: chat REST API and persistence, Chris's ADK/A2A agent, and registry management.
+- `backend/`: chat REST API and persistence, Chris's ADK/A2A agent, and the agent registry (selection and management), which runs as its own service.
 - `docs/`: API, frontend setup, and database documentation.
 
 Start with local setup for [macOS](#run-locally-macos) or
@@ -121,9 +121,9 @@ database. It starts each service in a separate Windows console:
 | Service | Local address | Purpose |
 |---|---|---|
 | Frontend | http://127.0.0.1:5173 | Chat interface |
-| Backend | http://127.0.0.1:8010/docs | Chat API, persistence, and registry management |
+| Backend | http://127.0.0.1:8010/docs | Chat API and sign-in |
 | Chris | http://127.0.0.1:8000/chris/a2a/.well-known/agent-card.json | Standalone orchestrator agent card |
-| Registry agent | http://127.0.0.1:8001/ready | Expert-selection service readiness |
+| Registry | http://127.0.0.1:8001/ready | Expert-selection agent and registry management (`/registry/*`); this address is its readiness check |
 
 Open **http://127.0.0.1:5173** to use the app. Keep the launcher terminal open and
 press **Ctrl+C there** to stop all four services. If a service exits or its window
