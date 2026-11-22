@@ -13,7 +13,7 @@ from app.chris import routing
 GOOD = {
     "schema": "openbeavs.chris.routing.v1",
     "status": "selected",
-    "agent": {"id": "math"},
+    "agent": {"id": "math", "name": "Math Expert", "description": "Arithmetic."},
 }
 ERROR = {
     "code": "registry_timeout",
@@ -23,11 +23,20 @@ ERROR = {
 
 
 class TestParseRouting:
-    def test_selected_carries_only_the_id_until_chat_looks_the_rest_up(self) -> None:
+    def test_selected_carries_the_id_name_and_description(self) -> None:
         info = parse_routing(GOOD)
         assert info.status == "selected"
-        assert (info.agent.id, info.agent.name) == ("math", "math")
+        assert (info.agent.id, info.agent.name, info.agent.description) == (
+            "math",
+            "Math Expert",
+            "Arithmetic.",
+        )
         assert info.confidence is None and info.reason is None
+
+    def test_a_null_description_is_accepted(self) -> None:
+        agent = {**GOOD["agent"], "description": None}
+        info = parse_routing({**GOOD, "agent": agent})
+        assert info.agent.name == "Math Expert" and info.agent.description is None
 
     def test_no_match(self) -> None:
         info = parse_routing({**GOOD, "status": "no_match", "agent": None})
@@ -53,10 +62,14 @@ class TestParseRouting:
             {**GOOD, "extra": "field"},
             {**GOOD, "confidence": 0.9},  # no longer part of the contract
             {**GOOD, "reason": "Fits."},
-            {**GOOD, "agent": {"id": "math", "name": "Math"}},  # id only
-            {**GOOD, "agent": {"id": ""}},
-            {**GOOD, "agent": {"id": 7}},
+            {**GOOD, "agent": {"id": "math", "name": "Math"}},  # no description key
+            {**GOOD, "agent": {**GOOD["agent"], "id": ""}},
+            {**GOOD, "agent": {**GOOD["agent"], "id": 7}},
             {**GOOD, "agent": {}},
+            {**GOOD, "agent": {"id": "math"}},  # the id alone is no longer enough
+            {**GOOD, "agent": {**GOOD["agent"], "name": ""}},
+            {**GOOD, "agent": {**GOOD["agent"], "description": 7}},
+            {**GOOD, "agent": {**GOOD["agent"], "endpoint_url": "https://x.test"}},
             {
                 **GOOD,
                 "status": "error",
@@ -75,13 +88,20 @@ class TestChrisSerialization:
     SELECTED = routing.RoutingResult(
         status="selected",
         agent=routing.SelectedAgent(
-            id="a", endpoint_url="https://secret.example.test/rpc"
+            id="a",
+            endpoint_url="https://secret.example.test/rpc",
+            name="Expert A",
+            description="Answers A questions.",
         ),
     )
 
-    def test_only_the_id_is_forwarded_to_chat(self) -> None:
+    def test_the_endpoint_is_never_forwarded_to_chat(self) -> None:
         payload = routing.to_chat_payload(self.SELECTED)
-        assert payload["agent"] == {"id": "a"}
+        assert payload["agent"] == {
+            "id": "a",
+            "name": "Expert A",
+            "description": "Answers A questions.",
+        }
         assert "secret.example.test" not in json.dumps(payload)
         assert set(payload) == {"schema", "status", "agent"}
 
@@ -105,13 +125,22 @@ class TestRegistryContractParsing:
 
     def test_selected(self) -> None:
         result = routing.parse_registry_text(
-            '{"agent":{"id":"m","endpoint_url":"https://x.test/rpc"}}'
+            '{"agent":{"id":"m","endpoint_url":"https://x.test/rpc","name":"M","description":"Maths."}}'
         )
         assert result.status == "selected"
-        assert (result.agent.id, result.agent.endpoint_url) == (
-            "m",
-            "https://x.test/rpc",
+        assert result.agent == routing.SelectedAgent(
+            id="m",
+            endpoint_url="https://x.test/rpc",
+            name="M",
+            description="Maths.",
         )
+
+    def test_selected_without_a_description(self) -> None:
+        result = routing.parse_registry_text(
+            '{"agent":{"id":"m","endpoint_url":"https://x.test/rpc","name":"M","description":null}}'
+        )
+        assert result.status == "selected"
+        assert result.agent.name == "M" and result.agent.description is None
 
     def test_none(self) -> None:
         assert routing.parse_registry_text('{"agent":"none"}').status == "no_match"
@@ -126,9 +155,13 @@ class TestRegistryContractParsing:
             '{"agent": null}',
             '{"agent": "math"}',
             '{"agent": {"id": "m"}}',
-            '{"agent": {"id": "m", "endpoint_url": ""}}',
-            '{"agent": {"id": " ", "endpoint_url": "https://x.test/rpc"}}',
+            '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc"}}',
             '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "M"}}',
+            '{"agent": {"id": "m", "endpoint_url": "", "name": "M", "description": null}}',
+            '{"agent": {"id": " ", "endpoint_url": "https://x.test/rpc", "name": "M", "description": null}}',
+            '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "", "description": null}}',
+            '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "M", "description": 5}}',
+            '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "M", "description": null, "card_url": "https://x.test/card"}}',
             '{"agent": "none", "reason": "x"}',
             '{"status": "selected", "agent": "none"}',
         ],

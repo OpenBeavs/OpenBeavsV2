@@ -1,29 +1,24 @@
 """Stateless chat workflow: bound client history and ask Chris over A2A.
 
-The database is used only to look up registered agent display details.
+No database is read or written here. The selected expert's display name and
+description arrive in Chris's routing result, which carries the registry's reply.
 """
 
 import logging
-from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from app.chat.a2a_client import ChrisUnavailable, send_message
 from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
 from app.config import ConfigError
 from app.history import bounded_history
-from app.models import Agent as DBAgent
 from app.models import User as DBUser
-from app.registry.service import routable_agents
 
 log = logging.getLogger(__name__)
 
 
 async def handle_message(
     form: ChrisMessageForm,
-    db: Session,
     caller: DBUser | None = None,
 ) -> ChrisMessageResponse:
     """Send a transient turn to Chris; never read or write stored conversations."""
@@ -58,17 +53,6 @@ async def handle_message(
     else:
         routing, text = None, str(reply)
     if routing is not None and routing.status == "selected" and routing.agent:
-        # Chris reports only the selected agent's id; the display name and description
-        # come from this application's own agents table.
-        try:
-            record = db.get(DBAgent, routing.agent.id)
-        except SQLAlchemyError:
-            db.rollback()
-            log.warning("Could not load selected expert display details.")
-            record = None
-        if record is not None:
-            routing.agent.name = record.name
-            routing.agent.description = record.description
         log.info("Selected expert: id=%s name=%s", routing.agent.id, routing.agent.name)
     selected = routing is not None and routing.status == "selected" and routing.agent
     return ChrisMessageResponse(
@@ -79,22 +63,3 @@ async def handle_message(
         agent_name=routing.agent.name if selected else None,
     )
 
-
-def list_active_agents(db: Session) -> list[dict[str, Any]]:
-    """List active, reviewed agents for the frontend directory."""
-    db_agents = routable_agents(db)
-    return [
-        {
-            "id": a.id,
-            "name": a.name,
-            "description": a.description,
-            "endpoint_url": a.endpoint_url,
-            "card_url": a.card_url,
-            "trust_tier": a.trust_tier,
-            "required_role": a.required_role,
-            "skills": a.skills,
-            "capabilities": a.capabilities,
-            "is_featured": a.is_featured,
-        }
-        for a in db_agents
-    ]

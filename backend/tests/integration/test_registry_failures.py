@@ -28,7 +28,14 @@ CARD = {
         {"url": RPC_URL, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}
     ],
 }
-GOOD = {"agent": {"id": "math-expert", "endpoint_url": "https://math.example.test/rpc"}}
+GOOD = {
+    "agent": {
+        "id": "math-expert",
+        "endpoint_url": "https://math.example.test/rpc",
+        "name": "Math Expert",
+        "description": "Arithmetic and percentages.",
+    }
+}
 
 
 def message_result(parts: list[dict]) -> dict:
@@ -141,7 +148,12 @@ class TestWellFormedReply:
     def test_a_valid_reply_is_a_selection(self, monkeypatch, tmp_path) -> None:
         body = ask(serve(monkeypatch, tmp_path, text_reply(json.dumps(GOOD))))
         assert body["routing"]["status"] == "selected"
-        assert body["routing"]["agent"]["id"] == "math-expert"
+        assert body["routing"]["agent"] == {
+            "id": "math-expert",
+            "name": "Math Expert",
+            "description": "Arithmetic and percentages.",
+        }
+        assert body["agent_name"] == "Math Expert"
 
     def test_none_is_unavailable_without_fallback(self, monkeypatch, tmp_path) -> None:
         body = ask(serve(monkeypatch, tmp_path, text_reply('{"agent":"none"}')))
@@ -158,20 +170,38 @@ MALFORMED = {
     "an unknown word for agent": ['{"agent": "unknown"}'],
     "agent null": ['{"agent": null}'],
     "agent as text": ['{"agent": "math-expert"}'],
-    "agent without an endpoint": ['{"agent": {"id": "math-expert"}}'],
-    "agent without an id": ['{"agent": {"endpoint_url": "https://x.test/rpc"}}'],
-    "agent with an empty id": [
-        '{"agent": {"id": "", "endpoint_url": "https://x.test/rpc"}}'
+    "agent without an endpoint": [
+        '{"agent": {"id": "math-expert", "name": "Math", "description": null}}'
     ],
-    "endpoint that is not text": ['{"agent": {"id": "m", "endpoint_url": 5}}'],
-    "extra agent field": [
+    "agent without an id": [
+        '{"agent": {"endpoint_url": "https://x.test/rpc", "name": "Math", "description": null}}'
+    ],
+    "agent with an empty id": [
+        '{"agent": {"id": "", "endpoint_url": "https://x.test/rpc", "name": "Math", "description": null}}'
+    ],
+    "endpoint that is not text": [
+        '{"agent": {"id": "m", "endpoint_url": 5, "name": "Math", "description": null}}'
+    ],
+    "agent without a name": [
+        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "description": null}}'
+    ],
+    "agent with an empty name": [
+        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "", "description": null}}'
+    ],
+    "agent without a description key": [
         '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "Math"}}'
     ],
+    "description that is not text": [
+        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "Math", "description": 5}}'
+    ],
+    "extra agent field": [
+        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "Math", "description": null, "card_url": "https://x.test/card"}}'
+    ],
     "extra top-level field": [
-        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc"}, "confidence": 0.9}'
+        '{"agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "Math", "description": null}, "confidence": 0.9}'
     ],
     "a rich status reply": [
-        '{"status": "selected", "agent": {"id": "m", "endpoint_url": "https://x.test/rpc"}}'
+        '{"status": "selected", "agent": {"id": "m", "endpoint_url": "https://x.test/rpc", "name": "Math", "description": null}}'
     ],
     "two text parts": ['{"agent":"none"}', '{"agent":"none"}'],
 }

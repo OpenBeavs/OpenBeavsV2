@@ -49,6 +49,8 @@ async def ask(url: str, question: str, token: str | None) -> dict:
                         "agent": {
                             "id": result.agent.id,
                             "endpoint_url": result.agent.endpoint_url,
+                            "name": result.agent.name,
+                            "description": result.agent.description,
                         }
                     }
                 return {"agent": "none"}

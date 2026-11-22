@@ -2,7 +2,7 @@
 
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
-- `frontend/`: Svelte chat interface and read-only registered-agent directory.
+- `frontend/`: Svelte chat interface.
 - `backend/`: chat REST API and persistence, Chris's ADK/A2A agent, and registry management.
 - `docs/`: API, frontend setup, and database documentation.
 

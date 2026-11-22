@@ -11,11 +11,14 @@ import time
 
 import httpx
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.chris import expert_client, gemini
+from app.db.session import get_db
 from app.history import bounded_history
+from app.main import app as backend_app
 from app.models import Agent, Message
 from scripts import registry_a2a_client
 
@@ -348,10 +351,10 @@ class TestChatDeadline:
         assert registry_worst_case > 0 and llm.DEFAULT_WAIT_SECONDS > 0
 
 
-class TestChatLooksUpWhatTheRegistryNoLongerSends:
-    """The registry names only the expert's id; Chat reads the display fields itself."""
+class TestDisplayFieldsComeFromTheRegistry:
+    """The registry's reply names the expert; Chat reads no agents table."""
 
-    def test_name_and_description_come_from_the_database(
+    def test_name_and_description_come_from_the_registry(
         self, experts: Pipeline
     ) -> None:
         experts.choose("math-expert")
@@ -365,39 +368,27 @@ class TestChatLooksUpWhatTheRegistryNoLongerSends:
         assert body["response"] == "Expert answer."
         assert body["agent_name"] == "Math Wizard"
 
-    def test_an_id_this_database_does_not_know_still_shows_as_a_selection(
-        self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
+    def test_chat_needs_no_agents_table_to_name_the_expert(
+        self, experts: Pipeline, tmp_path
     ) -> None:
-        """If Chat cannot find the record (a different database), the id is the name."""
-        from app.chat import service
+        """Chat's own database may be a different one that holds no agents at all."""
+        chat_only = create_engine(f"sqlite:///{tmp_path / 'chat-only.db'}")
 
-        class WithoutAgents:
-            """A session that behaves normally except that it finds no agent rows."""
+        def chat_db():
+            with Session(chat_only) as db:
+                yield db
 
-            def __init__(self, db):
-                self.db = db
-
-            def get(self, model_cls, key):
-                return (
-                    None
-                    if model_cls is service.DBAgent
-                    else self.db.get(model_cls, key)
-                )
-
-            def __getattr__(self, name):
-                return getattr(self.db, name)
-
-        real = service.handle_message
-
-        async def handle(form, db):
-            return await real(form, WithoutAgents(db))
-
-        monkeypatch.setattr(service, "handle_message", handle)
-
+        backend_app.dependency_overrides[get_db] = chat_db
         experts.choose("math-expert")
         body = experts.ask("What is 2+2?").json()
+        chat_only.dispose()
         assert body["routing"]["status"] == "selected"
-        assert body["routing"]["agent"]["name"] == "math-expert"
+        assert body["routing"]["agent"] == {
+            "id": "math-expert",
+            "name": "Math Expert",
+            "description": "Arithmetic and percentages.",
+        }
+        assert body["agent_name"] == "Math Expert"
 
     def test_no_confidence_or_reason_reaches_the_browser(
         self, experts: Pipeline

@@ -42,7 +42,6 @@ With the runbook's servers running:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8010/health
-Invoke-RestMethod http://127.0.0.1:8010/chat/agents
 Invoke-RestMethod http://127.0.0.1:8010/chris/a2a/.well-known/agent-card.json
 Invoke-RestMethod http://127.0.0.1:8001/ready
 ```

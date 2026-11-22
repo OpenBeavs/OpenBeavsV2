@@ -2,8 +2,9 @@
 
 Accepts a question and optional data-part history; metadata history is a fallback
 only when no data-part list exists. Replies with one text part containing exactly
-{"agent": {"id", "endpoint_url"}} or {"agent": "none"}. Failures are JSON-RPC
-errors carrying an allow-listed code (RETRYABLE), never internal details.
+{"agent": {"id", "endpoint_url", "name", "description"}} or {"agent": "none"}.
+Failures are JSON-RPC errors carrying an allow-listed code (RETRYABLE), never
+internal details.
 
 The executor reads eligible agents, asks the selector, and rechecks the chosen row
 before replying. It neither answers the question nor calls the expert. See
@@ -100,7 +101,8 @@ def build_agent_card(base_url: str) -> AgentCard:
                 description=(
                     "Given a user question (and optionally a few earlier turns), "
                     "returns the best eligible expert agent, no match, or an error. "
-                    'Reply: one text part with JSON, {"agent": {"id", "endpoint_url"}} or '
+                    "Reply: one text part with JSON, "
+                    '{"agent": {"id", "endpoint_url", "name", "description"}} or '
                     '{"agent": "none"}; a failure is an A2A error whose message is a code.'
                 ),
                 tags=["registry", "routing", "selection"],
@@ -127,9 +129,13 @@ def wire_text(result: SelectionResult) -> str:
         ValueError: If ``result`` is an error (those are raised as A2A errors, not sent).
     """
     if result.status == selection.SELECTED and result.agent is not None:
+        # The name and description let the caller attribute the answer to the expert
+        # without reading the registry's table. The description is null when unset.
         agent: Any = {
             "id": result.agent.id,
             "endpoint_url": result.agent.endpoint_url,
+            "name": result.agent.name,
+            "description": result.agent.description,
         }
     elif result.status == selection.NO_MATCH:
         agent = "none"
@@ -196,7 +202,7 @@ def _candidate(agent: Agent) -> Candidate:
     return Candidate(
         id=agent.id,
         name=agent.name,
-        description=agent.description or "",
+        description=agent.description,
         endpoint_url=agent.endpoint_url,
         card_url=agent.card_url,
         skills=agent.skills if isinstance(agent.skills, list) else [],

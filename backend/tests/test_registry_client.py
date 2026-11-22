@@ -4,8 +4,8 @@ Uses the real A2A SDK against an in-memory fake registry. Pipeline-level behavio
 (Chat -> Chris -> a real registry) is covered in ``tests/integration``.
 
 The registry's reply is one text part holding compact JSON (``{"agent": {"id",
-"endpoint_url"}}`` or ``{"agent": "none"}``); a failed selection is an A2A error whose
-message is a short code.
+"endpoint_url", "name", "description"}}`` or ``{"agent": "none"}``); a failed selection
+is an A2A error whose message is a short code.
 """
 
 import asyncio
@@ -22,7 +22,12 @@ from app.main import app
 
 RPC_URL = "http://registry.example.test/a2a/registry/"
 SELECTED = {
-    "agent": {"id": "library-agent", "endpoint_url": "https://example.com/a2a/"}
+    "agent": {
+        "id": "library-agent",
+        "endpoint_url": "https://example.com/a2a/",
+        "name": "Library Agent",
+        "description": "Finds research resources.",
+    }
 }
 CARD = {
     "name": "registry",
@@ -114,6 +119,8 @@ class TestReadingTheReply:
         assert result.status == routing.SELECTED
         assert result.agent.id == "library-agent"
         assert result.agent.endpoint_url == "https://example.com/a2a/"
+        assert result.agent.name == "Library Agent"
+        assert result.agent.description == "Finds research resources."
 
     def test_no_match(self, monkeypatch) -> None:
         fake_registry(monkeypatch, text='{"agent":"none"}')
@@ -167,7 +174,9 @@ class TestReadingTheReply:
             '{"agent": null}',
             '{"agent": "unknown"}',
             '{"agent": {"id": "x"}}',
+            '{"agent": {"id": "x", "endpoint_url": "https://e.test"}}',
             '{"agent": {"id": "x", "endpoint_url": "https://e.test", "name": "X"}}',
+            '{"agent": {"id": "x", "endpoint_url": "https://e.test", "name": "X", "description": null, "card_url": "https://e.test/card"}}',
             '{"agent": "none", "confidence": 0.9}',
             '{"status": "selected", "agent": {"id": "x", "endpoint_url": "https://e.test"}}',
         ],
@@ -338,7 +347,10 @@ def test_selected_expert_answers(monkeypatch) -> None:
     selected = routing.RoutingResult(
         status="selected",
         agent=routing.SelectedAgent(
-            id="library-agent", endpoint_url="https://example.com/a2a/"
+            id="library-agent",
+            endpoint_url="https://example.com/a2a/",
+            name="Library Agent",
+            description="Finds research resources.",
         ),
     )
     monkeypatch.setattr(
@@ -356,5 +368,7 @@ def test_selected_expert_answers(monkeypatch) -> None:
     answer.assert_not_awaited()
     assert reply.routing.status == "selected"
     assert reply.routing.agent.id == "library-agent"
+    assert reply.routing.agent.name == "Library Agent"
+    assert reply.routing.agent.description == "Finds research resources."
     expert.assert_awaited_once_with(selected.agent.endpoint_url, "Hello", [])
     assert reply.text == "Expert answer."

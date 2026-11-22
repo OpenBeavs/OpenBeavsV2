@@ -1,4 +1,4 @@
-"""Integration tests for direct answers, directory filtering, and chat persistence."""
+"""Integration tests for direct answers and the absence of chat persistence."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -10,13 +10,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.chat.a2a_client import ChrisReply, ChrisUnavailable
-from app.chat.service import list_active_agents
 from app.chris.routing import RoutingResult
 from app.config import ConfigError
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.models import Agent, Chat, Message, User
+from app.models import Chat, Message, User
 
 
 @pytest.fixture
@@ -32,20 +31,6 @@ def test_db():
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )
     session = TestingSessionLocal()
-
-    # Seed an agent
-    agent = Agent(
-        id="osu-rag-agent",
-        name="OSU Expert (RAG)",
-        description="Expert on Oregon State University academics and campus life.",
-        endpoint_url="https://example.com/a2a",
-        skills=["osu", "admissions", "campus"],
-        trust_tier="public",
-        is_active=True,
-        status="approved",  # new agents default to "pending", which Chris never routes to
-    )
-    session.add(agent)
-    session.commit()
 
     def override_get_db():
         try:
@@ -209,60 +194,6 @@ def test_chat_rejects_blank_message_before_calling_chris(test_db):
     assert response.json() == {"detail": "Message cannot be empty."}
     answer.assert_not_awaited()
     assert test_db.query(Message).count() == 0
-
-
-def test_list_agents_endpoint(test_db: Session):
-    """Verify GET /chat/agents returns active registered agents."""
-    client = TestClient(app)
-    response = client.get("/chat/agents")
-    assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
-    assert len(data) >= 1
-    assert data[0]["id"] == "osu-rag-agent"
-    assert data[0]["name"] == "OSU Expert (RAG)"
-    assert data[0]["endpoint_url"] == "https://example.com/a2a"
-
-
-def test_installed_agents_empty_returns_empty_list(test_db: Session):
-    """Verify that an empty agents table returns [] without inventing agent metadata."""
-    test_db.query(Agent).delete()
-    test_db.commit()
-
-    with patch.dict("os.environ", {}, clear=True):
-        agents = list_active_agents(test_db)
-        assert agents == []
-
-
-def test_installed_agents_filters_by_trust_tier_and_role(test_db: Session):
-    """Verify that privileged agents or agents requiring specific roles are filtered out."""
-    # Add a privileged agent
-    priv_agent = Agent(
-        id="internal-admin-agent",
-        name="Admin Agent",
-        endpoint_url="https://example.com/admin",
-        trust_tier="privileged",
-        is_active=True,
-        status="approved",
-    )
-    # Add an agent requiring a specific role
-    faculty_agent = Agent(
-        id="grading-agent",
-        name="Faculty Grading Agent",
-        endpoint_url="https://example.com/grading",
-        trust_tier="public",
-        required_role="faculty",
-        is_active=True,
-        status="approved",
-    )
-    test_db.add_all([priv_agent, faculty_agent])
-    test_db.commit()
-
-    agents = list_active_agents(test_db)
-    agent_ids = [a["id"] for a in agents]
-    assert "osu-rag-agent" in agent_ids
-    assert "internal-admin-agent" not in agent_ids
-    assert "grading-agent" not in agent_ids
 
 
 @pytest.mark.parametrize("stored_type", ["guest", "authenticated"])

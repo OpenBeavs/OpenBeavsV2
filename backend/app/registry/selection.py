@@ -44,7 +44,7 @@ class Candidate:
 
     id: str
     name: str
-    description: str
+    description: str | None
     endpoint_url: str
     card_url: str | None
     skills: list = field(default_factory=list)

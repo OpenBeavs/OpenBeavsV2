@@ -129,12 +129,23 @@ class TestSelectionThroughTheSdkClient:
         text, data = run(Harness(db, llm).ask("What is 15% of 240?"))
 
         assert data["status"] == "selected"
-        # Only what Chris needs: the id and the endpoint, both from the record.
+        # What Chris needs to dispatch and attribute the answer, all from the record.
         assert data["agent"] == {
             "id": "math",
             "endpoint_url": "https://math.example.test/rpc",
+            "name": "Math",
+            "description": "The math expert.",
         }
         assert json.loads(text) == {"agent": data["agent"]}
+
+    def test_an_expert_without_a_description_is_sent_with_null(
+        self, db: Session, experts: None
+    ) -> None:
+        db.get(Agent, "math").description = None
+        db.commit()
+        _, data = run(Harness(db, llm_choosing("math")).ask("What is 2+2?"))
+        assert data["agent"]["name"] == "Math"
+        assert data["agent"]["description"] is None
 
     def test_the_endpoint_never_comes_from_the_model(
         self, db: Session, experts: None
@@ -371,6 +382,8 @@ class TestTheChoiceIsRecheckedBeforeReplying:
         assert data["agent"] == {
             "id": "math",
             "endpoint_url": "https://moved.example.test/rpc",
+            "name": "Math v2",
+            "description": "The math expert.",
         }
 
     def test_a_database_failure_while_rechecking_is_registry_unavailable(
@@ -411,15 +424,20 @@ def chris_accepts(text: str) -> object:
     agent = result["agent"]
     if agent == "none":
         return agent
-    assert isinstance(agent, dict) and set(agent) == {"id", "endpoint_url"}
-    assert all(isinstance(v, str) and v.strip() for v in agent.values())
+    assert isinstance(agent, dict)
+    assert set(agent) == {"id", "endpoint_url", "name", "description"}
+    assert all(
+        isinstance(agent[key], str) and agent[key].strip()
+        for key in ("id", "endpoint_url", "name")
+    )
+    assert agent["description"] is None or isinstance(agent["description"], str)
     return agent
 
 
 class TestTheReplyIsTrimmedToWhatChrisNeeds:
     """The registry sends Chris's JSON and nothing more; failures are coded A2A errors."""
 
-    FORBIDDEN = ("name", "description", "confidence", "reason", "card_url", "schema")
+    FORBIDDEN = ("confidence", "reason", "card_url", "schema")
 
     def raw(self, db: Session, model, headers=V1) -> dict:
         async def scenario() -> dict:
@@ -439,6 +457,8 @@ class TestTheReplyIsTrimmedToWhatChrisNeeds:
         assert chris_accepts(part["text"]) == {
             "id": "math",
             "endpoint_url": "https://math.example.test/rpc",
+            "name": "Math",
+            "description": "The math expert.",
         }
 
     def test_no_match_is_exactly_the_agreed_json(

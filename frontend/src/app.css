@@ -118,25 +118,6 @@ nav a:hover, nav a.active { background: var(--hover); }
 .failed-draft { margin-top: 6px; }
 .failed-draft summary { cursor: pointer; }
 .failed-draft p { max-height: 8rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.agents-page { max-width: 1000px; padding: 28px 32px; margin: 0 auto; }
-.section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-.section-heading h1 { font-size: 27px; font-weight: 650; letter-spacing: -.5px; margin-bottom: 6px; }
-.section-heading p { font-size: 13px; }
-.directory-icon, .agent-avatar { color: var(--muted); padding: 12px; border-radius: 12px; background: var(--subtle); }
-.search-input { width: 100%; padding: 13px 15px; background: var(--surface); border: 1px solid var(--border); border-radius: 11px; font-size: 13px; }
-.result-count { color: var(--muted); font-size: 11px; margin: 18px 0 12px; }
-.agent-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.agent-card { border: 1px solid var(--border); border-radius: 16px; padding: 21px; display: flex; flex-direction: column; gap: 12px; overflow-wrap: anywhere; }
-.agent-card-top { display: flex; justify-content: space-between; align-items: center; }
-.agent-card h2 { font-size: 16px; font-weight: 600; }
-.agent-card p { font-size: 13px; line-height: 1.7; color: var(--muted); flex: 1; }
-.featured { background: transparent; color: var(--accent); }
-.agent-tags { display: flex; flex-wrap: wrap; gap: 5px; }
-.agent-availability { padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
-.agent-availability.restricted { color: #a55d17; }
-.dark .agent-availability.restricted { color: #e6ad74; }
-.directory-state { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 65px 20px; text-align: center; color: var(--muted); font-size: 14px; }
-.text-button { display: block; border: 0; background: transparent; text-decoration: underline; margin-top: 8px; }
 .skip-link { position: fixed; top: -100px; z-index: 100; background: var(--surface); padding: 10px; }
 .skip-link:focus { top: 8px; left: 8px; }
 @media (min-width: 768px) { .sidebar-open .topbar #sidebar-toggle { display: none; } }
@@ -150,6 +131,4 @@ nav a:hover, nav a.active { background: var(--hover); }
   .chat-heading { gap: 7px; margin-bottom: 14px; }
   .chat-heading .muted { font-size: 11px; }
   .message-wrapper { max-width: 92%; }
-  .agents-page { padding: 20px 16px; }
-  .agent-grid { grid-template-columns: 1fr; }
 }

@@ -40,7 +40,7 @@ it.each(['dev', 'preview'])('only forwards the UI routes in %s', async (mode) =>
       if (!server.httpServer) throw new Error('Expected Vite to start an HTTP server');
       const base = origin(server.httpServer);
       for (const [method, path] of [
-        ['GET', '/health'], ['POST', '/chat/message'], ['GET', '/chat/agents']
+        ['GET', '/health'], ['POST', '/chat/message']
       ]) {
         const response = await fetch(base + path, { method });
         expect(response.status).toBe(204);
@@ -49,7 +49,7 @@ it.each(['dev', 'preview'])('only forwards the UI routes in %s', async (mode) =>
       // Use only the stub upstream so this regression test cannot delete data.
       const blocked = await fetch(base + '/chat/chats/expired', { method: 'DELETE' });
       await blocked.body?.cancel();
-      expect(forwarded).toEqual(['GET /health', 'POST /chat/message', 'GET /chat/agents']);
+      expect(forwarded).toEqual(['GET /health', 'POST /chat/message']);
     } finally {
       await server.close();
     }

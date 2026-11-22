@@ -20,7 +20,7 @@ sequenceDiagram
     Chat->>Chat: Bound client-provided history
     Chat->>Chris: A2A SendMessage + history in metadata
     Chris->>Registry: Discover card, then SendMessage (text + history data part)
-    Registry-->>Chris: text JSON: agent id + endpoint, or none (or a coded A2A error)
+    Registry-->>Chris: text JSON: agent id, endpoint, name, description, or none (or a coded A2A error)
     alt Expert selected
         Chris->>Expert: A2A request to selected RPC URL (question + metadata.history)
         Expert-->>Chris: Message or completed task with text artifacts
@@ -42,7 +42,8 @@ FastAPI routes manage stored agents and reviews; they do not implement this A2A
 selection service (that is `app.registry.a2a_app`, run on its own).
 
 Chris logs selection details and failure types in its terminal. Chris calls the
-selected expert once. Chat returns the answer and resolves the expert's display name.
+selected expert once. Chat returns the answer with the expert's name and description,
+which Chris passes through from the registry's reply.
 If no expert matches or registry selection fails, Chris tries Gemini. If an expert
 call fails or returns an unfinished or empty reply, Chat returns HTTP 503. Failed
 turns are not saved or added to browser history.
@@ -56,10 +57,11 @@ They are not included in Chris-to-Chat routing data or browser-facing schemas.
 | --- | --- | --- |
 | GET | `/health` | Returns `{"status":"ok","app":"OpenBeavs v2"}`; does not check dependencies. |
 | POST | `/chat/message` | Bound client history and call Chris over A2A without saving transcripts. |
-| GET | `/chat/agents` | Read-only directory of active, reviewed public agents with no required role; excludes Chris. |
 
-The former `/chris/message` and `/chris/agents` paths have been replaced by
-`/chat/message` and `/chat/agents`; no compatibility aliases are registered.
+The former `/chris/message` path has been replaced by `/chat/message`; no
+compatibility alias is registered. The agent directory (`/chat/agents`, earlier
+`/chris/agents`) has been removed: the chat API reads no registry data, and listing
+registered agents is the registry's own API (`GET /registry/agents`).
 
 ### `POST /chat/message`
 
@@ -145,12 +147,17 @@ part** `{"history": [{"role", "content"}, ...]}` (the registry's documented cont
 also tolerates `metadata.history`, but only when no data part has a history).
 
 The registry replies with one message whose single **text part** is compact JSON,
-trimmed to what Chris needs: `{"agent": {"id": "...", "endpoint_url": "..."}}` or
-`{"agent": "none"}` (see [registry.md](registry.md)). Chris validates it strictly: exact
-keys, non-empty strings, no coercion; anything else is `registry_invalid_reply` and Chris
-never guesses. There is no name, description, confidence or reason on the wire; Chat looks
-the display name and description up in its own `agents` table (so `routing.agent` has them,
-and `confidence` and `reason` stay null). A registry that cannot select answers with an
+trimmed to what Chris needs:
+`{"agent": {"id": "...", "endpoint_url": "...", "name": "...", "description": "..." or null}}`
+or `{"agent": "none"}` (see [registry.md](registry.md)). Chris validates it strictly: exact
+keys, non-empty strings for `id`, `endpoint_url` and `name`, a string or null
+`description`, no coercion; anything else is `registry_invalid_reply` and Chris never
+guesses. There is no confidence or reason on the wire. Chris keeps the endpoint for
+dispatch and forwards the id, name and description to Chat in the
+`openbeavs.chris.routing.v1` data part
+(`{"schema", "status", "agent": {"id", "name", "description"}}`), so `routing.agent`
+carries the registry's values and Chat reads no `agents` table (`confidence` and
+`reason` stay null). A registry that cannot select answers with an
 A2A error whose message is a short code (`selection_unavailable`, `agent_unavailable`,
 ...); Chris classifies it internally with `source = "registry"` for terminal logging.
 
@@ -228,8 +235,7 @@ Set these privately in the process environment or ignored `backend/.env`:
 | `DATABASE_URL` | Chat/registry database; defaults to `sqlite:///./openbeavs.db`. |
 
 The registry URL is operator configuration, never a frontend-supplied destination.
-With no registry listening, Chris logs `registry_unreachable` and tries Gemini. The directory
-still reads stored eligible agents, but that list does not drive Chris's selection.
+With no registry listening, Chris logs `registry_unreachable` and tries Gemini.
 `CHRIS_USE_MOCK_AGENTS` and the old local mock list have been removed.
 
 Dependencies: `google-adk[a2a]==2.13.0`, `a2a-sdk[http-server]==1.3.0`, and
@@ -264,7 +270,7 @@ Both entrypoints advertise no streaming; both clients use non-streaming calls.
 ```text
 app/chat/router.py          frontend REST routes
 app/chat/schemas.py         frontend request/response models
-app/chat/service.py         transient history, agent directory
+app/chat/service.py         transient history, response assembly
 app/chat/a2a_client.py      SDK client adapter that calls Chris
 app/chris/agent.py          registry-first expert dispatch or Gemini fallback
 app/chris/expert_client.py  validated direct RPC call, deadline, text extraction

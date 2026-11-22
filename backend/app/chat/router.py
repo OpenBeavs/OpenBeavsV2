@@ -1,14 +1,12 @@
 """Frontend chat HTTP routes, separate from Chris's A2A protocol endpoint."""
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_optional_user
 from app.chat import service
-from app.chat.schemas import AgentSummary, ChrisMessageForm, ChrisMessageResponse
-from app.db import get_db
+from app.chat.schemas import ChrisMessageForm, ChrisMessageResponse
 from app.models import User as DBUser
 
 router = APIRouter()
@@ -17,20 +15,12 @@ router = APIRouter()
 @router.post("/message", response_model=ChrisMessageResponse)
 async def chris_message(
     form: ChrisMessageForm,
-    db: Annotated[Session, Depends(get_db)],
     caller: Annotated[DBUser | None, Depends(get_optional_user)] = None,
 ) -> ChrisMessageResponse:
     """Handle a chat turn using the existing Chris response contract."""
     if caller is not None:
         try:
-            return await service.handle_message(form, db, caller=caller)
+            return await service.handle_message(form, caller=caller)
         except TypeError:
-            return await service.handle_message(form, db)
-    return await service.handle_message(form, db)
-
-
-@router.get("/agents", response_model=list[AgentSummary])
-def list_active_agents(db: Annotated[Session, Depends(get_db)]) -> list[dict[str, Any]]:
-    """List the active, reviewed agents available to chat."""
-    return service.list_active_agents(db)
-
+            return await service.handle_message(form)
+    return await service.handle_message(form)

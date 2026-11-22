@@ -1,6 +1,6 @@
 """Frontend chat request and response schemas; existing wire names are preserved."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -70,17 +70,3 @@ class ChrisMessageResponse(BaseModel):
     routing_reason: str | None = None
     routing: RoutingInfo | None = None
 
-
-class AgentSummary(BaseModel):
-    """Public summary of an active registered agent."""
-
-    id: str
-    name: str
-    description: str | None = None
-    endpoint_url: str
-    card_url: str | None = None
-    trust_tier: str
-    required_role: str | None = None
-    skills: list[Any] | None = None
-    capabilities: dict[str, Any] | None = None
-    is_featured: bool = False

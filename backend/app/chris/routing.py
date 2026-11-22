@@ -2,24 +2,26 @@
 
 Two contracts meet here.
 
-**Registry -> Chris** (trimmed to what Chris needs): one agent message with a single text
-part holding compact JSON, exactly one of::
+**Registry -> Chris**: one agent message with a single text part holding compact JSON,
+exactly one of::
 
-    {"agent": {"id": "<agent id>", "endpoint_url": "<A2A endpoint>"}}    an expert fits
-    {"agent": "none"}                                                  nothing fits
+    {"agent": {"id": "<agent id>", "endpoint_url": "<A2A endpoint>",
+               "name": "<display name>", "description": "<text>" or null}}    an expert fits
+    {"agent": "none"}                                                        nothing fits
 
 ``parse_registry_text`` validates it strictly (exact keys, non-empty strings, no
 coercion). Anything else becomes ``registry_invalid_reply``; Chris never guesses what a
 malformed reply meant. A registry that cannot select answers with an A2A/JSON-RPC *error*
 whose message is a short code (see ``REGISTRY_ERRORS``); ``registry_client`` turns it into
-an ``error`` result. The reply carries no name, description, confidence or reason: the
-record's id is the key, and anything else is looked up from the database by whoever
-needs it (Chat does, for display).
+an ``error`` result. The reply carries no confidence or reason. The name and description
+are the registry's own record of the expert, so nothing downstream reads the registry's
+table to attribute an answer.
 
 **Chris -> Chat** (``openbeavs.chris.routing.v1``): successful replies contain
-selected-agent or diagnostic no-match data. Backend failures are logged and use
-A2A failure handling; they are never serialized as chat messages or routing data.
-Selected endpoints are never forwarded to Chat.
+selected-agent or diagnostic no-match data. A selected agent is forwarded as its id,
+name and description. Backend failures are logged and use A2A failure handling; they
+are never serialized as chat messages or routing data. Selected endpoints are never
+forwarded to Chat.
 
 Nothing here calls an expert. A ``selected`` result is a routing decision, not an answer.
 """
@@ -68,6 +70,8 @@ class SelectedAgent:
 
     id: str
     endpoint_url: str
+    name: str
+    description: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,13 +125,20 @@ def parse_registry_text(text: str) -> RoutingResult:
         return RoutingResult(status=NO_MATCH)
     if (
         isinstance(agent, dict)
-        and set(agent) == {"id", "endpoint_url"}
+        and set(agent) == {"id", "endpoint_url", "name", "description"}
         and _non_empty_text(agent["id"])
         and _non_empty_text(agent["endpoint_url"])
+        and _non_empty_text(agent["name"])
+        and (agent["description"] is None or isinstance(agent["description"], str))
     ):
         return RoutingResult(
             status=SELECTED,
-            agent=SelectedAgent(id=agent["id"], endpoint_url=agent["endpoint_url"]),
+            agent=SelectedAgent(
+                id=agent["id"],
+                endpoint_url=agent["endpoint_url"],
+                name=agent["name"],
+                description=agent["description"],
+            ),
         )
     raise InvalidRegistryReply("The registry reply is not valid.")
 
@@ -136,10 +147,15 @@ def to_chat_payload(result: RoutingResult) -> dict[str, Any]:
     """The ``openbeavs.chris.routing.v1`` data part Chris sends to Chat."""
     if result.status not in (SELECTED, NO_MATCH):
         raise ValueError("Failures cannot be serialized as chat replies.")
+    agent = result.agent
     return {
         "schema": CHRIS_SCHEMA_ID,
         "status": result.status,
-        "agent": {"id": result.agent.id} if result.agent is not None else None,
+        "agent": (
+            {"id": agent.id, "name": agent.name, "description": agent.description}
+            if agent is not None
+            else None
+        ),
     }
 
 

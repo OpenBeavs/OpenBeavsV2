@@ -125,11 +125,11 @@ class TestOverTheApi:
         assert (body["status"], body["is_active"]) == ("provisional", True)
         assert body["reviewed_by"] == "system:auto"
 
-        listed = {agent["name"] for agent in client.get("/chat/agents").json()}
+        listed = {agent.name for agent in routable_agents(db)}
         assert "Math Test Agent" in listed
 
     def test_an_auto_approved_agent_can_still_be_revoked(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+        self, client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("REGISTRY_APPROVAL_MODE")
         created = client.post(
@@ -145,11 +145,15 @@ class TestOverTheApi:
         )
         assert revoked.status_code == 200
         assert revoked.json()["status"] == "revoked"
-        listed = {agent["name"] for agent in client.get("/chat/agents").json()}
+        listed = {agent.name for agent in routable_agents(db)}
         assert "Math Test Agent" not in listed
 
     def test_a_flagged_card_over_the_api_stays_pending(
-        self, client: TestClient, fetcher: FakeFetcher, monkeypatch: pytest.MonkeyPatch
+        self,
+        client: TestClient,
+        db: Session,
+        fetcher: FakeFetcher,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("REGISTRY_APPROVAL_MODE")
         fetcher.add(
@@ -163,7 +167,7 @@ class TestOverTheApi:
         )
         assert response.status_code == 201
         assert response.json()["status"] == "pending"
-        listed = {agent["name"] for agent in client.get("/chat/agents").json()}
+        listed = {agent.name for agent in routable_agents(db)}
         assert "Sneaky" not in listed
 
     def test_duplicates_are_still_refused_in_auto_mode(

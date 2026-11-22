@@ -53,7 +53,7 @@
   }
 </script>
 
-<svelte:head><title>OpenBeavs · Chris</title><meta name="description" content="Talk to Chris, the OpenBeavs AI hub, and explore registered agents." /></svelte:head>
+<svelte:head><title>OpenBeavs · Chris</title><meta name="description" content="Talk to Chris, the OpenBeavs AI hub." /></svelte:head>
 
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="app-shell">

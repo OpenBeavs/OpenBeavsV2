@@ -141,23 +141,24 @@ The reply is trimmed to **what Chris needs and nothing more**: one agent message
 a single **text part** holding compact JSON, exactly one of
 
 ```json
-{"agent": {"id": "<agent id>", "endpoint_url": "https://..."}}
+{"agent": {"id": "<agent id>", "endpoint_url": "https://...", "name": "<name>", "description": "<text>"}}
 ```
 ```json
 {"agent": "none"}
 ```
 
-There is no name, description, confidence, reason, card URL, status or schema field. Both
-values come from the registry's own record, never from the model or the caller, and the
-record is **re-read just before replying**: if the expert was revoked, deactivated or
-otherwise made ineligible while the model was working, there is no selection (see
-`agent_unavailable` below), and if it was edited the reply carries the current endpoint.
-Chris's strict check accepts exactly these shapes and rejects anything else. Anyone who
-needs the name or description looks the id up (Chat reads its own `agents` table).
+`description` is `null` when the record has none. There is no confidence, reason, card
+URL, status or schema field. All four values come from the registry's own record, never
+from the model or the caller, and the record is **re-read just before replying**: if the
+expert was revoked, deactivated or otherwise made ineligible while the model was working,
+there is no selection (see `agent_unavailable` below), and if it was edited the reply
+carries the current endpoint, name and description. Chris's strict check accepts exactly
+these shapes and rejects anything else. The name and description are what the chat
+interface shows under an expert's answer, so no caller needs to read the `agents` table.
 
 | Reply | Meaning | What Chris does |
 |---|---|---|
-| `{"agent": {"id", "endpoint_url"}}` | An expert fits (confidence at least 0.7; the threshold is an initial guess). | Call the expert and return its answer plus routing metadata. |
+| `{"agent": {"id", "endpoint_url", "name", "description"}}` | An expert fits (confidence at least 0.7; the threshold is an initial guess). | Call the expert and return its answer plus routing metadata. |
 | `{"agent": "none"}` | Nothing fits, or nothing is registered. A normal answer. | Report no match (or answer directly, in fallback mode). |
 | an A2A error | The registry could not decide. The JSON-RPC error **message is a short code** (below) and nothing else: no internal detail. `invalid_request` is `-32602`; every other code is `-32603`. | Report the failure; retry later only if the code is retryable. |
 
@@ -282,8 +283,6 @@ Chris itself does not attach that token yet.
 
 Submitter and review details (`submitted_by`, `reviewed_by`, `reviewed_at`,
 `review_note`) are returned only to admins and to the submitter.
-
-Chris's own listing, `GET /chris/agents`, returns the routable agents.
 
 ## Where each stored field comes from
 
@@ -443,7 +442,7 @@ his row after the upgrade.
 takes a backup, then runs `alembic upgrade head` from `backend/` (after the
 `alembic_version` check above; if the database was built from the SQL files, stamp
 `a7c3e91d5b02` first). Verify read-only: `SELECT id FROM agents WHERE id = 'chris';`
-returns no rows and `GET /chris/agents` does not list Chris. Do not delete the row by
+returns no rows. Do not delete the row by
 hand. To preview the SQL for PostgreSQL:
 `alembic upgrade a7c3e91d5b02:d4f1b8a2c967 --sql`.
 
@@ -456,7 +455,8 @@ existing agents require an explicit update rather than rerunning the seed.
 ## Registry integration
 
 Chris calls the registry over A2A with a question and optional bounded history.
-The registry returns a selected agent ID and endpoint, no match, or a coded error.
+The registry returns a selected agent's ID, endpoint, name and description, no match, or a
+coded error.
 It never invokes the selected expert. See [the wire contract](#the-contract-chris-builds-against)
 for payloads and [Chris's documentation](chris.md) for caller behavior and fallback.
 
@@ -510,7 +510,7 @@ entry, configure `REGISTRY_DEV_AUTH=true` and `REGISTRY_ADMIN_EMAILS=admin@examp
 ```powershell
 $adminHeaders = @{ 'X-User-Id'='registry-admin'; 'X-User-Email'='admin@example.test' }
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8010/registry/agents/$($agent.id)/review" -Headers $adminHeaders -ContentType 'application/json' -Body (@{ action='approve' } | ConvertTo-Json)
-Invoke-RestMethod -Uri 'http://127.0.0.1:8010/chat/agents'
+Invoke-RestMethod -Uri "http://127.0.0.1:8010/registry/agents/$($agent.id)" -Headers $adminHeaders | Select-Object id, name, status, is_active
 ```
 
 Ask a question matching that expert in the frontend. Selection reads the agents table

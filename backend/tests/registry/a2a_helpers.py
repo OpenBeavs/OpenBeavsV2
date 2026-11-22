@@ -158,7 +158,7 @@ class Harness:
         assert list(wire) == ["agent"]
         if wire["agent"] == "none":
             return text, {"status": "no_match", "agent": None, "error": None}
-        assert set(wire["agent"]) == {"id", "endpoint_url"}
+        assert set(wire["agent"]) == {"id", "endpoint_url", "name", "description"}
         return text, {"status": "selected", "agent": wire["agent"], "error": None}
 
 

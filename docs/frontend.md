@@ -1,8 +1,7 @@
 # Frontend setup and integration
 
 The `frontend/` directory is the standalone OpenBeavs interface. It selectively
-adapts the original WebUI's Chris chat and sidebar presentation, with a read-only
-agent directory. It uses Svelte 4, SvelteKit 2, Vite 5, TypeScript and Tailwind 4.
+adapts the original WebUI's Chris chat and sidebar presentation. It uses Svelte 4, SvelteKit 2, Vite 5, TypeScript and Tailwind 4.
 The old Open WebUI Python backend is not required.
 
 ## Run locally
@@ -13,7 +12,7 @@ Use Python 3.12, uv, and Node.js 22 or newer. From the repository root:
 cd backend
 uv sync
 uv run alembic upgrade head
-# Optional: populate the registered-agent directory.
+# Optional: seed the registry's initial expert agents.
 uv run python -m app.db.seed_agents
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -30,7 +29,7 @@ npm run dev
 ```
 
 Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls `/health`, `/chat/message`, and `/chat/agents`. Vite proxies those requests to
+calls `/health` and `/chat/message`. Vite proxies those requests to
 `http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
 requests. To use another backend, set the **non-secret server-side**
 `BACKEND_ORIGIN` when starting Vite:
@@ -53,14 +52,11 @@ as a browser API URL.
   New Chat. Enter sends; Shift+Enter inserts a newline. IME composition does not
   submit. You can type the next draft while Chris replies. Send stays disabled
   until the current request finishes.
-- `/agents`: case-insensitive name/description search, featured flags, and access
-  tiers. Restricted and role-gated agents are marked unavailable to guests.
 - Collapsible desktop sidebar, keyboard-accessible mobile drawer, and theme
   toggle. The system theme is used until the user chooses one.
 
-The typed client uses only `GET /health`, `GET /chat/agents`, and
-`POST /chat/message`. Agent endpoint URLs remain metadata, never browser call
-targets. Responses are complete JSON, not streams. The backend returns a structured
+The typed client uses only `GET /health` and `POST /chat/message`. Agent endpoint
+URLs never reach the browser. Responses are complete JSON, not streams. The backend returns a structured
 `routing` metadata. Expert replies show “Answered by” followed by the registered
 `agent_name`. Direct Gemini replies have no expert attribution. Backend
 failures use a generic notice outside the transcript; failed turns are not added to
@@ -86,7 +82,7 @@ never retried automatically. Requests time out after 90 seconds; a backend may
 still finish after the browser stops waiting, so a manual retry can duplicate a
 turn.
 
-SSO, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
+An agent directory, SSO, saved-chat retrieval, direct agent calls, streaming, embedding, uploads,
 Arena Mode, model controls, and administration are outside this initial port.
 
 ## Build, preview, and hosting
@@ -99,8 +95,8 @@ npm run preview
 
 The static application is emitted into `frontend/build/`. Preview includes the
 same API proxy as development. A production static host must serve assets and
-fall back to `index.html` for UI routes such as `/agents`. Its reverse proxy must
-send only the exact paths `/chat/message`, `/chat/agents`, and `/health` to FastAPI
+fall back to `index.html` for UI routes. Its reverse proxy must
+send only the exact paths `/chat/message` and `/health` to FastAPI
 **before** applying the SPA fallback. Vite's proxy configuration does not ship
 inside the static files. Proxy only the supported public routes.
 This change does not deploy a cloud service or establish production auth.
@@ -146,7 +142,7 @@ Both suites run in CI; neither requires a real model key.
 
 For live acceptance, follow the runbook and ask an OSU question followed by a related
 question in the same chat. Expect the selected expert's answer and attribution. Confirm
-prior successful turns are sent from browser memory and the directory loads from SQLite.
+prior successful turns are sent from browser memory.
 This requires a working registry model/key and is distinct from deterministic tests.
 
 ## Attribution

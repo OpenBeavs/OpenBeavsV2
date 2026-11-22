@@ -26,19 +26,6 @@ export type ChrisResponse = {
   routing?: RoutingInfo | null;
 };
 
-export type AgentSummary = {
-  id: string;
-  name: string;
-  description: string | null;
-  endpoint_url: string;
-  card_url: string | null;
-  trust_tier: string;
-  required_role: string | null;
-  skills: unknown[] | null;
-  capabilities: Record<string, unknown> | null;
-  is_featured: boolean;
-};
-
 export class ApiError extends Error {
   constructor(message: string, public readonly status?: number) {
     super(message);
@@ -122,20 +109,6 @@ export async function sendMessage(payload: ChrisRequest, signal?: AbortSignal): 
     throw new ApiError('The backend returned an invalid response. Please try again.');
   }
   return data as ChrisResponse;
-}
-
-/** Agent URLs are metadata only; the browser never executes an external agent. */
-export async function listAgents(signal?: AbortSignal): Promise<AgentSummary[]> {
-  const data = await request('/chat/agents', { signal });
-  if (!Array.isArray(data) || !data.every((agent: unknown) => isRecord(agent) &&
-      typeof agent.id === 'string' && typeof agent.name === 'string' &&
-      nullableString(agent.description) && typeof agent.endpoint_url === 'string' &&
-      nullableString(agent.card_url) && typeof agent.trust_tier === 'string' &&
-      nullableString(agent.required_role) && (agent.skills === null || Array.isArray(agent.skills)) &&
-      (agent.capabilities === null || isRecord(agent.capabilities)) && typeof agent.is_featured === 'boolean')) {
-    throw new ApiError('The backend returned an invalid agent list. Please try again.');
-  }
-  return data as AgentSummary[];
 }
 
 export async function checkHealth(): Promise<void> {

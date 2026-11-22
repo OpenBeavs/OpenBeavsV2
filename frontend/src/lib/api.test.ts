@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkHealth, listAgents, sendMessage, type ChrisRequest } from './api';
+import { checkHealth, sendMessage, type ChrisRequest } from './api';
 
 const payload: ChrisRequest = { message: 'Hello', history: [], source_domain: 'localhost' };
 const reply = { response: 'Hello!', chat_id: 'chat-test', routed_to: null, agent_name: null, routing_confidence: null, routing_reason: null };
@@ -13,7 +13,7 @@ function rejectOnAbort(signal: AbortSignal, reason: () => unknown): Promise<neve
 }
 
 describe('v2 API contract', () => {
-  it.each(['response headers', 'response body'])('times out a stalled agent list at %s with a caller signal', async (stage) => {
+  it.each(['response headers', 'response body'])('times out a stalled message at %s with a caller signal', async (stage) => {
     const deadline = new AbortController();
     const caller = new AbortController();
     const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
@@ -25,7 +25,7 @@ describe('v2 API contract', () => {
       return response;
     });
     vi.stubGlobal('fetch', fetch);
-    const result = listAgents(caller.signal);
+    const result = sendMessage(payload, caller.signal);
     const rejection = expect(result).rejects.toMatchObject({ name: 'TimeoutError', message: expect.stringContaining('timed out') });
     expect(timeout).toHaveBeenCalledWith(90_000);
     expect(fetch.mock.calls[0][1].signal).not.toBe(caller.signal);
@@ -35,13 +35,13 @@ describe('v2 API contract', () => {
     expect(caller.signal.aborted).toBe(false);
   });
 
-  it('preserves caller cancellation before the agent list deadline', async () => {
+  it('preserves caller cancellation before the message deadline', async () => {
     const deadline = new AbortController();
     const caller = new AbortController();
     vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
     vi.stubGlobal('fetch', vi.fn((_path: string, { signal }: { signal: AbortSignal }) =>
       rejectOnAbort(signal, () => signal.reason)));
-    const rejection = expect(listAgents(caller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    const rejection = expect(sendMessage(payload, caller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     caller.abort();
     await rejection;
     expect(deadline.signal.aborted).toBe(false);
@@ -77,13 +77,12 @@ describe('v2 API contract', () => {
     await expect(sendMessage(payload)).rejects.toThrow('Chris is temporarily unavailable');
   });
 
-  it('checks health and validates the agent list', async () => {
+  it('checks health', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ status: 'ok' }))
-      .mockResolvedValueOnce(Response.json([])).mockResolvedValueOnce(Response.json([{}]));
+      .mockResolvedValueOnce(Response.json({ status: 'starting' }));
     vi.stubGlobal('fetch', fetch);
     await checkHealth();
-    expect(await listAgents()).toEqual([]);
-    await expect(listAgents()).rejects.toThrow('invalid agent list');
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/health', '/chat/agents', '/chat/agents']);
+    await expect(checkHealth()).rejects.toThrow('not ready');
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/health', '/health']);
   });
 });

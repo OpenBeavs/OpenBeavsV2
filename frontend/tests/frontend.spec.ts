@@ -1,14 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const response = { response: 'Hello from Chris', chat_id: null, routed_to: null, agent_name: null, routing_confidence: null, routing_reason: null };
-const agents = [
-  { id: 'library', name: 'Library', description: 'Find research resources', endpoint_url: 'https://example.com/a2a', card_url: null, trust_tier: 'public', required_role: null, skills: [], capabilities: {}, is_featured: true },
-  { id: 'advising', name: 'Advising', description: 'Degree planning', endpoint_url: 'https://example.com/private', card_url: null, trust_tier: 'privileged', required_role: 'student', skills: null, capabilities: null, is_featured: false }
-];
-
 async function mockBackend(page: Page) {
   await page.route('**/health', (route) => route.fulfill({ json: { status: 'ok' } }));
-  await page.route('**/chat/agents', (route) => route.fulfill({ json: agents }));
   await page.route('**/chat/message', (route) => route.fulfill({ json: response }));
 }
 async function send(page: Page, text: string) {
@@ -18,17 +12,13 @@ async function send(page: Page, text: string) {
 
 test.beforeEach(async ({ page }) => { await mockBackend(page); });
 
-test('talks to Chris, carries in-memory history, and preserves the conversation across navigation', async ({ page }) => {
+test('talks to Chris, carries in-memory history, and keeps each chat separate', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 430 });
   const requests: Record<string, unknown>[] = [];
   page.on('request', (request) => { if (request.url().endsWith('/chat/message')) requests.push(request.postDataJSON()); });
   await page.goto('/');
   await send(page, 'Hello');
   await expect(page.getByRole('textbox', { name: 'Message Chris' })).toBeFocused();
-  await expect(page.getByTestId('message')).toHaveCount(2);
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await expect(page.getByRole('article')).toHaveCount(2);
-  await page.getByRole('link', { name: 'Chris', exact: true }).click();
   await expect(page.getByTestId('message')).toHaveCount(2);
   await send(page, 'Remember that?');
   await expect(page.getByTestId('message')).toHaveCount(4);
@@ -62,16 +52,6 @@ test('talks to Chris, carries in-memory history, and preserves the conversation 
   await expect(page.getByTestId('message')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Hello', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Fresh', exact: true })).toHaveCount(0);
-});
-
-test('searches the read-only directory and labels restricted agents', async ({ page }) => {
-  await page.goto('/agents');
-  await expect(page.getByRole('article', { name: 'Advising' })).toContainText('Unavailable in this guest version');
-  await page.getByLabel('Search agents').fill('RESEARCH');
-  await expect(page.getByRole('article')).toHaveCount(1);
-  await expect(page.getByRole('article', { name: 'Library' })).toContainText('Featured');
-  await page.getByLabel('Search agents').fill('nothing');
-  await expect(page.getByText('No agents match your search.')).toBeVisible();
 });
 
 test('restores failed input and recovers without adding failed turns', async ({ page }) => {
@@ -138,38 +118,6 @@ test('shows the guest reply in a normal bubble without routing debug output', as
   await expect(page.getByTestId('message')).toHaveText(['Find research', response.response]);
 });
 
-test('offers a retry when the agent list stalls', async ({ page }) => {
-  await page.addInitScript(() => {
-    AbortSignal.timeout = () => {
-      const deadline = new AbortController();
-      window.addEventListener('test-deadline', () => {
-        deadline.abort(new DOMException('Deadline exceeded', 'TimeoutError'));
-      }, { once: true });
-      return deadline.signal;
-    };
-  });
-  await page.route('**/chat/agents', () => {}, { times: 1 });
-  const requested = page.waitForRequest('**/chat/agents');
-  await page.goto('/agents');
-  await requested;
-  await expect(page.getByText('Loading agents…')).toBeVisible();
-  await page.evaluate(() => window.dispatchEvent(new Event('test-deadline')));
-  await expect(page.getByRole('alert')).toContainText('timed out');
-  await page.getByRole('button', { name: 'Retry loading agents' }).click();
-  await expect(page.getByRole('article')).toHaveCount(2);
-});
-
-test('retries agent-list failures independently and handles an empty list', async ({ page }) => {
-  await page.route('**/chat/agents', (route) => route.fulfill({ status: 500, json: {} }));
-  await page.goto('/agents');
-  await expect(page.getByRole('alert')).toBeVisible();
-  await page.route('**/chat/agents', (route) => route.fulfill({ json: [] }));
-  await page.getByRole('button', { name: 'Retry loading agents' }).click();
-  await expect(page.getByText(/No agents are registered yet/)).toBeVisible();
-  await page.getByRole('link', { name: 'Chris', exact: true }).click();
-  await send(page, 'Hello'); await expect(page.getByTestId('message')).toHaveCount(2);
-});
-
 test('calls only supported backend endpoints and never restores legacy auth', async ({ page }) => {
   const apiPaths: string[] = [];
   page.on('request', (request) => {
@@ -181,7 +129,5 @@ test('calls only supported backend endpoints and never restores legacy auth', as
   });
   await page.goto('/'); await send(page, 'Hello');
   await expect(page.getByTestId('message')).toHaveCount(2);
-  await page.getByRole('link', { name: 'Agents', exact: true }).click();
-  await expect(page.getByRole('article')).toHaveCount(2);
-  expect(apiPaths.sort()).toEqual(['/chat/agents', '/chat/message', '/health']);
+  expect(apiPaths.sort()).toEqual(['/chat/message', '/health']);
 });

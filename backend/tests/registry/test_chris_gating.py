@@ -1,8 +1,9 @@
-"""The frontend directory exposes only reviewed, eligible external agents."""
+"""Only reviewed, eligible external agents are offered for routing."""
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import Agent
+from app.registry.service import routable_agents
 
 from .conftest import ADMIN_EMAIL, as_user
 
@@ -24,15 +25,11 @@ def add_agent(db: Session, agent_id: str, status: str, active: bool = True) -> N
     db.commit()
 
 
-def offered_to_router(client: TestClient) -> list[str]:
-    """Return the reviewed agents available in the frontend directory."""
-    response = client.get("/chat/agents")
-    assert response.status_code == 200, response.text
-    return [agent["id"] for agent in response.json()]
+def offered_to_router(db: Session) -> list[str]:
+    """Return the ids of the agents the registry offers for selection."""
+    return [agent.id for agent in routable_agents(db)]
 
-def test_only_approved_and_provisional_agents_are_offered(
-    client: TestClient, db: Session
-) -> None:
+def test_only_approved_and_provisional_agents_are_offered(db: Session) -> None:
     add_agent(db, "approved", "approved")
     add_agent(db, "provisional", "provisional")
     # Active but not reviewed: only the status check keeps these out.
@@ -42,43 +39,38 @@ def test_only_approved_and_provisional_agents_are_offered(
     add_agent(db, "pending-off", "pending", active=False)
     add_agent(db, "revoked-off", "revoked", active=False)
 
-    assert sorted(offered_to_router(client)) == ["approved", "provisional"]
+    assert sorted(offered_to_router(db)) == ["approved", "provisional"]
 
 
-def test_an_inactive_approved_agent_is_not_offered(
-    client: TestClient, db: Session
-) -> None:
+def test_an_inactive_approved_agent_is_not_offered(db: Session) -> None:
     add_agent(db, "paused", "approved", active=False)
     add_agent(db, "live", "approved")
-    assert offered_to_router(client) == ["live"]
+    assert offered_to_router(db) == ["live"]
 
 
-def test_chris_is_never_offered_to_himself(client: TestClient, db: Session) -> None:
+def test_privileged_and_role_gated_agents_are_not_offered(db: Session) -> None:
+    add_agent(db, "live", "approved")
+    add_agent(db, "admin-only", "approved")
+    add_agent(db, "faculty-only", "approved")
+    db.get(Agent, "admin-only").trust_tier = "privileged"
+    db.get(Agent, "faculty-only").required_role = "faculty"
+    db.commit()
+    assert offered_to_router(db) == ["live"]
+
+
+def test_chris_is_never_offered_to_himself(db: Session) -> None:
     add_agent(db, "chris", "approved")
     add_agent(db, "live", "approved")
-    assert offered_to_router(client) == ["live"]
+    assert offered_to_router(db) == ["live"]
 
 
-def test_empty_table_does_not_enable_mock_agents(
-    client: TestClient,
-) -> None:
-    assert offered_to_router(client) == []
+def test_empty_table_does_not_enable_mock_agents(db: Session) -> None:
+    assert offered_to_router(db) == []
 
 
-def test_revoking_every_agent_does_not_bring_back_the_mock_agents(
-    client: TestClient, db: Session
-) -> None:
+def test_revoking_every_agent_does_not_bring_back_the_mock_agents(db: Session) -> None:
     add_agent(db, "only", "revoked", active=True)
-    assert offered_to_router(client) == []
-
-
-def test_agents_endpoint_lists_only_routable_agents(
-    client: TestClient, db: Session
-) -> None:
-    add_agent(db, "approved", "approved")
-    add_agent(db, "pending", "pending", active=True)
-    listed = client.get("/chat/agents").json()
-    assert [a["id"] for a in listed] == ["approved"]
+    assert offered_to_router(db) == []
 
 
 def test_submitted_agent_becomes_routable_only_after_approval(
@@ -88,18 +80,18 @@ def test_submitted_agent_becomes_routable_only_after_approval(
     agent = submit()
     add_agent(db, "other", "approved")
 
-    assert offered_to_router(client) == ["other"]
+    assert offered_to_router(db) == ["other"]
 
     client.post(
         f"/registry/agents/{agent['id']}/review",
         json={"action": "approve"},
         headers=as_user(ADMIN_EMAIL),
     )
-    assert sorted(offered_to_router(client)) == sorted([agent["id"], "other"])
+    assert sorted(offered_to_router(db)) == sorted([agent["id"], "other"])
 
     client.post(
         f"/registry/agents/{agent['id']}/review",
         json={"action": "revoke"},
         headers=as_user(ADMIN_EMAIL),
     )
-    assert offered_to_router(client) == ["other"]
+    assert offered_to_router(db) == ["other"]

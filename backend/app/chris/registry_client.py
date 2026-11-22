@@ -2,10 +2,10 @@
 
 Chris asks the registry which expert fits a question and gets back a
 ``RoutingResult`` (see ``routing.py``). The registry's reply is one text part holding
-compact JSON, ``{"agent": {"id", "endpoint_url"}}`` or ``{"agent": "none"}``, and nothing
-else. A registry that cannot select answers with an A2A/JSON-RPC *error* whose message is
-a short code (``routing.REGISTRY_ERRORS``); it is reported with that code and
-``source = "registry"``.
+compact JSON, ``{"agent": {"id", "endpoint_url", "name", "description"}}`` or
+``{"agent": "none"}``, and nothing else. A registry that cannot select answers with
+an A2A/JSON-RPC *error* whose message is a short code (``routing.REGISTRY_ERRORS``); it
+is reported with that code and ``source = "registry"``.
 
 The question goes in a text part and the earlier turns in a *data part*
 ``{"history": [...]}``, which is the registry's documented request contract. (The

@@ -71,7 +71,6 @@
   </div>
   <nav aria-label="Main navigation">
     <a href="/" class:active={$page.url.pathname === '/'} aria-current={$page.url.pathname === '/' ? 'page' : undefined} on:click={() => { if (mobile) close(); }}><Icon name="sparkles" size={19} />Chris</a>
-    <a href="/agents" class:active={$page.url.pathname === '/agents'} aria-current={$page.url.pathname === '/agents' ? 'page' : undefined} on:click={() => { if (mobile) close(); }}><Icon name="agents" size={19} />Agents</a>
   </nav>
   <div class="sidebar-chats">
     {#each groups as group (group.name)}

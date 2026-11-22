@@ -87,16 +87,19 @@ def parse_routing(data: object) -> RoutingInfo:
         payload = _Payload.model_validate(data)
         fields = payload.model_dump(exclude={"schema_"})
         agent = fields["agent"]
-        if agent is not None:
-            # Chris forwards only the agent's id. Chat looks up the display name later
-            # (service.py); until then the id stands in for it.
-            if (
-                set(agent) != {"id"}
-                or not isinstance(agent["id"], str)
-                or not agent["id"]
-            ):
-                raise ValueError("agent must be exactly {'id': <text>}")
-            fields["agent"] = {"id": agent["id"], "name": agent["id"]}
+        # Chris forwards the registry's id, name and description for the expert; the
+        # endpoint stays with Chris.
+        if agent is not None and (
+            set(agent) != {"id", "name", "description"}
+            or not isinstance(agent["id"], str)
+            or not agent["id"]
+            or not isinstance(agent["name"], str)
+            or not agent["name"]
+            or not (
+                agent["description"] is None or isinstance(agent["description"], str)
+            )
+        ):
+            raise ValueError("agent must be exactly {'id', 'name', 'description'}")
         info = RoutingInfo.model_validate(fields)
     except (ValidationError, ValueError):
         # Never echo the rejected values.

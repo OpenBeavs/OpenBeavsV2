@@ -283,13 +283,12 @@ class TestChrisIsStillAvailableButNotRegistered:
         assert "chris" not in {agent.id for agent in routable_agents(db)}
 
     def test_agents_listing_does_not_include_chris(
-        self, client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
         monkeypatch.setattr("app.db.seed_agents.SessionLocal", factory)
         seed_agents()
-        listed = client.get("/chat/agents").json()
-        ids = {agent["id"] for agent in listed}
+        ids = {agent.id for agent in routable_agents(db)}
         assert OSU_ID in ids
         assert "chris" not in ids
 
