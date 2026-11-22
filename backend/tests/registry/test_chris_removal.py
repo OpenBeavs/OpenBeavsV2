@@ -295,10 +295,10 @@ class TestChrisIsStillAvailableButNotRegistered:
     def test_discovery_card_is_served_by_code_without_a_database_row(
         self, db: Session
     ) -> None:
-        from app.main import app
+        from app.chris.run import create_app
 
         assert db.get(Agent, "chris") is None
-        with TestClient(app) as client:
+        with TestClient(create_app()) as client:
             response = client.get("/chris/a2a/.well-known/agent-card.json")
         assert response.status_code == 200
         card = response.json()

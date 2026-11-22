@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.chat.a2a_client import ChrisReply, ChrisUnavailable
 from app.chris.routing import RoutingResult
+from app.chris.run import create_app as create_chris_app
 from app.config import ConfigError
 from app.db.base import Base
 from app.db.session import get_db
@@ -82,6 +83,15 @@ def test_registry_admin_api_is_not_served_here():
     assert client.post("/registry/agents", json={"url": "https://x.test"}).status_code == 404
 
 
+def test_chris_a2a_endpoint_is_not_served_here():
+    """Chris runs only as its own process; chat reaches it over the network."""
+    with TestClient(app) as client:
+        card = client.get("/chris/a2a/.well-known/agent-card.json")
+        rpc = client.post("/chris/a2a/", json={})
+    assert card.status_code == 404
+    assert rpc.status_code == 404
+
+
 def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
     """The frontend API calls the real A2A agent without storing its response."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))
@@ -94,6 +104,7 @@ def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
     ]
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
+    chris = create_chris_app()
     requests = []
 
     def http_client():
@@ -101,7 +112,7 @@ def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
             requests.append(request)
 
         return httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
+            transport=httpx.ASGITransport(app=chris),
             event_hooks={"request": [record]},
         )
 
@@ -140,9 +151,10 @@ def test_unavailable_registry_gemini_reply_is_not_saved(
     monkeypatch.setattr("app.chris.gemini.answer", answer)
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     monkeypatch.setenv("REGISTRY_A2A_URL", "http://registry.example.test/")
+    chris = create_chris_app()
     monkeypatch.setattr(
         "app.chat.a2a_client._http_client",
-        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=app)),
+        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris)),
     )
 
     def unavailable(request):

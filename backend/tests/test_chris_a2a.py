@@ -1,4 +1,4 @@
-"""Exercise Chris through the real mounted ADK app and A2A SDK, without a model."""
+"""Exercise Chris through its real standalone ADK app and A2A SDK, without a model."""
 
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -10,7 +10,7 @@ from a2a.types import Message, Part, Role, SendMessageRequest, TaskState
 from fastapi.testclient import TestClient
 
 from app.chris.routing import RoutingResult
-from app.main import app
+from app.chris.run import create_app
 
 CARD_PATH = "/chris/a2a/.well-known/agent-card.json"
 RPC_PATH = "/chris/a2a/"
@@ -25,9 +25,9 @@ def local_config(monkeypatch):
 
 
 def test_generated_card_and_repeated_startup():
-    """The parent's lifespan initializes discovery without accumulating mounts."""
-    route_count = len(app.routes)
+    """Each start builds discovery afresh, with Chris's endpoint as the only mount."""
     for _ in range(2):
+        app = create_app()
         with TestClient(app) as client:
             response = client.get(CARD_PATH)
             assert response.status_code == 200
@@ -44,17 +44,18 @@ def test_generated_card_and_repeated_startup():
             assert card["defaultInputModes"] == ["text/plain"]
             assert card["skills"]
             assert client.get("/chris/.well-known/agent.json").status_code == 404
-        assert len(app.routes) == route_count
+        assert [route.path for route in app.routes] == ["/chris/a2a"]
 
 
 @pytest.mark.parametrize("text", ["Hello Chris", "   "])
 def test_sdk_discovery_and_message(text, monkeypatch):
-    """A real SDK client discovers the mounted endpoint and receives its result."""
+    """A real SDK client discovers Chris's endpoint and receives its result."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
     monkeypatch.setattr("app.chris.gemini.answer", answer)
     history = [{"role": "assistant", "content": "Earlier answer"}]
+    app = create_app()
 
     async def send():
         async with httpx.AsyncClient(
@@ -120,7 +121,7 @@ def test_sdk_discovery_and_message(text, monkeypatch):
 )
 def test_sdk_rejects_malformed_rpc(body):
     """Protocol validation is provided by the SDK instead of a handwritten route."""
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         response = client.post(RPC_PATH, json=body, headers={"A2A-Version": "1.0"})
     assert response.status_code in (200, 400, 422)
     assert "error" in response.json()
@@ -129,7 +130,7 @@ def test_sdk_rejects_malformed_rpc(body):
 def test_public_url_configuration(monkeypatch):
     """Discovery advertises the configured deployment URL, not localhost."""
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "https://hub.example.test")
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         card = client.get(CARD_PATH).json()
     assert (
         card["supportedInterfaces"][0]["url"] == "https://hub.example.test/chris/a2a/"

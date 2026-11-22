@@ -1,13 +1,14 @@
 # OpenBeavs v2 backend
 
-The backend provides the Chat REST API, Chris's ADK/A2A endpoint, and a separately
-started registry service that serves both A2A selection and registry management
-(`/registry/*`). Development uses Python 3.12 and local SQLite; Cloud SQL is not required.
+The backend holds three separately started services: the Chat REST API
+(`app.main:app`), Chris's ADK/A2A agent (`python -m app.chris.run`), and the registry
+service, which serves both A2A selection and registry management (`/registry/*`). Development uses Python 3.12 and local SQLite; Cloud SQL is not required.
 
 Follow [the root README](../README.md#run-locally-windows-powershell) for first-time setup,
 private model configuration, migrations, seeding, and the all-services launcher.
 It uses ports 8010 (backend), 8000 (Chris), 8001 (registry), and 5173 (frontend).
-The registry service must be started separately from `app.main:app`.
+Chris and the registry service are each started separately from `app.main:app`,
+which hosts neither.
 
 The default workflow invokes the selected expert or answers with Gemini on no match
 or a registry failure (fallback requires `GEMINI_API_KEY` and `CHRIS_MODEL`).
@@ -42,7 +43,7 @@ With the runbook's servers running:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8010/health
-Invoke-RestMethod http://127.0.0.1:8010/chris/a2a/.well-known/agent-card.json
+Invoke-RestMethod http://127.0.0.1:8000/chris/a2a/.well-known/agent-card.json
 Invoke-RestMethod http://127.0.0.1:8001/ready
 ```
 

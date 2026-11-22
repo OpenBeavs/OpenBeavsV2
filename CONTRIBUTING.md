@@ -50,9 +50,11 @@ backend/frontend setup, configuration, checks, and static hosting requirements.
 
 ### Running the app Locally
 
-From `backend/`, run `uv sync`, then `uv run alembic upgrade head`. Start FastAPI
-on port 8000 with `uv run uvicorn app.main:app --reload`. In a second terminal,
-run `npm ci` and `npm run dev` from `frontend/`. The frontend proxies the existing Chris API to FastAPI; the
+From `backend/`, run `uv sync`, then `uv run alembic upgrade head`. From `frontend/`,
+run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
+with the launcher described in the [README](README.md): Chris and the registry each
+run as their own process, so starting `app.main:app` alone does not answer chat
+messages. The frontend proxies the chat API to FastAPI; the
 original Open WebUI backend is not used. Follow the linked guide for commands.
 
 ### Handling secrets

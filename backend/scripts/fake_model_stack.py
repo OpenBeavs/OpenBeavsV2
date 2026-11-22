@@ -4,9 +4,10 @@ Starts, on loopback only:
 
 - the registry A2A service (real code) on 127.0.0.1:8101, with a scripted stand-in for
   Gemini and the registry's local-development mode (no authentication);
-- the Chat + Chris backend (real code) on 127.0.0.1:8100, pointed at that registry.
+- Chris's A2A agent (real code) on 127.0.0.1:8102, pointed at that registry;
+- the Chat backend (real code) on 127.0.0.1:8100, pointed at that Chris.
 
-Both use a fresh temporary SQLite database with three experts. No Gemini key is read
+The registry uses a fresh temporary SQLite database with three experts. No Gemini key is read
 (``PYTHON_DOTENV_DISABLED`` stops ``.env`` from loading). Expert dispatch and Gemini
 fallback use scripted replies.
 This proves the plumbing and the user interface; it says nothing about how the real model
@@ -53,8 +54,8 @@ os.environ.update(
     {
         "PYTHON_DOTENV_DISABLED": "1",
         "DATABASE_URL": f"sqlite:///{Path(_tmp, 'stack.db').as_posix()}",
-        "CHRIS_PUBLIC_URL": "http://127.0.0.1:8100",
-        "CHRIS_A2A_URL": "http://127.0.0.1:8100/chris/a2a/",
+        "CHRIS_PUBLIC_URL": "http://127.0.0.1:8102",
+        "CHRIS_A2A_URL": "http://127.0.0.1:8102/chris/a2a/",
         "REGISTRY_A2A_URL": "http://127.0.0.1:8101/a2a/registry",
         "REGISTRY_A2A_TIMEOUT_SECONDS": "3",
         "CHRIS_A2A_TIMEOUT_SECONDS": "10",
@@ -67,6 +68,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from app.chris import expert_client, gemini
+from app.chris.run import create_app as create_chris_app
 from app.db import SessionLocal, engine
 from app.db.base import Base
 from app.main import app as backend_app
@@ -76,7 +78,7 @@ from app.registry.a2a_app import create_registry_a2a_app
 from app.registry.a2a_auth import open_verifier
 from app.registry.llm import LLMError, ModelLimiter
 
-REGISTRY_PORT, BACKEND_PORT = 8101, 8100
+REGISTRY_PORT, BACKEND_PORT, CHRIS_PORT = 8101, 8100, 8102
 
 
 def seed() -> None:
@@ -181,9 +183,11 @@ def main() -> int:
         ),
     )
     serve(registry, REGISTRY_PORT)
+    serve(create_chris_app(), CHRIS_PORT)
     serve(backend_app, BACKEND_PORT)
     print(
         f"Fake-model stack ready: backend http://127.0.0.1:{BACKEND_PORT}, "
+        f"Chris http://127.0.0.1:{CHRIS_PORT}, "
         f"registry http://127.0.0.1:{REGISTRY_PORT} (database in {_tmp})",
         flush=True,
     )

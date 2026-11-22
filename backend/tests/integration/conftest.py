@@ -1,9 +1,10 @@
 """A real Chat + Chris + registry pipeline in one process, with a fake model.
 
-What is real: the Chat router and service, Chris's ADK agent served over A2A, Chris's
-registry client, the registry's A2A application (card, executor, selection, limiter,
-eligibility checks) and its database queries. All three speak the real A2A protocol
-through the official SDK over in-memory HTTP.
+What is real: the Chat router and service, Chris's ADK agent served over A2A from its
+own application, Chris's registry client, the registry's A2A application (card,
+executor, selection, limiter, eligibility checks) and its database queries. All three
+are separate ASGI applications that speak the real A2A protocol through the official
+SDK over in-memory HTTP.
 
 What is fake: the Gemini call inside the registry (``call_llm``), because tests must be
 deterministic and free. Nothing here proves how a real model behaves, that a Google
@@ -26,6 +27,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.chat import a2a_client
 from app.chris import registry_client
+from app.chris.run import create_app as create_chris_app
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app as backend_app
@@ -188,6 +190,7 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
         ),
     )
 
+    chris_app = create_chris_app()
     backend_app.dependency_overrides[get_db] = override_get_db
     monkeypatch.setattr(
         registry_client,
@@ -202,7 +205,7 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
     monkeypatch.setattr(
         a2a_client,
         "_http_client",
-        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=backend_app)),
+        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris_app)),
     )
     with TestClient(backend_app) as client:
         p = Pipeline(client, factory)

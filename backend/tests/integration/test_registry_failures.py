@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.chat import a2a_client
 from app.chris import gemini, registry_client
+from app.chris.run import create_app as create_chris_app
 from app.db.session import get_db
 from app.main import app as backend_app
 
@@ -102,6 +103,7 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     monkeypatch.setenv("CHRIS_A2A_URL", f"{CHRIS_ORIGIN}/chris/a2a/")
     monkeypatch.setenv("REGISTRY_A2A_URL", f"{REGISTRY_ORIGIN}/a2a/registry")
     monkeypatch.setenv("REGISTRY_A2A_TIMEOUT_SECONDS", "3")
+    chris_app = create_chris_app()
     monkeypatch.setattr(
         registry_client,
         "_http_client",
@@ -112,7 +114,7 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     monkeypatch.setattr(
         a2a_client,
         "_http_client",
-        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=backend_app)),
+        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris_app)),
     )
 
     async def no_gemini(*args):

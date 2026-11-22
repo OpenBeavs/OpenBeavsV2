@@ -10,24 +10,25 @@ from fastapi.testclient import TestClient
 
 from app.chat.a2a_client import ChrisUnavailable, send_message
 from app.chris.routing import RoutingResult
+from app.chris.run import create_app
 from app.config import ConfigError
-from app.main import app
 
 
 def test_chat_client_calls_real_chris(monkeypatch):
-    """Chat's production client speaks to the actual mounted ADK agent."""
+    """Chat's production client speaks to the actual ADK agent in its own app."""
     selection = AsyncMock(return_value=RoutingResult(status="no_match"))
     monkeypatch.setattr("app.chris.registry_client.select_agent", selection)
     answer = AsyncMock(return_value="Gemini answer.")
     monkeypatch.setattr("app.chris.gemini.answer", answer)
     monkeypatch.setenv("CHRIS_PUBLIC_URL", "http://testserver")
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
+    chris = create_app()
 
     def http_client():
-        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app))
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=chris))
 
     with (
-        TestClient(app) as client,
+        TestClient(chris) as client,
         patch("app.chat.a2a_client._http_client", side_effect=http_client),
     ):
         reply = client.portal.call(

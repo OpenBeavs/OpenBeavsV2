@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 from google.adk.sessions import InMemorySessionService
 
 from app.chris.routing import RoutingResult
+from app.chris.run import create_app
 from app.chris.transport import MessageOnlyTaskStore
-from app.main import app
 
 RPC_PATH = "/chris/a2a/"
 HEADERS = {"A2A-Version": "1.0"}
@@ -67,7 +67,7 @@ def send_turn(client, message="Private question", **references):
 )
 def test_tasks_cannot_be_enumerated_or_read(method):
     """Knowing a real task/context ID must not expose another request's data."""
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         task = send_turn(client)
         assert task["status"]["state"] == "TASK_STATE_COMPLETED"
         params = (
@@ -87,7 +87,7 @@ def test_tasks_cannot_be_enumerated_or_read(method):
 
 def test_prior_task_cannot_be_resumed():
     """SendMessage cannot use a known task ID to bypass retrieval restrictions."""
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         task = send_turn(client)
         response = client.post(
             RPC_PATH,
@@ -138,7 +138,7 @@ def test_finished_requests_release_task_and_session_stores(monkeypatch):
         await asyncio.sleep(0)
         gc.collect()
 
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         for _ in range(3):
             send_turn(client, contextId="same-untrusted-context")
         client.portal.call(collect_finished_requests)

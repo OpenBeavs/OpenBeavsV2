@@ -1,4 +1,7 @@
-"""Build Chris's SDK-backed A2A application and generated discovery card."""
+"""Build Chris's SDK-backed A2A application and generated discovery card.
+
+``app.chris.run`` serves it as a standalone process; no other server mounts it.
+"""
 
 from urllib.parse import urlsplit
 

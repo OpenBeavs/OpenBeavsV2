@@ -6,27 +6,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.routing import Mount
 
 from app.auth.router import router as auth_router
 from app.chat.router import router as chat_router
-from app.chris.a2a import MOUNT_PATH, build_chris_a2a_app
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Initialize Chris's isolated A2A endpoint."""
+    """Configure logging. Chris runs as its own process (``app.chris.run``)."""
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("app").setLevel(logging.INFO)
-    chris_app = await build_chris_a2a_app()
-    mount = Mount(MOUNT_PATH, app=chris_app)
-    # Keep the mounted app's lifespan aligned with the parent application's.
-    async with chris_app.router.lifespan_context(chris_app):
-        app.router.routes.append(mount)
-        try:
-            yield
-        finally:
-            app.router.routes.remove(mount)
+    yield
 
 
 app = FastAPI(title="OpenBeavs v2 (prototype)", lifespan=lifespan)

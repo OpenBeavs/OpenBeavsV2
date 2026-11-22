@@ -14,11 +14,11 @@ uv sync
 uv run alembic upgrade head
 # Optional: seed the registry's initial expert agents.
 uv run python -m app.db.seed_agents
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 Follow [the root README](../README.md#run-locally-windows-powershell) for backend dependencies,
 migrations, model configuration, and the all-services launcher. It runs the backend at
-`http://127.0.0.1:8010`, Chris at port 8000, and the registry at port 8001.
+`http://127.0.0.1:8010`, Chris at port 8000, and the registry at port 8001. Chris and
+the registry are separate processes; the backend alone cannot answer a chat message.
 Use Python 3.12 and Node 22 or newer.
 
 In `frontend/`, after `npm ci`, start Vite with the backend proxy origin:
@@ -30,7 +30,7 @@ npm run dev
 
 Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
 calls `/health` and `/chat/message`. Vite proxies those requests to
-`http://127.0.0.1:8000` in development and preview, avoiding cross-origin browser
+`BACKEND_ORIGIN` in development and preview, avoiding cross-origin browser
 requests. To use another backend, set the **non-secret server-side**
 `BACKEND_ORIGIN` when starting Vite:
 
@@ -38,8 +38,9 @@ requests. To use another backend, set the **non-secret server-side**
 BACKEND_ORIGIN=http://127.0.0.1:9000 npm run dev
 ```
 Open the Local URL printed by Vite (normally `http://127.0.0.1:5173`). The browser
-calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`,
-which defaults to port 8000 if unset. It is a server-side setting, not a browser secret.
+calls relative `/health` and `/chat/*` paths. Vite proxies them to `BACKEND_ORIGIN`.
+Always set it: the fallback when it is unset is port 8000, where the launcher runs
+Chris, not the backend. It is a server-side setting, not a browser secret.
 Do not put model keys, database credentials, or login tokens in frontend configuration.
 
 No backend API routes, CORS configuration, or database migrations are added by

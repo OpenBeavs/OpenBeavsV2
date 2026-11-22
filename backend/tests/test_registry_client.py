@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.chat.a2a_client import ChrisUnavailable, send_message
 from app.chris import gemini, registry_client, routing
-from app.main import app
+from app.chris.run import create_app
 
 RPC_URL = "http://registry.example.test/a2a/registry/"
 SELECTED = {
@@ -326,11 +326,12 @@ def test_fallback_mode_answers_no_match_and_failures_with_gemini(
     monkeypatch.setattr(registry_client, "select_agent", selection)
     monkeypatch.setattr(gemini, "answer", answer)
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
+    chris = create_app()
     monkeypatch.setattr(
         "app.chat.a2a_client._http_client",
-        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=app)),
+        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris)),
     )
-    with TestClient(app) as client:
+    with TestClient(chris) as client:
         if model_failure:
             with pytest.raises(ChrisUnavailable):
                 client.portal.call(send_message, "Hello", [])
@@ -359,11 +360,12 @@ def test_selected_expert_answers(monkeypatch) -> None:
     answer = AsyncMock(return_value="must not be used")
     monkeypatch.setattr(gemini, "answer", answer)
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
+    chris = create_app()
     monkeypatch.setattr(
         "app.chat.a2a_client._http_client",
-        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=app)),
+        lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris)),
     )
-    with TestClient(app) as client:
+    with TestClient(chris) as client:
         reply = client.portal.call(send_message, "Hello", [])
     answer.assert_not_awaited()
     assert reply.routing.status == "selected"
