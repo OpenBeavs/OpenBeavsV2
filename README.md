@@ -3,8 +3,8 @@
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
 - `frontend/`: Svelte chat interface.
-- `backend/`: chat REST API, sign-in, and persistence.
-- `chat-system/`: the OpenBeavs Chat System. `chat-system/conversation-agent/` holds Chris, the Conversation Agent (an ADK agent served over A2A), a Python package with its own environment, run as its own service.
+- `chat-system/`: the OpenBeavs Chat System. `chat-system/application-services/` holds Application Services (the chat REST API and sign-in), a Python package with its own environment, database and migrations. `chat-system/conversation-agent/` holds Chris, the Conversation Agent (an ADK agent served over A2A), a Python package with its own environment. Each runs as its own service.
+- `backend/`: the end-to-end tests, which run the Chat System and the registry together, and the fake-model stack the browser pipeline test starts.
 - `agent-registry/`: the Agent Registry (expert selection over A2A, and registry management), a Python package with its own environment, database and migrations, run as its own service.
 - `docs/`: API, frontend setup, and database documentation.
 
@@ -29,9 +29,9 @@ cd agent-registry
 uv sync --locked --python 3.12
 cd ../chat-system/conversation-agent
 uv sync --locked --python 3.12
-cd ../../backend
+cd ../application-services
 uv sync --locked --python 3.12
-cd ..
+cd ../..
 [ -f .env ] || cp .env.example .env
 cd frontend
 npm ci
@@ -45,16 +45,16 @@ For local registry development, set `REGISTRY_A2A_AUTH=dev`. Set
 local registry admin actions.
 
 Initialize the local databases before the first run, and rerun migrations when
-the schema changes. The registry and the chat backend each keep their own:
+the schema changes. The registry and Application Services each keep their own:
 
 ```zsh
 export DATABASE_URL='sqlite:///./openbeavs.db'
 cd agent-registry
 uv run alembic upgrade head
 uv run python -m agent_registry.db.seed_agents
-cd ../backend
+cd ../chat-system/application-services
 uv run alembic upgrade head
-cd ..
+cd ../..
 ```
 
 Start all four services from the repository root:
@@ -64,8 +64,12 @@ bash start-dev-mac.sh
 ```
 
 Open [OpenBeavs](http://127.0.0.1:5173). The script runs all four services in one
-terminal. The registry uses `agent-registry/openbeavs.db`, and Chat uses
-`backend/openbeavs.db`; Chris has no database. Press **Ctrl+C** there to stop them.
+terminal. The registry uses `agent-registry/openbeavs.db`, and Application Services uses
+`chat-system/application-services/openbeavs.db`; Chris has no database. Press **Ctrl+C**
+there to stop them. A `backend/openbeavs.db` from before Application Services had its
+own folder is no longer read; [Application Services'
+README](chat-system/application-services/README.md#a-database-built-by-the-earlier-shared-migrations)
+says how to keep its rows.
 
 ## Run locally (Windows PowerShell)
 
@@ -82,10 +86,11 @@ cd ..\chat-system\conversation-agent
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e . --group dev
-cd ..\..\backend
+cd ..\application-services
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ..\agent-registry -e ..\chat-system\conversation-agent -e . -r requirements-dev.txt
-cd ..
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e . --group dev
+cd ..\..
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 cd .\frontend
 npm install
@@ -101,7 +106,7 @@ Virtual environment activation is not required for the commands below.
 
 ### 1. Create or update the local databases
 
-The registry and the chat backend each keep their own database. Open PowerShell in the
+The registry and Application Services each keep their own database. Open PowerShell in the
 repository root (`OpenBeavsV2`), then create the registry's:
 
 ```powershell
@@ -116,36 +121,37 @@ Wait for the command to finish successfully, then seed the standard registered a
 .\.venv\Scripts\python.exe -m agent_registry.db.seed_agents
 ```
 
-Then create the chat backend's:
+Then create Application Services':
 
 ```powershell
-cd ..\backend
+cd ..\chat-system\application-services
 .\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-This creates or updates `agent-registry/openbeavs.db` and `backend/openbeavs.db`. SQLite does not require a separate
+This creates or updates `agent-registry/openbeavs.db` and `chat-system/application-services/openbeavs.db`. SQLite does not require a separate
 database server. Migrations apply pending schema changes; rerunning the seed preserves
 existing agents. Setting `DATABASE_URL` explicitly ensures this session uses
 `openbeavs.db` rather than another configured file such as `registry-local.db`.
 
 ### 2. Start all four services
 
-In the **same PowerShell terminal**, still inside `backend/`, run:
+In the **same PowerShell terminal**, still inside `chat-system/application-services/`, run:
 
 ```powershell
-.\.venv\Scripts\python.exe ..\start-dev.py
+.\.venv\Scripts\python.exe ..\..\start-dev.py
 ```
 
 Alternatively, from the repository root:
 
 ```powershell
 $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
-.\backend\.venv\Scripts\python.exe .\start-dev.py
+.\chat-system\application-services\.venv\Scripts\python.exe .\start-dev.py
 ```
 
 The launcher runs the registry from `agent-registry/` and Chris from
-`chat-system/conversation-agent/`, each with its own environment, and the backend from
-`backend/`, so both forms use the same two local databases. It starts each service in a separate Windows console:
+`chat-system/conversation-agent/`, and Application Services from
+`chat-system/application-services/`, each with its own environment, so both forms use
+the same two local databases. It starts each service in a separate Windows console:
 
 | Service | Local address | Purpose |
 |---|---|---|

@@ -11,14 +11,14 @@ import json
 
 import httpx
 import pytest
+from application_services.chat import a2a_client
+from application_services.db.session import get_db
+from application_services.main import app as backend_app
 from conversation_agent import gemini, registry_client
 from conversation_agent.run import create_app as create_chris_app
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from app.chat import a2a_client
-from app.db.session import get_db
-from app.main import app as backend_app
 from tests.databases import chat_system_engine
 
 from .conftest import CHRIS_ORIGIN, REGISTRY_ORIGIN

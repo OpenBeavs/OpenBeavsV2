@@ -5,7 +5,8 @@ Starts, on loopback only:
 - the registry A2A service (real code) on 127.0.0.1:8101, with a scripted stand-in for
   Gemini and the registry's local-development mode (no authentication);
 - Chris's A2A agent (real code) on 127.0.0.1:8102, pointed at that registry;
-- the Chat backend (real code) on 127.0.0.1:8100, pointed at that Chris.
+- Application Services, the Chat backend (real code), on 127.0.0.1:8100, pointed at that
+  Chris.
 
 The Chat backend and the registry each get a database of their own, holding only
 their own tables: by default two fresh temporary SQLite files. Set
@@ -50,9 +51,6 @@ import threading
 import time
 from pathlib import Path
 
-# Run as a script from anywhere: make the backend package importable.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 # Configure before importing the app: settings are read at import and call time.
 _tmp = tempfile.mkdtemp(prefix="openbeavs-fake-stack-")
 # One database per owner. The process's DATABASE_URL is the Chat backend's; the
@@ -86,15 +84,14 @@ from agent_registry.a2a_auth import open_verifier
 from agent_registry.db.base import RegistryBase
 from agent_registry.llm import LLMError, ModelLimiter
 from agent_registry.models import Agent
+from application_services.db import engine
+from application_services.db.base import ChatSystemBase
+from application_services.main import app as backend_app
 from conversation_agent import expert_client, gemini
 from conversation_agent.run import create_app as create_chris_app
 from fastapi import FastAPI
 from sqlalchemy import create_engine, make_url
 from sqlalchemy.orm import sessionmaker
-
-from app.db import engine
-from app.db.base import ChatSystemBase
-from app.main import app as backend_app
 
 REGISTRY_PORT, BACKEND_PORT, CHRIS_PORT = 8101, 8100, 8102
 

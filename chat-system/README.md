@@ -15,4 +15,4 @@ The system people talk to. It relays each question to the expert that fits and r
 | `application-services/` | Turn handling and sign-in; later, conversation storage | No |
 | `conversation-agent/` | Asks the Registry about each message, calls the one expert it returns, relays its answer or answers itself | Yes |
 
-Until they move into this folder, Application Services is in `backend/` and the Web UI in `frontend/`, at the repository root.
+Until it moves into this folder, the Web UI is in `frontend/`, at the repository root.

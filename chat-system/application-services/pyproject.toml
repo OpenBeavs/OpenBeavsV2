@@ -1,0 +1,39 @@
+# A package of its own, so that importing another system's code fails.
+[project]
+name = "openbeavs-application-services"
+version = "0.0.0"
+description = "OpenBeavs Application Services: the Chat System's HTTPS API, with sign-in and turn handling."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+    # Signs and verifies session tokens, and verifies Microsoft's ID tokens at sign-in.
+    "pyjwt[crypto]>=2.8.0",
+    # Calls the Conversation Agent over A2A with the SDK client. Pinned to the version
+    # the agent serves, so both ends speak the same protocol code.
+    "a2a-sdk==1.3.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "ruff>=0.14,<1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Only application_services is the package. An editable install maps that name alone,
+# so an environment that installs it cannot import this folder's tests/ or migrations/.
+[tool.setuptools.packages.find]
+include = ["application_services*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

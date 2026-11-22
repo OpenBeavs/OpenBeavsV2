@@ -20,11 +20,11 @@ from collections.abc import Iterator
 
 import pytest
 from agent_registry.service import routable_agents
+from application_services.models import User
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
-from app.models import User
 from tests.databases import (
     CHAT_SYSTEM_URL_VARIABLE,
     REGISTRY_URL_VARIABLE,

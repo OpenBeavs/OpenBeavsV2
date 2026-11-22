@@ -9,11 +9,10 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from application_services.chat.a2a_client import ChrisUnavailable, send_message
 from conversation_agent import gemini, registry_client, routing
 from conversation_agent.run import create_app
 from fastapi.testclient import TestClient
-
-from app.chat.a2a_client import ChrisUnavailable, send_message
 
 
 @pytest.mark.parametrize(
@@ -44,7 +43,7 @@ def test_fallback_mode_answers_no_match_and_failures_with_gemini(
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     chris = create_app()
     monkeypatch.setattr(
-        "app.chat.a2a_client._http_client",
+        "application_services.chat.a2a_client._http_client",
         lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris)),
     )
     with TestClient(chris) as client:
@@ -78,7 +77,7 @@ def test_selected_expert_answers(monkeypatch) -> None:
     monkeypatch.setenv("CHRIS_A2A_URL", "http://testserver/chris/a2a/")
     chris = create_app()
     monkeypatch.setattr(
-        "app.chat.a2a_client._http_client",
+        "application_services.chat.a2a_client._http_client",
         lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris)),
     )
     with TestClient(chris) as client:

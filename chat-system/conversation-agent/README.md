@@ -68,66 +68,6 @@ turns are not saved or added to browser history.
 Internal registry codes remain in Chris's client for classification and logging.
 They are not included in Chris-to-Chat routing data or browser-facing schemas.
 
-## Frontend API
-
-| Method | Path | Behavior |
-| --- | --- | --- |
-| GET | `/health` | Returns `{"status":"ok","app":"OpenBeavs v2"}`; does not check dependencies. |
-| POST | `/chat/message` | Bound client history and call Chris over A2A without saving transcripts. |
-
-The former `/chris/message` path has been replaced by `/chat/message`; no
-compatibility alias is registered. The agent directory (`/chat/agents`, earlier
-`/chris/agents`) has been removed: the chat API reads no registry data, and listing
-registered agents is the registry's own API (`GET /registry/agents`).
-
-### `POST /chat/message`
-
-```json
-{
-  "message": "What majors does OSU offer?",
-  "history": [{"role":"user","content":"Earlier question"}],
-  "source_domain": "library.oregonstate.edu"
-}
-```
-
-A response has this shape:
-
-```json
-{
-  "response": "The answer is 42.",
-  "chat_id": null,
-  "routed_to": "math-expert",
-  "agent_name": "Math Expert",
-  "routing_confidence": null,
-  "routing_reason": null,
-  "routing": {
-    "status": "selected",
-    "agent": {"id": "math-expert", "name": "Math Expert", "description": "..."},
-    "confidence": null,
-    "reason": null
-  }
-}
-```
-
-`routing` retains successful expert metadata with `status: "selected"`.
-The schema accepts legacy `no_match` replies from older Chris instances. Endpoints are never sent to the
-browser. There is no error field. The UI renders `response` in a normal bubble and
-shows “Answered by” with `agent_name` for expert replies. `routing` is null for Gemini answers. The older
-flat fields mirror a selected result and are null otherwise. `chat_id` is always
-null for compatibility. The public endpoint is stateless: history comes only from
-the request, bounded before forwarding to Chris. Omit the current message from
-`history`, because it is supplied separately. Legacy `chat_id`, `guest_session_id`
-and `user_id` request fields are ignored, including IDs belonging to real users.
-No conversation history, routing metadata or guest identifier is saved to the DB.
-
-Errors: 400 for blank message text, 422 for invalid request bodies, 500 for
-chat-to-Chris configuration errors, and 503 when Chris cannot produce a completed
-A2A reply. Failed turns are not added to the browser's successful history.
-
-The database owner handles deletion of existing guest chats and their messages
-separately. The former `DELETE /chat/chats/expired` endpoint is removed.
-Verified SSO and account-backed chat storage are not implemented.
-
 ## Chris's A2A API
 
 - `GET /chris/a2a/.well-known/agent-card.json`: ADK-generated discovery card.
@@ -265,7 +205,7 @@ integration emits experimental warnings; those warnings alone are not failures.
 
 ## Running and deployment status
 
-Chris runs only as its own process. The chat API (`app.main:app`) does not host
+Chris runs only as its own process. The chat API (`application_services.main:app`) does not host
 Chris's A2A endpoint; it calls the address in `CHRIS_A2A_URL` over HTTP/A2A. Any
 deployment therefore runs Chris as a separate service beside the chat API and the
 registry, and sets `CHRIS_A2A_URL` (for chat) and `CHRIS_PUBLIC_URL` (for Chris's
@@ -317,14 +257,8 @@ conversation_agent/security.py        the safe-URL checks applied before an expe
 tests/                                Chris's tests, run in this folder's environment
 ```
 
-The chat API, in `backend/app/chat/` at the repository root:
-
-```text
-router.py          frontend REST routes
-schemas.py         frontend request/response models
-service.py         transient history, response assembly
-a2a_client.py      SDK client adapter that calls Chris
-```
+The chat API that calls Chris, and its contract with the browser, are in
+[Application Services](../application-services/README.md#frontend-api).
 
 A2A caller authentication, authenticated expert invocation, mixed-version expert routing, verified SSO, streaming in the frontend, saved-chat retrieval, and
 automated TTL cleanup remain future work. See [registry](../../agent-registry/README.md) and

@@ -21,8 +21,8 @@ environment, its own database holding the `agents` table described in
 `docs/db_docs/database-architecture.md`, and its own migrations (`migrations/`). No other
 system reads that table. The registry runs as its own service
 (`agent_registry.a2a_app:create_standalone_app`, port 8001 locally), which serves both
-registry management (`/registry/*`) and A2A selection (`/a2a/registry/`). The Chat
-backend (`app.main:app`) serves neither.
+registry management (`/registry/*`) and A2A selection (`/a2a/registry/`). Application
+Services (`application_services.main:app`) serves neither.
 
 ## How an agent gets in
 
@@ -132,7 +132,7 @@ The standalone service also serves two probe routes, neither of which needs a to
 | `GET /health` | **Liveness.** The process is up. Never touches the database or the model. |
 | `GET /ready` | **Readiness.** 200 only if the `agents` table can be read (including the registry's review columns, so an unmigrated database is reported), `REGISTRY_PUBLIC_URL` is usable, A2A authentication is usable, and `REGISTRY_MODEL` and a Gemini key are set. Otherwise 503. It **never calls Gemini**, so it costs nothing. The body is `{"status": "ready" or "not_ready", "checks": {...}}` with `database`, `public_url`, `auth`, `model` and `model_key` each `ok` or `failed`. It never contains setting values, connection details or error text (logs name the failing variable only). It checks that a key is *set*, not that Google accepts it. |
 
-The Chat backend (`app.main:app`) has only `/health`; `/ready` belongs to the standalone
+Application Services (`application_services.main:app`) has only `/health`; `/ready` belongs to the standalone
 registry service. Use `/health` for the Cloud Run liveness probe and `/ready` for startup or
 readiness checks and for deployment verification. `/ready` is public like `/health`; it
 reveals only which of those five checks pass.
@@ -297,8 +297,8 @@ Chris itself does not attach that token yet.
 
 ## Endpoints
 
-The registry service serves these itself (locally `http://127.0.0.1:8001`). The Chat
-backend does not serve them.
+The registry service serves these itself (locally `http://127.0.0.1:8001`). Application
+Services does not serve them.
 
 | Method and path | Who | What |
 |---|---|---|
@@ -443,27 +443,35 @@ routable by omission.
 ### A database built by the earlier, shared migrations
 
 Until the registry had a package of its own, its table was created by the chat backend's
-migrations (`backend/alembic/`), which also create the chat tables. Their revision
+migrations (`backend/alembic/`), which also created the chat tables. Their revision
 `a7c3e91d5b02` added the review columns and backfilled existing agents to `approved`,
 and `d4f1b8a2c967` removed the `chris` row the early seed had inserted. At that history's
 head, `e6b2c4a9f815`, the `agents` table is exactly the one `182d32a2edcd` creates. Such a
 database adopts the registry's history without changing a row:
 
 1. Take a backup (on Cloud SQL, a backup of the instance).
-2. Bring it to the old head: from `backend/`, with `DATABASE_URL` pointing at it,
-   `uv run alembic upgrade head`. Check read-only that
-   `SELECT version_num FROM alembic_version;` returns `e6b2c4a9f815`.
+2. Check read-only that `SELECT version_num FROM alembic_version;` returns
+   `e6b2c4a9f815`. If it returns an earlier revision, bring it to that head with the
+   shared migrations, which this tree no longer holds. Find the commit that removed
+   them with `git log -1 --format=%H --diff-filter=D -- backend/alembic.ini`, check out
+   its parent in a separate folder (`git worktree add <folder> <commit>^`), and from
+   that checkout's `backend/`, with `DATABASE_URL` pointing at the database, run
+   `uv sync --locked` and `uv run alembic upgrade head`.
 3. From `agent-registry/`, with the same `DATABASE_URL`, record the registry's revision:
    `uv run alembic stamp --purge 182d32a2edcd`. `--purge` replaces the old history's
    version row, which the registry's history does not know. Do this only where the
    database's `alembic_version` table belongs to the registry alone: a database (or,
-   under PostgreSQL, a schema) that the chat backend's migrations no longer use.
-4. Verify: `uv run alembic current` prints `182d32a2edcd (head)`, and
+   under PostgreSQL, a schema) that the Chat System's migrations do not use. The Chat
+   System adopts its own copy (see [Application Services' README](../chat-system/application-services/README.md#a-database-built-by-the-earlier-shared-migrations)).
+4. Remove the Chat System's tables from the registry's copy, in this order:
+   `DROP TABLE messages; DROP TABLE tickets; DROP TABLE chats; DROP TABLE users;`.
+5. Verify: `uv run alembic current` prints `182d32a2edcd (head)`, `uv run alembic check`
+   reports no new upgrade operations, and
    `SELECT id, name, status, is_active FROM agents;` lists the same agents as before.
 
 Locally, a fresh `agent-registry/openbeavs.db` is simpler: run the migrations and the
 seed. To keep the agents an existing `backend/openbeavs.db` holds, copy that file to
-`agent-registry/openbeavs.db` and follow steps 2 to 4 on the copy.
+`agent-registry/openbeavs.db` and follow steps 2 to 5 on the copy.
 
 Neither seed (`agent_registry/db/seed_agents.py`, `docs/db_docs/seed_agents.sql`)
 inserts Chris: he is the orchestrator, his discovery card is served by his own code, and
@@ -588,8 +596,8 @@ against PostgreSQL, set `TEST_REGISTRY_DATABASE_URL` as
 [the shared PostgreSQL server](../shared-resources/postgres/README.md#test-against-it)
 describes. Live model calls verify
 provider configuration separately; they are not a repeatable accuracy benchmark.
-See the [backend checks](../backend/README.md#dependencies-and-checks) for the
-backend suite, which includes the tests that run the registry with Chat and Chris,
+See the [end-to-end checks](../backend/README.md#dependencies-and-checks) for the
+tests that run the registry with Application Services and Chris,
 and [frontend documentation](../docs/frontend.md) for browser validation.
 
 ## Not done yet

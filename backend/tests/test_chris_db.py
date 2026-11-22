@@ -1,20 +1,23 @@
-"""Integration tests for direct answers and the absence of chat persistence."""
+"""The chat API and the real Conversation Agent together, storing no conversation.
+
+These run Chris as a real A2A application behind Application Services' chat API, so
+they are end-to-end tests. The chat API's own tests are in Application Services'
+package.
+"""
 
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from application_services.db.base import ChatSystemBase
+from application_services.db.session import get_db
+from application_services.main import app
+from application_services.models import Chat, Message
 from conversation_agent.routing import RoutingResult
 from conversation_agent.run import create_app as create_chris_app
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-from app.chat.a2a_client import ChrisReply, ChrisUnavailable
-from app.config import ConfigError
-from app.db.base import ChatSystemBase
-from app.db.session import get_db
-from app.main import app
-from app.models import Chat, Message, User
 from tests.databases import chat_system_engine
 
 
@@ -38,52 +41,6 @@ def test_db():
     app.dependency_overrides.clear()
     session.close()
     ChatSystemBase.metadata.drop_all(bind=engine)
-
-
-@patch("app.chat.service.send_message", new_callable=AsyncMock)
-def test_guest_answer_does_not_persist(mock_send, test_db: Session):
-    """Guest answers must not create chat or message records."""
-    mock_send.return_value = ChrisReply("Hello! I am Chris, how can I help you today?")
-    client = TestClient(app)
-
-    payload = {
-        "message": "Hi Chris!",
-        "guest_session_id": "iframe_guest_123",
-        "source_domain": "library.oregonstate.edu",
-    }
-    response = client.post("/chat/message", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert data["response"] == "Hello! I am Chris, how can I help you today?"
-    assert data["routed_to"] is None
-    assert data["routing_confidence"] is None
-    assert data["chat_id"] is None
-    assert test_db.query(Chat).count() == 0
-    assert test_db.query(Message).count() == 0
-
-
-def test_health_check_endpoint():
-    """Verify GET /health returns 200 OK status."""
-    client = TestClient(app)
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok", "app": "OpenBeavs v2"}
-
-
-def test_registry_admin_api_is_not_served_here():
-    """The registry serves its own admin API from its own process."""
-    client = TestClient(app)
-    assert client.get("/registry/agents").status_code == 404
-    assert client.post("/registry/agents", json={"url": "https://x.test"}).status_code == 404
-
-
-def test_chris_a2a_endpoint_is_not_served_here():
-    """Chris runs only as its own process; chat reaches it over the network."""
-    with TestClient(app) as client:
-        card = client.get("/chris/a2a/.well-known/agent-card.json")
-        rpc = client.post("/chris/a2a/", json={})
-    assert card.status_code == 404
-    assert rpc.status_code == 404
 
 
 def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
@@ -112,7 +69,7 @@ def test_frontend_chat_uses_real_adk_chris(test_db, monkeypatch):
 
     with (
         TestClient(app) as client,
-        patch("app.chat.a2a_client._http_client", side_effect=http_client),
+        patch("application_services.chat.a2a_client._http_client", side_effect=http_client),
     ):
         response = client.post(
             "/chat/message",
@@ -147,7 +104,7 @@ def test_unavailable_registry_gemini_reply_is_not_saved(
     monkeypatch.setenv("REGISTRY_A2A_URL", "http://registry.example.test/")
     chris = create_chris_app()
     monkeypatch.setattr(
-        "app.chat.a2a_client._http_client",
+        "application_services.chat.a2a_client._http_client",
         lambda: httpx.AsyncClient(transport=httpx.ASGITransport(app=chris)),
     )
 
@@ -165,89 +122,6 @@ def test_unavailable_registry_gemini_reply_is_not_saved(
     assert response.status_code == 200
     assert response.json()["response"] == "Gemini answer."
     answer.assert_awaited_once_with("Hello", [])
-    assert response.json()["chat_id"] is None
-    assert test_db.query(Chat).count() == 0
-    assert test_db.query(Message).count() == 0
-
-
-@pytest.mark.parametrize(
-    ("error", "expected_status", "detail"),
-    [
-        (
-            ConfigError("Missing Chris endpoint configuration"),
-            500,
-            "Chris is temporarily unavailable. Please try again shortly.",
-        ),
-        (
-            ChrisUnavailable("Chris unavailable"),
-            503,
-            "Chris is temporarily unavailable. Please try again shortly.",
-        ),
-    ],
-)
-def test_chat_preserves_chris_error_responses(test_db, error, expected_status, detail):
-    """Moving the HTTP layer preserves errors and avoids saving failed turns."""
-    with (
-        patch("app.chat.service.send_message", new_callable=AsyncMock) as generate,
-    ):
-        generate.side_effect = error
-        response = TestClient(app).post("/chat/message", json={"message": "Hello"})
-
-    assert response.status_code == expected_status
-    assert response.json() == {"detail": detail}
-    assert test_db.query(Chat).count() == 0
-    assert test_db.query(Message).count() == 0
-
-
-def test_chat_rejects_blank_message_before_calling_chris(test_db):
-    """The extracted chat handler retains validation before A2A invocation."""
-    with patch("app.chat.service.send_message", new_callable=AsyncMock) as answer:
-        response = TestClient(app).post("/chat/message", json={"message": "  "})
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Message cannot be empty."}
-    answer.assert_not_awaited()
-    assert test_db.query(Message).count() == 0
-
-
-@pytest.mark.parametrize("stored_type", ["guest", "authenticated"])
-@pytest.mark.parametrize("claimed_user", [None, "alice", "unknown"])
-@patch("app.chat.service.send_message", new_callable=AsyncMock)
-def test_legacy_ids_cannot_read_or_write_history(
-    mock_send, test_db, stored_type, claimed_user
-):
-    """Even a real user's ID or a matching guest token cannot enable storage."""
-    test_db.add(User(id="alice", email="alice@example.test", role="student"))
-    test_db.flush()
-    chat = Chat(id="legacy", session_type=stored_type,
-                user_id="alice" if stored_type == "authenticated" else None,
-                guest_session_id="old-token")
-    test_db.add(chat)
-    test_db.flush()
-    test_db.add(Message(chat_id="legacy", sender_type="user", content="Private history"))
-    test_db.commit()
-    mock_send.return_value = ChrisReply("Transient answer")
-    history = [{"role": "user", "content": "Browser history"}]
-    response = TestClient(app).post("/chat/message", json={
-        "message": "Follow up", "history": history, "chat_id": "legacy",
-        "user_id": claimed_user, "guest_session_id": "old-token",
-    })
-    assert response.status_code == 200
-    assert response.json()["chat_id"] is None
-    mock_send.assert_awaited_once_with("Follow up", history)
-    assert test_db.query(Chat).count() == 1
-    assert test_db.query(Message).one().content == "Private history"
-
-
-@patch("app.chat.service.send_message", new_callable=AsyncMock)
-def test_claimed_existing_user_cannot_create_saved_chat(mock_send, test_db):
-    """A body field is not verified authentication and cannot opt into saving."""
-    test_db.add(User(id="alice", email="alice@example.test", role="student"))
-    test_db.commit()
-    mock_send.return_value = ChrisReply("Hello")
-    response = TestClient(app).post("/chat/message", json={
-        "message": "Hi", "user_id": "alice",
-    })
-    assert response.status_code == 200
     assert response.json()["chat_id"] is None
     assert test_db.query(Chat).count() == 0
     assert test_db.query(Message).count() == 0

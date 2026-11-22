@@ -16,7 +16,7 @@ uv run alembic upgrade head
 uv run python -m agent_registry.db.seed_agents
 cd ../chat-system/conversation-agent
 uv sync
-cd ../../backend
+cd ../application-services
 uv sync
 uv run alembic upgrade head
 ```
@@ -128,7 +128,8 @@ navigation, rendering safety, input, errors, refresh, mobile keyboard behavior,
 and the absence of unsupported API calls. These test dependencies are retained
 only for development; no browser AI or Open WebUI runtime packages are needed.
 
-From `backend/`:
+From `chat-system/application-services/`, and again from `backend/`, whose environment
+`test:pipeline` uses to start the stack:
 
 ```bash
 uv sync --locked
@@ -136,7 +137,7 @@ uv run ruff check .
 PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
 ```
 
-`.github/workflows/checks.yml` runs the backend suite (including security-related
+`.github/workflows/checks.yml` runs the Application Services and backend suites (including security-related
 authorization cases), Ruff, frontend lint/type checks, unit tests, build, and
 browser tests. Secret scanning and production dependency-policy gates remain
 separate team work; this workflow does not claim to implement them.

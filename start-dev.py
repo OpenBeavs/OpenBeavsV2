@@ -45,13 +45,13 @@ def venv_python(folder: Path) -> Path:
     return folder / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
-def service_specs(python: str, node: str) -> list[tuple[str, Path, list[str]]]:
+def service_specs(node: str) -> list[tuple[str, Path, list[str]]]:
     """Start each Python service from its own folder, with that folder's environment.
 
     Each service then opens its own SQLite file (``DATABASE_URL`` is relative to the
     folder it starts in), and all of them read the one ``.env`` at the repository root.
     """
-    backend = ROOT / "backend"
+    application_services = ROOT / "chat-system/application-services"
     registry = ROOT / "agent-registry"
     conversation_agent = ROOT / "chat-system/conversation-agent"
     frontend_port = str(get_frontend_port())
@@ -61,7 +61,8 @@ def service_specs(python: str, node: str) -> list[tuple[str, Path, list[str]]]:
          "--host", "127.0.0.1", "--port", "8001"]),
         ("Chris", conversation_agent, [str(venv_python(conversation_agent)), "-m",
          "conversation_agent.run"]),
-        ("Backend", backend, [python, "-m", "uvicorn", "app.main:app",
+        ("Backend", application_services, [str(venv_python(application_services)),
+         "-m", "uvicorn", "application_services.main:app",
          "--host", "127.0.0.1", "--port", "8010"]),
         ("Frontend", ROOT / "frontend", [node,
          str(ROOT / "frontend/node_modules/vite/bin/vite.js"),
@@ -106,21 +107,22 @@ def stop_services(processes: list[subprocess.Popen]) -> None:
 
 def main() -> int:
     """Use separate Windows consoles while retaining direct child supervision."""
-    python = venv_python(ROOT / "backend")
     node = shutil.which("node")
-    folders = (ROOT / "agent-registry", ROOT / "chat-system/conversation-agent")
-    if not python.is_file() or not all(venv_python(f).is_file() for f in folders) or (
+    folders = (ROOT / "agent-registry", ROOT / "chat-system/conversation-agent",
+               ROOT / "chat-system/application-services")
+    if not all(venv_python(f).is_file() for f in folders) or (
         not node or not (ROOT / "frontend/node_modules/vite/bin/vite.js").is_file()
     ):
         print("Missing agent-registry/.venv, chat-system/conversation-agent/.venv, "
-              "backend/.venv, Node.js, or frontend dependencies. Follow README.md first.")
+              "chat-system/application-services/.venv, Node.js, or frontend "
+              "dependencies. Follow README.md first.")
         return 1
 
     processes = []
     try:
         check_ports()
         env = local_environment()
-        specs = service_specs(str(python), node)
+        specs = service_specs(node)
         for name, cwd, command in specs:
             print(f"Starting {name}...", flush=True)
             # Direct children keep shutdown reliable without intermediate shells.

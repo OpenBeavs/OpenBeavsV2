@@ -9,7 +9,9 @@ from agent_registry.models import Agent
 def test_registry_tables_stand_alone(db: Session) -> None:
     """The registry's table is created without the chat system's, and points at none."""
     inspector = inspect(db.get_bind())
-    assert inspector.get_table_names() == ["agents"]
+    # The schema may also hold alembic_version, where the registry's own migrations ran.
+    tables = [name for name in inspector.get_table_names() if name != "alembic_version"]
+    assert tables == ["agents"]
     assert inspector.get_foreign_keys("agents") == []
 
 

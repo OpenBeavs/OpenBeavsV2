@@ -15,7 +15,7 @@ down: stop
 
 # Run individual services in their own terminal if desired
 dev-back:
-	cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+	cd chat-system/application-services && python -m uvicorn application_services.main:app --reload --host 127.0.0.1 --port 8000
 
 dev-registry:
 	cd agent-registry && python -m uvicorn agent_registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
@@ -46,7 +46,7 @@ seed:
 
 migrate:
 	cd agent-registry && alembic upgrade head
-	cd backend && alembic upgrade head
+	cd chat-system/application-services && alembic upgrade head
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 help:

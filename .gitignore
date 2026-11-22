@@ -12,6 +12,7 @@ __pycache__/
 backend/build/
 agent-registry/build/
 chat-system/conversation-agent/build/
+chat-system/application-services/build/
 
 # Local database files
 *.db

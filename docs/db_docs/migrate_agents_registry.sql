@@ -1,11 +1,13 @@
 -- =============================================================================
 -- OpenBeavs v2: add the agent registry review columns to an EXISTING database
 -- Database: openbeavs_v2 (PostgreSQL / Cloud SQL)
--- Equivalent of Alembic revision a7c3e91d5b02 (backend/alembic/versions/).
+-- Equivalent of Alembic revision a7c3e91d5b02 of the earlier shared migration
+-- history (backend/alembic/, since removed).
 --
 -- Use this file ONLY if the database was created from create_tables_cloud.sql
--- (no alembic_version table). If it was created with Alembic, run
--- `alembic upgrade head` instead and do not run this file.
+-- (no alembic_version table). If it was created with Alembic, follow
+-- agent-registry/README.md, "A database built by the earlier, shared migrations",
+-- instead and do not run this file.
 --
 -- Safe for existing data: every agent already in the table becomes 'approved',
 -- so Chris keeps routing to the same agents as before. The default is then

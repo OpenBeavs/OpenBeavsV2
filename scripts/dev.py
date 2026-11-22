@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Paths relative to repository root
 ROOT_DIR = Path(__file__).resolve().parent.parent
-BACKEND_DIR = ROOT_DIR / "backend"
+BACKEND_DIR = ROOT_DIR / "chat-system" / "application-services"
 REGISTRY_DIR = ROOT_DIR / "agent-registry"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
@@ -114,7 +114,7 @@ def start_services():
     services = [
         {
             "name": "backend",
-            "cmd": [py_exec, "-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", str(backend_port)],
+            "cmd": [py_exec, "-m", "uvicorn", "application_services.main:app", "--reload", "--host", "127.0.0.1", "--port", str(backend_port)],
             "cwd": str(BACKEND_DIR),
             "color": COLORS["backend"],
         },

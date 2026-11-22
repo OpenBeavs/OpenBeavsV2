@@ -14,16 +14,15 @@ from pathlib import Path
 import httpx
 import pytest
 from agent_registry.models import Agent
+from application_services.db.base import ChatSystemBase
+from application_services.db.session import get_db
+from application_services.history import bounded_history
+from application_services.main import app as backend_app
+from application_services.models import Message
 from conversation_agent import expert_client, gemini
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
-
-from app.db.base import ChatSystemBase
-from app.db.session import get_db
-from app.history import bounded_history
-from app.main import app as backend_app
-from app.models import Message
 
 from .conftest import Pipeline, reply, slow
 
@@ -252,8 +251,8 @@ class TestRegistryErrorsAreVisible:
         assert pipeline.prompts == []
 
     def test_chris_configuration_details_are_only_logged(self, experts, monkeypatch, caplog):
-        from app.chat import service
-        from app.config import ConfigError
+        from application_services.chat import service
+        from application_services.config import ConfigError
 
         async def misconfigured(*args):
             raise ConfigError("INTERNAL-CONFIGURATION-DETAIL")
@@ -348,9 +347,8 @@ class TestChatDeadline:
 
     def test_the_deadlines_nest_correctly_by_default(self) -> None:
         from agent_registry import llm
+        from application_services.chat import a2a_client
         from conversation_agent import registry_client
-
-        from app.chat import a2a_client
 
         registry_worst_case = 2 + llm.request_timeout()  # configured: 2 s queue + 8 s
         assert registry_client.DEFAULT_TIMEOUT_SECONDS > 2 + 8

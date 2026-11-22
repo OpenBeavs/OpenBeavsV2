@@ -50,11 +50,11 @@ backend/frontend setup, configuration, checks, and static hosting requirements.
 
 ### Running the app Locally
 
-From `agent-registry/` and then from `backend/`, run `uv sync`, then
+From `agent-registry/` and then from `chat-system/application-services/`, run `uv sync`, then
 `uv run alembic upgrade head`. From `chat-system/conversation-agent/`, run `uv sync`;
 Chris has no database. From `frontend/`, run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
 with the launcher described in the [README](README.md): Chris and the registry each
-run as their own process, so starting `app.main:app` alone does not answer chat
+run as their own process, so starting `application_services.main:app` alone does not answer chat
 messages. The frontend proxies the chat API to FastAPI; the
 original Open WebUI backend is not used. Follow the linked guide for commands.
 
@@ -111,13 +111,13 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Python lint uses `uv run ruff check .` from `agent-registry/`, `chat-system/conversation-agent/`, and `backend/`. Frontend `npm run lint` runs
+Python lint uses `uv run ruff check .` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `backend/`. Frontend `npm run lint` runs
 ESLint without rewriting files, followed by Svelte/TypeScript checks. Keep
 changes readable and limited to the feature being implemented.
 
 ## Testing
 
-Run `uv run pytest` from `agent-registry/`, `chat-system/conversation-agent/`, and `backend/`, including their
+Run `uv run pytest` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `backend/`, including their
 authorization tests. From `frontend/`,
 run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
 Playwright Chromium browser. Browser tests use API fixtures; a live Gemini
