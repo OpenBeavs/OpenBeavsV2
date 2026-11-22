@@ -13,14 +13,14 @@ from pathlib import Path
 
 import httpx
 import pytest
-from agent_registry.models import Agent
+from application_services.database import session as chat_session
 from application_services.database.base import ChatSystemBase
 from application_services.database.session import get_db
 from application_services.history import bounded_history
 from application_services.main import app as backend_app
 from application_services.models import Message
 from conversation_agent import expert_client, gemini
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -459,15 +459,27 @@ def test_oversized_question_is_rejected_before_a2a(experts):
 
 
 def test_display_database_failure_preserves_successful_selection(experts, monkeypatch):
+    """The Chat System's database being down cannot spoil a turn the Registry routed.
+
+    The expert's name once came from a database lookup after the Registry had chosen,
+    which is where this test gets its name. The name now arrives in the Registry's
+    reply, and a chat turn from a visitor who is not signed in needs nothing from
+    Application Services' database. So every connection to that database fails here:
+    through the sessions ``get_db`` hands a request, and through the engine
+    Application Services builds for itself from ``DATABASE_URL``. A turn that reads or
+    writes the database on its way to the answer meets the failure and fails this test.
+    """
+
+    def down(*args, **kwargs):
+        raise OperationalError("connect", {}, RuntimeError("the database is down"))
+
+    for engine in (experts.factory.kw["bind"], chat_session.engine):
+        monkeypatch.setattr(engine, "connect", down)
+    # The failure is real: the session a request would be given cannot run a query.
+    with experts.factory() as db, pytest.raises(OperationalError):
+        db.execute(text("SELECT 1"))
+
     experts.choose("math-expert")
-    original = Session.get
-
-    def get(self, entity, *args, **kwargs):
-        if entity is Agent:
-            raise OperationalError("display lookup", {}, RuntimeError("unavailable"))
-        return original(self, entity, *args, **kwargs)
-
-    monkeypatch.setattr(Session, "get", get)
     response = experts.ask("math")
     assert response.status_code == 200
     assert response.json()["routing"]["agent"]["id"] == "math-expert"
