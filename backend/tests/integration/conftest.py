@@ -25,6 +25,11 @@ from pathlib import Path
 
 import httpx
 import pytest
+from agent_registry.a2a import MOUNT_PATH
+from agent_registry.a2a_app import create_registry_a2a_app
+from agent_registry.a2a_auth import open_verifier
+from agent_registry.llm import ModelLimiter
+from agent_registry.models import Agent
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
@@ -34,11 +39,6 @@ from app.chris import registry_client
 from app.chris.run import create_app as create_chris_app
 from app.db.session import get_db
 from app.main import app as backend_app
-from app.models import Agent
-from app.registry.a2a import MOUNT_PATH
-from app.registry.a2a_app import create_registry_a2a_app
-from app.registry.a2a_auth import open_verifier
-from app.registry.llm import ModelLimiter
 from tests.databases import chat_system_engine, registry_engine
 
 REGISTRY_ORIGIN = "http://registry.test"

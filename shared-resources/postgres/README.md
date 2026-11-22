@@ -27,16 +27,16 @@ Each login's `search_path` is its own schema, so the tables it creates land ther
 
 ## Test against it
 
-The backend tests run on SQLite unless they are given a PostgreSQL server prepared as above. Give them one URL per login, and they create each owner's tables signed in as that owner and run each owner's code under its own login:
+The backend and Agent Registry tests run on SQLite unless they are given a PostgreSQL server prepared as above. Give them one URL per login, and they create each owner's tables signed in as that owner and run each owner's code under its own login:
 
 ```bash
-cd backend
 export TEST_CHAT_SYSTEM_DATABASE_URL="postgresql+psycopg2://chat_system:$CHAT_SYSTEM_PASSWORD@127.0.0.1:5432/openbeavs"
 export TEST_REGISTRY_DATABASE_URL="postgresql+psycopg2://registry:$REGISTRY_PASSWORD@127.0.0.1:5432/openbeavs"
-uv run pytest
+(cd agent-registry && uv run pytest)
+(cd backend && uv run pytest)
 ```
 
-These two URLs begin `postgresql+psycopg2://` because SQLAlchemy reads them, and `psycopg2` is the PostgreSQL driver the backend installs. A URL that begins `postgresql://` asks SQLAlchemy for a driver the backend lacks.
+The registry's own tests read only `TEST_REGISTRY_DATABASE_URL`. These two URLs begin `postgresql+psycopg2://` because SQLAlchemy reads them, and `psycopg2` is the PostgreSQL driver both packages install. A URL that begins `postgresql://` asks SQLAlchemy for a driver they lack.
 
 `tests/test_database_grants.py` tests the boundary itself: each login works in its own schema and is refused on the other's. Without the two URLs those tests are skipped, and the rest of the suite runs on SQLite. With the same two variables set, `npm run test:pipeline` in `frontend/` runs the browser pipeline against the server as well.
 

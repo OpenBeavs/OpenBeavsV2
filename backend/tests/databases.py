@@ -1,6 +1,7 @@
 """The tests' databases: SQLite by default, PostgreSQL when the caller supplies one.
 
-The chat system and the agent registry each own their tables (``app.db.base``). Every
+The chat system and the agent registry each own their tables (``app.db.base`` and
+``agent_registry.db.base``). Every
 test that needs an owner's tables gets them from here, freshly created and empty.
 
 With nothing set, each call returns a new SQLite database, so the suite needs no
@@ -28,10 +29,12 @@ history still creates both owners' tables, which neither login may do.
 import os
 from pathlib import Path
 
+import agent_registry.models  # noqa: F401 (registers the agents table)
+from agent_registry.db.base import RegistryBase
 from sqlalchemy import Engine, MetaData, create_engine
 from sqlalchemy.pool import NullPool, StaticPool
 
-from app.db.base import ChatSystemBase, RegistryBase
+from app.db.base import ChatSystemBase
 
 CHAT_SYSTEM_URL_VARIABLE = "TEST_CHAT_SYSTEM_DATABASE_URL"
 REGISTRY_URL_VARIABLE = "TEST_REGISTRY_DATABASE_URL"

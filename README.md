@@ -3,7 +3,8 @@
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
 - `frontend/`: Svelte chat interface.
-- `backend/`: chat REST API and persistence, Chris's ADK/A2A agent, and the agent registry (selection and management), which runs as its own service.
+- `backend/`: chat REST API and persistence, and Chris's ADK/A2A agent.
+- `agent-registry/`: the Agent Registry (expert selection over A2A, and registry management), a Python package with its own environment, database and migrations, run as its own service.
 - `docs/`: API, frontend setup, and database documentation.
 
 Start with local setup for [macOS](#run-locally-macos) or
@@ -15,7 +16,7 @@ HTTPS experts are invoked over A2A (0.3 by default; configure
 `CHRIS_EXPERT_A2A_VERSION=1.0` for 1.0 experts). Verified SSO and
 service-to-service authentication remain future work.
 
-For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](docs/registry.md).
+For Agent Registry behavior, local setup, and testing, see [Agent Registry documentation](agent-registry/README.md).
 
 ## Run locally (macOS)
 
@@ -23,28 +24,33 @@ Use uv and Node.js 22 or later. If uv is missing, install it with `brew install 
 From the repository root, set up the dependencies once:
 
 ```zsh
-cd backend
+cd agent-registry
 uv sync --locked --python 3.12
+cd ../backend
+uv sync --locked --python 3.12
+cd ..
 [ -f .env ] || cp .env.example .env
-cd ../frontend
+cd frontend
 npm ci
 cd ..
 ```
 
-In `backend/.env`, set `GEMINI_API_KEY`, `CHRIS_MODEL`, and `REGISTRY_MODEL`
+In `.env` at the repository root, set `GEMINI_API_KEY`, `CHRIS_MODEL`, and `REGISTRY_MODEL`
 privately. Set `REGISTRY_GEMINI_API_KEY` if the registry uses a separate key.
 For local registry development, set `REGISTRY_A2A_AUTH=dev`. Set
 `REGISTRY_DEV_AUTH=true` and configure `REGISTRY_ADMIN_EMAILS` only if you need
 local registry admin actions.
 
-Initialize the local database before the first run, and rerun migrations when
-the schema changes:
+Initialize the local databases before the first run, and rerun migrations when
+the schema changes. The registry and the chat backend each keep their own:
 
 ```zsh
-cd backend
 export DATABASE_URL='sqlite:///./openbeavs.db'
+cd agent-registry
 uv run alembic upgrade head
-uv run python -m app.db.seed_agents
+uv run python -m agent_registry.db.seed_agents
+cd ../backend
+uv run alembic upgrade head
 cd ..
 ```
 
@@ -54,8 +60,9 @@ Start all four services from the repository root:
 bash start-dev-mac.sh
 ```
 
-Open [OpenBeavs](http://127.0.0.1:5173). The script uses `backend/openbeavs.db`
-and runs all four services in one terminal. Press **Ctrl+C** there to stop them.
+Open [OpenBeavs](http://127.0.0.1:5173). The script runs all four services in one
+terminal. The registry uses `agent-registry/openbeavs.db`, and Chat and Chris use
+`backend/openbeavs.db`. Press **Ctrl+C** there to stop them.
 
 ## Run locally (Windows PowerShell)
 
@@ -63,28 +70,35 @@ Use Python 3.12 and Node.js 22 or later. For first-time dependency setup, run fr
 the repository root:
 
 ```powershell
-cd .\backend
+cd .\agent-registry
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt
+# --group needs pip 25.1 or later.
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e . --group dev
+cd ..\backend
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ..\agent-registry -e . -r requirements-dev.txt
+cd ..
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
-cd ..\frontend
+cd .\frontend
 npm install
 cd ..
 ```
 
-Edit the ignored `backend/.env` privately. Configure `CHRIS_MODEL` and
+Edit the ignored `.env` at the repository root privately. Configure `CHRIS_MODEL` and
 `GEMINI_API_KEY` for Chris, and `REGISTRY_MODEL` and `REGISTRY_GEMINI_API_KEY`
 for registry selection. Set `REGISTRY_DEV_AUTH=true` and `REGISTRY_A2A_AUTH=dev`
 only for local development. For local registry admin actions, set
 `REGISTRY_ADMIN_EMAILS` to your chosen development identity. Never commit keys.
 Virtual environment activation is not required for the commands below.
 
-### 1. Create or update the local database
+### 1. Create or update the local databases
 
-Open PowerShell in the repository root (`OpenBeavsV2`), then run:
+The registry and the chat backend each keep their own database. Open PowerShell in the
+repository root (`OpenBeavsV2`), then create the registry's:
 
 ```powershell
-cd .\backend
+cd .\agent-registry
 $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
 .\.venv\Scripts\python.exe -m alembic upgrade head
 ```
@@ -92,10 +106,17 @@ $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
 Wait for the command to finish successfully, then seed the standard registered agents:
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.db.seed_agents
+.\.venv\Scripts\python.exe -m agent_registry.db.seed_agents
 ```
 
-This creates or updates `backend/openbeavs.db`. SQLite does not require a separate
+Then create the chat backend's:
+
+```powershell
+cd ..\backend
+.\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+This creates or updates `agent-registry/openbeavs.db` and `backend/openbeavs.db`. SQLite does not require a separate
 database server. Migrations apply pending schema changes; rerunning the seed preserves
 existing agents. Setting `DATABASE_URL` explicitly ensures this session uses
 `openbeavs.db` rather than another configured file such as `registry-local.db`.
@@ -115,8 +136,8 @@ $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
 .\backend\.venv\Scripts\python.exe .\start-dev.py
 ```
 
-The launcher runs Python services from `backend/`, so both forms use the same local
-database. It starts each service in a separate Windows console:
+The launcher runs the registry from `agent-registry/`, with its environment, and Chris and
+the backend from `backend/`, so both forms use the same two local databases. It starts each service in a separate Windows console:
 
 | Service | Local address | Purpose |
 |---|---|---|

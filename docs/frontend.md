@@ -9,11 +9,14 @@ The old Open WebUI Python backend is not required.
 Use Python 3.12, uv, and Node.js 22 or newer. From the repository root:
 
 ```bash
-cd backend
+cd agent-registry
 uv sync
 uv run alembic upgrade head
 # Optional: seed the registry's initial expert agents.
-uv run python -m app.db.seed_agents
+uv run python -m agent_registry.db.seed_agents
+cd ../backend
+uv sync
+uv run alembic upgrade head
 ```
 Follow [the root README](../README.md#run-locally-windows-powershell) for backend dependencies,
 migrations, model configuration, and the all-services launcher. It runs the backend at

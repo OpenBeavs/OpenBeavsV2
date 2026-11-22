@@ -37,8 +37,8 @@ Every valid message attempts registry selection once, including greetings. The
 sequence is enforced in Python, not by a model prompt. The registry owns its own
 selection instructions; Chris sends the current message and conversation history.
 
-The configured registry is a separate service (`app.registry.a2a_app`, run on its
-own). It serves this A2A selection and also the `/registry/*` routes that manage
+The configured registry is a separate service (`agent_registry.a2a_app`, in
+`agent-registry/`, run on its own). It serves this A2A selection and also the `/registry/*` routes that manage
 stored agents and reviews; the chat API serves neither.
 
 Chris logs selection details and failure types in its terminal. Chris calls the
@@ -151,7 +151,7 @@ also tolerates `metadata.history`, but only when no data part has a history).
 The registry replies with one message whose single **text part** is compact JSON,
 trimmed to what Chris needs:
 `{"agent": {"id": "...", "endpoint_url": "...", "name": "...", "description": "..." or null}}`
-or `{"agent": "none"}` (see [registry.md](registry.md)). Chris validates it strictly: exact
+or `{"agent": "none"}` (see [the Agent Registry](../agent-registry/README.md)). Chris validates it strictly: exact
 keys, non-empty strings for `id` and `endpoint_url`, a string `name` (it may be blank;
 the expert still answers and the interface shows no "Answered by" line), a string or
 null `description`, no coercion; anything else is `registry_invalid_reply` and Chris never
@@ -215,13 +215,13 @@ this branch does not establish a provider-retention guarantee.
 Chat's overall A2A deadline is 50 seconds (`CHRIS_A2A_TIMEOUT_SECONDS`), Chris's registry
 deadline is 14 seconds, expert dispatch is bounded to 30 seconds, optional Gemini
 fallback to 15 seconds, and the frontend waits up to 90 seconds; see
-[the registry timeout settings](registry.md#registry-caller-timeout) for the selection deadline.
+[the registry timeout settings](../agent-registry/README.md#registry-caller-timeout) for the selection deadline.
 Timeouts in different layers do not prove a downstream operation was canceled;
 there are no automatic frontend POST retries.
 
 ## Configuration
 
-Set these privately in the process environment or ignored `backend/.env`:
+Set these privately in the process environment or the ignored `.env` at the repository root:
 
 | Variable | Default / use |
 | --- | --- |
@@ -298,5 +298,5 @@ app/chris/run.py            standalone entrypoint and app factory
 ```
 
 A2A caller authentication, authenticated expert invocation, mixed-version expert routing, verified SSO, streaming in the frontend, saved-chat retrieval, and
-automated TTL cleanup remain future work. See [registry](registry.md) and
+automated TTL cleanup remain future work. See [registry](../agent-registry/README.md) and
 [frontend integration](frontend.md) for their separate responsibilities.

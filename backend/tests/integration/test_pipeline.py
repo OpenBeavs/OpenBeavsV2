@@ -6,11 +6,14 @@ dispatch regression test also exercises the expert SDK over mocked HTTP.
 """
 
 import asyncio
+import importlib.util
 import json
 import time
+from pathlib import Path
 
 import httpx
 import pytest
+from agent_registry.models import Agent
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -20,12 +23,18 @@ from app.db.base import ChatSystemBase
 from app.db.session import get_db
 from app.history import bounded_history
 from app.main import app as backend_app
-from app.models import Agent, Message
-from scripts import registry_a2a_client
+from app.models import Message
 
 from .conftest import Pipeline, reply, slow
 
 real_expert_send = expert_client.send_message
+
+# The registry's command-line client is a script in its package, not a module, so it is
+# loaded from its file.
+_CLIENT = Path(__file__).resolve().parents[3] / "agent-registry/scripts/registry_a2a_client.py"
+_spec = importlib.util.spec_from_file_location("registry_a2a_client", _CLIENT)
+registry_a2a_client = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(registry_a2a_client)
 
 
 def routing_of(response: httpx.Response) -> dict:
@@ -195,8 +204,8 @@ class TestRegistryErrorsAreVisible:
     def test_registry_reported_errors_are_logged_without_exposing_diagnostics(
         self, experts: Pipeline, raises: str, code: str, retryable: bool, caplog
     ) -> None:
-        from app.config import ConfigError
-        from app.registry.llm import LLMError
+        from agent_registry.config import ConfigError
+        from agent_registry.llm import LLMError
 
         async def model(system, user, schema):
             if raises == "llm":
@@ -225,9 +234,8 @@ class TestRegistryErrorsAreVisible:
     def test_a_database_failure_in_the_registry_is_reported(
         self, experts: Pipeline, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from agent_registry import a2a
         from sqlalchemy.exc import OperationalError
-
-        from app.registry import a2a
 
         def broken(factory):
             raise OperationalError("select", {}, Exception("db down"))
@@ -309,8 +317,8 @@ class TestRegistryTimeouts:
         self, experts: Pipeline
     ) -> None:
         """When the registry's model slots are exhausted it answers selection_busy
-        (the limiter itself is tested in tests/registry/test_limits.py)."""
-        from app.registry.llm import ModelBusyError
+        (the limiter itself is tested in agent-registry/tests/test_limits.py)."""
+        from agent_registry.llm import ModelBusyError
 
         async def busy(system, user, schema):
             raise ModelBusyError
@@ -339,9 +347,10 @@ class TestChatDeadline:
         )
 
     def test_the_deadlines_nest_correctly_by_default(self) -> None:
+        from agent_registry import llm
+
         from app.chat import a2a_client
         from app.chris import registry_client
-        from app.registry import llm
 
         registry_worst_case = 2 + llm.request_timeout()  # configured: 2 s queue + 8 s
         assert registry_client.DEFAULT_TIMEOUT_SECONDS > 2 + 8
@@ -493,7 +502,7 @@ def test_expert_dispatch_through_chat_registry_and_sdk(experts, monkeypatch, fai
     experts.choose("math-expert")
     monkeypatch.setenv("CHRIS_EXPERT_A2A_VERSION", "1.0")
     monkeypatch.setattr(
-        "app.registry.security.default_resolver", lambda host: ["8.8.8.8"]
+        "agent_registry.security.default_resolver", lambda host: ["8.8.8.8"]
     )
     requests = []
 

@@ -4,10 +4,12 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
-if [[ ! -x backend/.venv/bin/python ]]; then
-    printf '%s\n' 'Backend environment missing. Run uv sync --locked --python 3.12 from backend/ first.' >&2
-    exit 1
-fi
+for folder in agent-registry backend; do
+    if [[ ! -x "$folder/.venv/bin/python" ]]; then
+        printf '%s\n' "Environment missing. Run uv sync --locked --python 3.12 from $folder/ first." >&2
+        exit 1
+    fi
+done
 
 export DATABASE_URL='sqlite:///./openbeavs.db'
 exec backend/.venv/bin/python start-dev.py

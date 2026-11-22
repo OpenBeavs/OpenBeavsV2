@@ -2,7 +2,7 @@
 
 Tests CRUD operations, relationships, cascade deletes, and the anonymous
 iframe workflow with mid-chat authentication promotion. The agent registry's
-model is tested in ``tests/registry/test_models.py``.
+model is tested in ``agent-registry/tests/test_models.py``.
 """
 
 import time

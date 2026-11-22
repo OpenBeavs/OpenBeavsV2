@@ -1,19 +1,16 @@
 """Environment-based configuration.
 
-Values are read from the process environment (uvicorn loads ``backend/.env``
-when started with ``--env-file .env``). Nothing is hardcoded, and values are
-read at call time so a missing variable produces a clear error on the request
-instead of crashing the server at import.
+Values are read from the process environment. A ``.env`` file, when one exists, is
+loaded first: python-dotenv searches upward from this package's folder, so it finds
+the ``.env`` at the repository root. Variables already set in the process win.
+Nothing is hardcoded, and values are read at call time so a missing variable
+produces a clear error on the request instead of crashing the server at import.
 """
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load local backend/.env automatically if present
-_env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(_env_path)
 load_dotenv()
 
 
@@ -30,7 +27,7 @@ def require_env(name: str) -> str:
     """
     value = os.environ.get(name, "").strip()
     if not value:
-        raise ConfigError(f"{name} is not set. Add it to backend/.env.")
+        raise ConfigError(f"{name} is not set. Add it to .env.")
     return value
 
 

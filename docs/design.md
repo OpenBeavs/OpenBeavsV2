@@ -471,6 +471,6 @@ The following decisions remain active or scheduled for subsequent sprint cycles:
 > 
 > 1. **Schema Integrity:** NEVER reintroduce legacy Open WebUI tables (`channels`, `memories`, `valves`, `folders`). All database changes must be declarative SQLAlchemy 2.0 models reflected in `alembic/versions/`.
 > 2. **Authentication Guard:** NEVER trust a client-supplied `user_id` without server-side principal verification. The public chat endpoint must not read or write stored conversations, even if a caller supplies identity fields.
-> 3. **SSRF Guard:** ANY outbound network request fetching external agent resources must use `backend/app/registry/security.py` to assert destination safety (rejecting loopback, RFC1918, link-local `169.254.169.254`, and cloud metadata IPs).
+> 3. **SSRF Guard:** ANY outbound network request fetching external agent resources must use `agent-registry/agent_registry/security.py` to assert destination safety (rejecting loopback, RFC1918, link-local `169.254.169.254`, and cloud metadata IPs).
 > 4. **Message Ordering:** Always preserve sequential ordering via `(chat_id, sequence)` composite locks. Never append messages by overwriting monolithic JSON blobs.
 > 5. **Git Rules:** AI assistants must NEVER run `git commit`, `git push`, or alter repository tags. Leave all changes unstaged in the working tree for human review.

@@ -7,10 +7,10 @@ on the DATABASE_URL environment variable.
 import logging
 from pathlib import Path
 
+from agent_registry.db.seed_agents import seed_agents
 from alembic.config import Config
 
 from alembic import command
-from app.db.seed_agents import seed_agents
 from app.db.session import engine
 
 logging.basicConfig(level=logging.INFO)

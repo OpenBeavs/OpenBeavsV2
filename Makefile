@@ -1,4 +1,4 @@
-.PHONY: run dev stop down dev-back dev-registry dev-front test test-backend test-frontend lint seed migrate help
+.PHONY: run dev stop down dev-back dev-registry dev-front test test-registry test-backend test-frontend lint seed migrate help
 
 # ── Development ───────────────────────────────────────────────────────────────
 # Starts all 4 services (registry, chris, backend, frontend) using the team's start-dev.py
@@ -18,13 +18,16 @@ dev-back:
 	cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 dev-registry:
-	cd backend && python -m uvicorn app.registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
+	cd agent-registry && python -m uvicorn agent_registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
 
 dev-front:
 	cd frontend && npm run dev
 
 # ── Testing & Quality ─────────────────────────────────────────────────────────
-test: test-backend test-frontend
+test: test-registry test-backend test-frontend
+
+test-registry:
+	cd agent-registry && python -m pytest
 
 test-backend:
 	cd backend && python -m pytest
@@ -33,14 +36,16 @@ test-frontend:
 	cd frontend && npm test
 
 lint:
+	cd agent-registry && python -m ruff check .
 	cd backend && python -m ruff check .
 	cd frontend && npm run check
 
 # ── Database ──────────────────────────────────────────────────────────────────
 seed:
-	cd backend && python -m app.db.seed_agents
+	cd agent-registry && python -m agent_registry.db.seed_agents
 
 migrate:
+	cd agent-registry && alembic upgrade head
 	cd backend && alembic upgrade head
 
 # ── Help ──────────────────────────────────────────────────────────────────────
@@ -54,7 +59,7 @@ help:
 	@echo "  make dev-back     Start backend server only (port 8000)"
 	@echo "  make dev-registry Start registry A2A service only (port 8001)"
 	@echo "  make dev-front    Start frontend server only (port 5173)"
-	@echo "  make test         Run backend (pytest) and frontend (vitest) tests"
+	@echo "  make test         Run registry and backend (pytest) and frontend (vitest) tests"
 	@echo "  make lint         Run ruff and svelte-check"
 	@echo "  make seed         Seed initial agents into the database"
 	@echo "  make migrate      Run database migrations (Alembic)"

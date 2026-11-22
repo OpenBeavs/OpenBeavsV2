@@ -30,7 +30,7 @@ def wire(monkeypatch):
     monkeypatch.setenv("CHRIS_EXPERT_TIMEOUT_SECONDS", "30")
     # Keep real URL validation; only DNS is deterministic.
     monkeypatch.setattr(
-        "app.registry.security.default_resolver", lambda host: ["8.8.8.8"]
+        "agent_registry.security.default_resolver", lambda host: ["8.8.8.8"]
     )
     requests = []
 
@@ -129,7 +129,7 @@ def test_unsafe_destination_never_gets_a_request(wire, endpoint):
 def test_dns_private_address_is_rejected(wire, monkeypatch):
     requests = wire()
     monkeypatch.setattr(
-        "app.registry.security.default_resolver", lambda host: ["10.1.2.3"]
+        "agent_registry.security.default_resolver", lambda host: ["10.1.2.3"]
     )
     with pytest.raises(expert_client.ExpertUnavailable):
         asyncio.run(expert_client.send_message(ENDPOINT, "q", []))

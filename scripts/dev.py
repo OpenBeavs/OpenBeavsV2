@@ -19,14 +19,15 @@ from pathlib import Path
 # Paths relative to repository root
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
+REGISTRY_DIR = ROOT_DIR / "agent-registry"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 
 DEFAULT_PORTS = [8000, 8010, 8001, 5173, 8080, 3000]
 
 
 def get_backend_port() -> int:
-    """Read configured backend port from backend/.env or return default 8010."""
-    env_file = BACKEND_DIR / ".env"
+    """Read configured backend port from the root .env or return default 8010."""
+    env_file = ROOT_DIR / ".env"
     if env_file.exists():
         try:
             with open(env_file, "r", encoding="utf-8") as f:
@@ -123,14 +124,14 @@ def start_services():
                 py_exec,
                 "-m",
                 "uvicorn",
-                "app.registry.a2a_app:create_standalone_app",
+                "agent_registry.a2a_app:create_standalone_app",
                 "--factory",
                 "--host",
                 "127.0.0.1",
                 "--port",
                 "8001",
             ],
-            "cwd": str(BACKEND_DIR),
+            "cwd": str(REGISTRY_DIR),
             "color": COLORS["registry"],
             "env": {
                 **os.environ,

@@ -50,8 +50,8 @@ backend/frontend setup, configuration, checks, and static hosting requirements.
 
 ### Running the app Locally
 
-From `backend/`, run `uv sync`, then `uv run alembic upgrade head`. From `frontend/`,
-run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
+From `agent-registry/` and then from `backend/`, run `uv sync`, then
+`uv run alembic upgrade head`. From `frontend/`, run `npm ci`. Then start the four services (registry, Chris, backend and frontend)
 with the launcher described in the [README](README.md): Chris and the registry each
 run as their own process, so starting `app.main:app` alone does not answer chat
 messages. The frontend proxies the chat API to FastAPI; the
@@ -110,13 +110,14 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Backend lint uses `uv run ruff check .` from `backend/`. Frontend `npm run lint` runs
+Python lint uses `uv run ruff check .` from `agent-registry/` and from `backend/`. Frontend `npm run lint` runs
 ESLint without rewriting files, followed by Svelte/TypeScript checks. Keep
 changes readable and limited to the feature being implemented.
 
 ## Testing
 
-Run `uv run pytest` from `backend/`, including its authorization tests. From `frontend/`,
+Run `uv run pytest` from `agent-registry/` and from `backend/`, including their
+authorization tests. From `frontend/`,
 run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
 Playwright Chromium browser. Browser tests use API fixtures; a live Gemini
 conversation is a separate acceptance check. See the setup guide for details.

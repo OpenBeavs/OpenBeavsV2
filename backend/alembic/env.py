@@ -1,11 +1,13 @@
 from logging.config import fileConfig
 
+import agent_registry.models  # noqa: F401 (the agents table, in the registry's metadata)
+from agent_registry.db.base import RegistryBase
 from sqlalchemy import engine_from_config, pool
 
 import app.models  # noqa: F401 (ensure all 5 models register with their metadata)
 from alembic import context
 from app.config import get_database_url
-from app.db.base import ChatSystemBase, RegistryBase
+from app.db.base import ChatSystemBase
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

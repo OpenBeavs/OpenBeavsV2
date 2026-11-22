@@ -1,9 +1,13 @@
 # OpenBeavs v2 backend
 
-The backend holds three separately started services: the Chat REST API
-(`app.main:app`), Chris's ADK/A2A agent (`python -m app.chris.run`, or
-`uvicorn app.chris.run:create_app --factory` to choose the host and port), and the registry
-service, which serves both A2A selection and registry management (`/registry/*`). Development uses Python 3.12 and local SQLite; Cloud SQL is not required.
+The backend holds two separately started services: the Chat REST API
+(`app.main:app`) and Chris's ADK/A2A agent (`python -m app.chris.run`, or
+`uvicorn app.chris.run:create_app --factory` to choose the host and port). The registry
+service, which serves both A2A selection and registry management (`/registry/*`), is its
+own package in [`../agent-registry/`](../agent-registry/README.md). Chris checks an
+expert's URL with the registry's safe-URL rules, and the pipeline tests here start the
+registry, so this environment installs it from that folder as an editable package.
+Development uses Python 3.12 and local SQLite; Cloud SQL is not required.
 
 Follow [the root README](../README.md#run-locally-windows-powershell) for first-time setup,
 private model configuration, migrations, seeding, and the all-services launcher.
@@ -23,24 +27,26 @@ The registry uses its own `REGISTRY_MODEL` and `REGISTRY_GEMINI_API_KEY` configu
 From `backend/`, use the local virtual environment:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -e ..\agent-registry -e . -r requirements-dev.txt
 $env:PYTHON_DOTENV_DISABLED='1'
 $env:DATABASE_URL='sqlite:///:memory:'
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Run tests in a separate terminal from the servers. The backend suite includes registry
-security/auth tests, Chris request-isolation tests, and the real-implementation pipeline
-with a fake model. No Gemini key is needed for these tests.
+Run tests in a separate terminal from the servers. The backend suite includes Chris
+request-isolation tests and the real-implementation pipeline (Chat, Chris and the
+registry) with a fake model. The registry's own tests run from `../agent-registry/`. No
+Gemini key is needed for these tests.
 
 The tests use SQLite. To run them against PostgreSQL, with the chat system and the
 registry each signed in under its own login and confined to its own schema, see
 [the shared PostgreSQL server](../shared-resources/postgres/README.md#test-against-it).
 
 Alternatively `uv sync --locked` installs the runtime from `uv.lock`; install the test
-tools from `requirements-dev.txt` as well. The lockfile includes the combined Chris
-and registry dependencies. Do not copy a virtual environment from the scratch folder.
+tools from `requirements-dev.txt` as well. The lockfile installs the registry from
+`../agent-registry/` as an editable package. Do not copy a virtual environment from the
+scratch folder.
 
 ## Inspect the local services
 
@@ -58,5 +64,5 @@ Google accepts the configured model/key. Chat's API documentation is at
 `http://127.0.0.1:8010/docs`.
 
 For contracts and current limitations, see [Chris](../docs/chris.md) and
-[the registry](../docs/registry.md). Keep credentials in an ignored backend `.env`
+[the registry](../agent-registry/README.md). Keep credentials in the ignored `.env` at the repository root
 or private process environment; do not put them in frontend configuration or Git.

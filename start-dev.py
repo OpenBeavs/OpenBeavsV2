@@ -17,7 +17,7 @@ def get_frontend_port() -> int:
             return int(os.environ["FRONTEND_PORT"])
         except ValueError:
             pass
-    env_file = ROOT / "backend/.env"
+    env_file = ROOT / ".env"
     if env_file.is_file():
         try:
             with open(env_file, "r", encoding="utf-8") as f:
@@ -40,13 +40,23 @@ def get_ports() -> tuple[int, ...]:
     return (8001, 8000, 8010, get_frontend_port())
 
 
+def venv_python(folder: Path) -> Path:
+    """The Python interpreter of the virtual environment in ``folder``."""
+    return folder / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
 def service_specs(python: str, node: str) -> list[tuple[str, Path, list[str]]]:
-    """Keep Python services in backend so they share its dotenv and SQLite file."""
+    """Start each Python service from its own folder, with that folder's environment.
+
+    Each service then opens its own SQLite file (``DATABASE_URL`` is relative to the
+    folder it starts in), and all of them read the one ``.env`` at the repository root.
+    """
     backend = ROOT / "backend"
+    registry = ROOT / "agent-registry"
     frontend_port = str(get_frontend_port())
     return [
-        ("Registry", backend, [python, "-m", "uvicorn",
-         "app.registry.a2a_app:create_standalone_app", "--factory",
+        ("Registry", registry, [str(venv_python(registry)), "-m", "uvicorn",
+         "agent_registry.a2a_app:create_standalone_app", "--factory",
          "--host", "127.0.0.1", "--port", "8001"]),
         ("Chris", backend, [python, "-m", "app.chris.run"]),
         ("Backend", backend, [python, "-m", "uvicorn", "app.main:app",
@@ -94,15 +104,13 @@ def stop_services(processes: list[subprocess.Popen]) -> None:
 
 def main() -> int:
     """Use separate Windows consoles while retaining direct child supervision."""
-    python = ROOT / "backend/.venv" / (
-        "Scripts/python.exe" if os.name == "nt" else "bin/python"
-    )
+    python = venv_python(ROOT / "backend")
     node = shutil.which("node")
-    if not python.is_file() or not node or not (
-        ROOT / "frontend/node_modules/vite/bin/vite.js"
-    ).is_file():
-        print("Missing backend/.venv, Node.js, or frontend dependencies. "
-              "Follow docs/registry.md first.")
+    if not python.is_file() or not venv_python(ROOT / "agent-registry").is_file() or (
+        not node or not (ROOT / "frontend/node_modules/vite/bin/vite.js").is_file()
+    ):
+        print("Missing agent-registry/.venv, backend/.venv, Node.js, or frontend "
+              "dependencies. Follow README.md first.")
         return 1
 
     processes = []
