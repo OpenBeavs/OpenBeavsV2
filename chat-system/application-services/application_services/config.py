@@ -1,9 +1,10 @@
 """Environment-based configuration for Application Services.
 
 Values are read from the process environment. A ``.env`` file, when one exists, is
-loaded first: python-dotenv searches upward from this package's folder, so it finds
-the ``.env`` at the repository root, and a ``.env`` beside this package's
-``pyproject.toml`` would take its place. Variables already set in the process win.
+loaded first: python-dotenv searches upward from this package's folder and loads the
+first ``.env`` it finds. That is the one at the repository root, unless another sits
+on the way, in ``application_services/``, ``chat-system/application-services/``, or
+``chat-system/``, and is read in its place. Variables already set in the process win.
 Nothing is hardcoded, and values are read at call time so a missing variable
 produces a clear error on the request instead of crashing the server at import.
 """

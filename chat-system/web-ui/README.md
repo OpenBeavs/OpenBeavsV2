@@ -32,11 +32,10 @@ BACKEND_ORIGIN=http://127.0.0.1:8010 npm run dev
 Open the local URL Vite prints (`http://127.0.0.1:5173` by default). The browser calls
 relative paths, and Vite proxies `/health`, `/chat/message`, `/auth/*`, and `/oauth/*`
 to `BACKEND_ORIGIN` in development and preview, so the browser makes no cross-origin
-requests. Always set `BACKEND_ORIGIN`: when it is unset Vite proxies to port 8000,
-where the launcher runs the Conversation Agent, not Application Services. It is a
-server-side setting, not a browser secret, and it must be an origin you control. Do
-not put model keys, database credentials, or login tokens in the Web UI's
-configuration.
+requests. When `BACKEND_ORIGIN` is unset, Vite proxies to `http://127.0.0.1:8010`,
+where the launchers run Application Services. It is a server-side setting, not a
+browser secret, and it must be an origin you control. Do not put model keys, database
+credentials, or login tokens in the Web UI's configuration.
 
 The Web UI adds no API routes, CORS configuration, or database migrations.
 

@@ -60,7 +60,7 @@ During Weeks 1 through 5 of Fall term, our team conducted a comprehensive audit 
   - *Insecure Direct Object References (IDOR):* Chat routes blindly trusted client-supplied `user_id` values, creating cross-user conversation exposure and FERPA compliance risks.
   - *Monolithic JSON Blobs:* Conversations were serialized in single JSON fields, requiring full deserialize-mutate-serialize cycles on every turn (O(N) write scaling).
 - **Predecessor Team's Handoff Document & Retrospective:**
-  - The handoff manual (`docs/CLOUD_RUN_OPERATIONS.md`, `CLAUDE.md`, and ADR-001) advised against running agent deployments inside the hub container, recommended decoupling from Open WebUI's ChatGPT clone features, and emphasized GCP Secret Manager for API key isolation.
+  - The handoff manual of the inherited v1 repository (its `docs/CLOUD_RUN_OPERATIONS.md`, `CLAUDE.md`, and ADR-001) advised against running agent deployments inside the hub container, recommended decoupling from Open WebUI's ChatGPT clone features, and emphasized GCP Secret Manager for API key isolation.
 - **Upstream Contribution Rules & Divergence:**
   - Upstream Open WebUI is MIT-licensed but structured around local LLMs (Ollama) and document RAG. Upstream sync broke because OpenBeavs required A2A protocol dispatching, discovery cards, and institutional SSO rather than a personal LLM interface.
 - **What We Changed First:**

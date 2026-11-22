@@ -25,7 +25,6 @@ chat-system/web-ui/test-results/
 chat-system/web-ui/playwright-report/
 chat-system/web-ui/.env
 chat-system/web-ui/.env.*
-!chat-system/web-ui/.env.example
 /chat-system/web-ui/vite.config.ts.timestamp-*.mjs
 
 docs/imgs/registry-a2a-flow.png

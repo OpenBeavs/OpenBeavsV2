@@ -52,7 +52,9 @@ Every service reads one settings file, `.env` at the repository root. Create it 
 [ -f .env ] || cp .env.example .env
 ```
 
-The first line matters only in a clone that ran the earlier layout, which kept its settings in `backend/.env`. Git ignores that file and so leaves it in place, but no service reads it now; the line moves it to the root. In a fresh clone it does nothing. If an earlier copy already created a root `.env` with blank keys beside `backend/.env`, replace it: `mv backend/.env .env`. Keep only the root `.env`: the services find it by searching upward from their own folders, so a `.env` inside a package folder would be read in its place.
+The first line matters only in a clone that ran the earlier layout, which kept its settings in `backend/.env`. Git ignores that file and so leaves it in place, but no service reads it now; the line moves it to the root. In a fresh clone it does nothing. If an earlier copy already created a root `.env` with blank keys beside `backend/.env`, replace it: `mv backend/.env .env`. Keep only the root `.env`: each service searches upward from the folder holding its code and reads the first `.env` it finds, so a `.env` in any folder on that path would be read in place of the root's. One in `chat-system/`, for instance, would replace it for Application Services and the Conversation Agent, while the Registry went on reading the root's.
+
+The launchers, and the `make` targets run from one shell, give every service the same `DATABASE_URL`, so in `.env` leave it out or set it to `sqlite:///./openbeavs.db`, which each service resolves inside its own folder. Check that line in a `.env` brought from the earlier layout. Another relative name sends the launchers to files that the database commands below never create or seed, because those commands set `sqlite:///./openbeavs.db` themselves; an absolute path or a PostgreSQL address puts both owners in one database, where the second owner's migrations fail on the first owner's revision. To give each owner an address of its own, follow [Databases](#databases).
 
 Then set these privately in `.env`; never commit it, and never paste a key into a command or a chat with an AI tool:
 
@@ -71,7 +73,23 @@ The Registry and Application Services each keep their own database. Locally each
 (cd chat-system/application-services && export DATABASE_URL='sqlite:///./openbeavs.db' && uv run alembic upgrade head)
 ```
 
-Run the migrations again whenever a pull brings new ones. Rerunning the seed adds any missing default agent and leaves existing ones unchanged. `make migrate` and `make seed` run the same commands with the `DATABASE_URL` in `.env`.
+Run the migrations again whenever a pull brings new ones. Rerunning the seed adds any missing default agent and leaves existing ones unchanged. `make migrate` and `make seed` run the same commands with the `DATABASE_URL` in your shell or `.env`.
+
+To give each owner an address of its own, for instance to run the stack on a local PostgreSQL server prepared as [Test against it](shared-resources/postgres/README.md#test-against-it) describes, start each service in its own terminal, with that owner's `DATABASE_URL` in the terminal's environment, and run its migrations there the same way:
+
+```zsh
+# Terminal 1: the Agent Registry
+export DATABASE_URL='postgresql+psycopg2://registry:local-registry@127.0.0.1:5432/openbeavs'
+(cd agent-registry && uv run alembic upgrade head && uv run python -m agent_registry.database.seed_agents)
+make dev-registry
+
+# Terminal 2: Application Services
+export DATABASE_URL='postgresql+psycopg2://chat_system:local-chat-system@127.0.0.1:5432/openbeavs'
+(cd chat-system/application-services && uv run alembic upgrade head)
+make dev-back
+```
+
+Start the other two services with `make dev-chris` and `make dev-front`, each in a terminal of its own.
 
 **A `backend/openbeavs.db` left from before the reorganization** holds both owners' tables in one file, and nothing reads it now. The fresh databases above are the simple course. To keep its rows, each owner adopts a copy by the steps in [Application Services' README](chat-system/application-services/README.md#a-database-built-by-the-earlier-shared-migrations) and the [Agent Registry's README](agent-registry/README.md#a-database-built-by-the-earlier-shared-migrations). A PostgreSQL database built the same way moves into the owners' schemas by the steps in [`shared-resources/postgres/README.md`](shared-resources/postgres/README.md#a-database-built-by-the-earlier-shared-migrations).
 
