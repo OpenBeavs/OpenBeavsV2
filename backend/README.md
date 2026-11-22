@@ -1,7 +1,8 @@
 # OpenBeavs v2 backend
 
 The backend holds three separately started services: the Chat REST API
-(`app.main:app`), Chris's ADK/A2A agent (`python -m app.chris.run`), and the registry
+(`app.main:app`), Chris's ADK/A2A agent (`python -m app.chris.run`, or
+`uvicorn app.chris.run:create_app --factory` to choose the host and port), and the registry
 service, which serves both A2A selection and registry management (`/registry/*`). Development uses Python 3.12 and local SQLite; Cloud SQL is not required.
 
 Follow [the root README](../README.md#run-locally-windows-powershell) for first-time setup,

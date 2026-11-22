@@ -116,8 +116,9 @@ Verified SSO and account-backed chat storage are not implemented.
 - `GET /chris/a2a/.well-known/agent-card.json`: ADK-generated discovery card.
 - `POST /chris/a2a/`: JSON-RPC A2A 1.0 endpoint; use the SDK's `SendMessageRequest`.
 
-Chris's own process serves both (`python -m app.chris.run`, port 8000 locally); the
-chat API's server does not. The old handwritten `/chris/.well-known/agent.json` route
+Chris's own process serves both (`python -m app.chris.run`, port 8000 locally, or
+`uvicorn app.chris.run:create_app --factory` on a chosen host and port); the chat
+API's server does not. The old handwritten `/chris/.well-known/agent.json` route
 is removed. The card advertises text input/output, protocol 1.0 and no streaming. Discovery is
 shared, but each RPC initializes a separate ADK application with its own in-memory
 task store, executor, and session service. These stores have no application-wide
@@ -229,7 +230,7 @@ Set these privately in the process environment or ignored `backend/.env`:
 | `REGISTRY_A2A_TIMEOUT_SECONDS` | `14`; one deadline for registry discovery plus selection. |
 | `CHRIS_A2A_TIMEOUT_SECONDS` | `50`; must exceed registry + expert deadlines plus response overhead. |
 | `CHRIS_EXPERT_TIMEOUT_SECONDS` | `30`; expert validation and call deadline, allowed 1–60. |
-| `CHRIS_EXPERT_DEBUG` | `false`; set `true` to log expert dispatch and completion details in standalone Chris. |
+| `CHRIS_EXPERT_DEBUG` | `false`; set `true` to log expert dispatch and completion details in Chris's process. |
 | `CHRIS_EXPERT_A2A_VERSION` | `0.3`; use `1.0` for experts implementing `SendMessage`. |
 | `GEMINI_API_KEY` | Used for Gemini fallback; never put its value in docs, logs or commits. |
 | `CHRIS_MODEL` | Gemini model ID, used for fallback. |
@@ -259,7 +260,18 @@ uv sync --locked
 python -m app.chris.run
 ```
 
-That runner binds `127.0.0.1:8000`; it does not use `PORT`. Start the chat API on
+That runner binds `127.0.0.1:8000`, the local development address; it reads no host
+or port setting. A deployment that needs another address serves the same application
+with uvicorn, exactly as the registry and the chat API are served:
+
+```bash
+uvicorn app.chris.run:create_app --factory --host 0.0.0.0 --port 8080
+```
+
+Both routes build the same app and configure the same logging, including
+`CHRIS_EXPERT_DEBUG`. Set `CHRIS_PUBLIC_URL` to the address callers reach, since the
+card advertises it, and point the chat API's `CHRIS_A2A_URL` at
+`<that address>/chris/a2a/`. Start the chat API on
 another port (the launcher uses 8010). One browser message produces a
 `/chat/message` access-log entry in the chat API's console and a `/chris/a2a/` entry
 in Chris's. Cloud-ready startup, a container definition, and service-to-service token

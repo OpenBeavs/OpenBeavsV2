@@ -1,10 +1,14 @@
 """Exercise Chris through its real standalone ADK app and A2A SDK, without a model."""
 
+import asyncio
+import threading
+import time
 import uuid
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+import uvicorn
 from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import Message, Part, Role, SendMessageRequest, TaskState
 from fastapi.testclient import TestClient
@@ -134,4 +138,46 @@ def test_public_url_configuration(monkeypatch):
         card = client.get(CARD_PATH).json()
     assert (
         card["supportedInterfaces"][0]["url"] == "https://hub.example.test/chris/a2a/"
+    )
+
+
+def test_app_factory_works_inside_a_running_event_loop():
+    """A server that calls the factory from its own event loop gets a working app."""
+
+    async def build():
+        return create_app()
+
+    with TestClient(asyncio.run(build())) as client:
+        assert client.get(CARD_PATH).json()["name"] == "chris"
+
+
+def test_uvicorn_factory_serves_on_the_chosen_host_and_port(monkeypatch):
+    """The documented deployment command binds the address it is given."""
+    monkeypatch.setenv("CHRIS_PUBLIC_URL", "https://chris.example.test")
+    server = uvicorn.Server(
+        uvicorn.Config(
+            "app.chris.run:create_app",
+            factory=True,
+            host="127.0.0.1",
+            port=0,  # any free port: the point is that the caller chooses
+            log_level="warning",
+        )
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 15
+        while not server.started and thread.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert server.started, "uvicorn did not start the factory-built app"
+        port = server.servers[0].sockets[0].getsockname()[1]
+        assert port != 8000
+        with httpx.Client(trust_env=False, timeout=5) as http:
+            card = http.get(f"http://127.0.0.1:{port}{CARD_PATH}").json()
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+    assert card["name"] == "chris"
+    assert card["supportedInterfaces"][0]["url"] == (
+        f"https://chris.example.test{RPC_PATH}"
     )
