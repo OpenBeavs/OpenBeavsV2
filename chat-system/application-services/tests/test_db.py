@@ -3,7 +3,7 @@
 from sqlalchemy.orm import Session
 
 from application_services.config import get_database_url
-from application_services.db import ChatSystemBase, get_db
+from application_services.database import ChatSystemBase, get_db
 
 
 def test_default_database_url():

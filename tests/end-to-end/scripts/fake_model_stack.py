@@ -81,11 +81,11 @@ import uvicorn
 from agent_registry.a2a import MOUNT_PATH
 from agent_registry.a2a_app import create_registry_a2a_app
 from agent_registry.a2a_auth import open_verifier
-from agent_registry.db.base import RegistryBase
+from agent_registry.database.base import RegistryBase
 from agent_registry.llm import LLMError, ModelLimiter
 from agent_registry.models import Agent
-from application_services.db import engine
-from application_services.db.base import ChatSystemBase
+from application_services.database import engine
+from application_services.database.base import ChatSystemBase
 from application_services.main import app as backend_app
 from conversation_agent import expert_client, gemini
 from conversation_agent.run import create_app as create_chris_app

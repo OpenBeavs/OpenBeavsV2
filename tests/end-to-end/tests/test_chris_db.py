@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from application_services.db.base import ChatSystemBase
-from application_services.db.session import get_db
+from application_services.database.base import ChatSystemBase
+from application_services.database.session import get_db
 from application_services.main import app
 from application_services.models import Chat, Message
 from conversation_agent.routing import RoutingResult

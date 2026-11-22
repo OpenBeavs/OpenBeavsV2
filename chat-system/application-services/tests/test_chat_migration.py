@@ -16,7 +16,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
-from application_services.db.base import ChatSystemBase
+from application_services.database.base import ChatSystemBase
 from application_services.models import Chat
 
 PACKAGE = Path(__file__).resolve().parents[1]

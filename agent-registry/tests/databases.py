@@ -21,7 +21,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.pool import NullPool, StaticPool
 
 import agent_registry.models  # noqa: F401 (registers the tables with the metadata)
-from agent_registry.db.base import RegistryBase
+from agent_registry.database.base import RegistryBase
 
 REGISTRY_URL_VARIABLE = "TEST_REGISTRY_DATABASE_URL"
 

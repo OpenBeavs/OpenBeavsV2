@@ -12,7 +12,7 @@ from sqlalchemy import engine_from_config, pool
 
 import application_services.models  # noqa: F401 (registers the tables with the metadata)
 from application_services.config import get_database_url
-from application_services.db.base import ChatSystemBase
+from application_services.database.base import ChatSystemBase
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_database_url())

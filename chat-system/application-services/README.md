@@ -99,7 +99,7 @@ application_services/chat/service.py  transient history, response assembly
 application_services/chat/a2a_client.py  SDK client adapter that calls Chris
 application_services/auth/            sign-in, session tokens, and route guards
 application_services/models/          users, chats, messages, tickets
-application_services/db/              engine, sessions, and init_db
+application_services/database/        engine, sessions, and init_db
 application_services/config.py        the settings it reads, from the environment or .env
 application_services/history.py       the bound on the question and the history it sends Chris
 migrations/                           the chat_system schema's migrations

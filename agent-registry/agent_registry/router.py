@@ -20,7 +20,7 @@ from agent_registry import service
 from agent_registry.auth import Principal, current_principal, require_admin
 from agent_registry.cards import AgentCard, CardError, fetch_card
 from agent_registry.config import env_flag
-from agent_registry.db import get_db
+from agent_registry.database import get_db
 from agent_registry.models import Agent
 from agent_registry.schemas import RegistryAgentOut, ReviewForm, SubmitAgentForm
 from agent_registry.security import UnsafeURLError

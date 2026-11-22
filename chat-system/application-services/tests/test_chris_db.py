@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from application_services.chat.a2a_client import ChrisReply, ChrisUnavailable
 from application_services.config import ConfigError
-from application_services.db.base import ChatSystemBase
-from application_services.db.session import get_db
+from application_services.database.base import ChatSystemBase
+from application_services.database.session import get_db
 from application_services.main import app
 from application_services.models import Chat, Message, User
 from tests.databases import chat_system_engine

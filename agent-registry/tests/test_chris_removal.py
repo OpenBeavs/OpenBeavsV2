@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from agent_registry.db.seed_agents import INITIAL_AGENTS, seed_agents
+from agent_registry.database.seed_agents import INITIAL_AGENTS, seed_agents
 from agent_registry.models import Agent
 from agent_registry.service import routable_agents
 
@@ -32,7 +32,7 @@ class TestSeedsDoNotInsertChris:
         self, db: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
-        monkeypatch.setattr("agent_registry.db.seed_agents.SessionLocal", factory)
+        monkeypatch.setattr("agent_registry.database.seed_agents.SessionLocal", factory)
         seed_agents()
         assert db.get(Agent, "chris") is None
         assert db.get(Agent, OSU_ID) is not None
@@ -61,7 +61,7 @@ class TestChrisIsStillAvailableButNotRegistered:
         self, db: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
-        monkeypatch.setattr("agent_registry.db.seed_agents.SessionLocal", factory)
+        monkeypatch.setattr("agent_registry.database.seed_agents.SessionLocal", factory)
         seed_agents()
         ids = {agent.id for agent in routable_agents(db)}
         assert OSU_ID in ids

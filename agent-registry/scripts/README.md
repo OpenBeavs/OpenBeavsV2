@@ -12,7 +12,7 @@ registry's own environment (`uv run python scripts/<name>.py`, or
   database, so the registry's model has something to choose between; `--remove` deletes
   them. Their endpoints are placeholders that are never called. It refuses any database
   that is not SQLite.
-- `seed_agents.sql`: the agents `agent_registry/db/seed_agents.py` seeds, as SQL for a
+- `seed_agents.sql`: the agents `agent_registry/database/seed_agents.py` seeds, as SQL for a
   PostgreSQL database, run with `psql` as the `registry` login so that they land in the
   registry's schema. Like the Python seed, it adds missing agents and leaves existing ones
   unchanged.

@@ -13,7 +13,7 @@ from application_services.auth.verifier import (
     decode_session_token,
     verify_microsoft_id_token,
 )
-from application_services.db.session import get_db
+from application_services.database.session import get_db
 from application_services.models.user import User
 
 

@@ -50,7 +50,7 @@ the schema changes. The registry and Application Services each keep their own:
 export DATABASE_URL='sqlite:///./openbeavs.db'
 cd agent-registry
 uv run alembic upgrade head
-uv run python -m agent_registry.db.seed_agents
+uv run python -m agent_registry.database.seed_agents
 cd ../chat-system/application-services
 uv run alembic upgrade head
 cd ../..
@@ -117,7 +117,7 @@ $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
 Wait for the command to finish successfully, then seed the standard registered agents:
 
 ```powershell
-.\.venv\Scripts\python.exe -m agent_registry.db.seed_agents
+.\.venv\Scripts\python.exe -m agent_registry.database.seed_agents
 ```
 
 Then create Application Services':

@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent_registry.config import get_database_url
-from agent_registry.db import SessionLocal
+from agent_registry.database import SessionLocal
 from agent_registry.models import Agent
 
 DEMO = [

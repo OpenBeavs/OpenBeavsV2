@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session, sessionmaker
 
-from application_services.db.base import ChatSystemBase
+from application_services.database.base import ChatSystemBase
 from application_services.models import Chat, Message, Ticket, User
 from tests.databases import chat_system_engine
 

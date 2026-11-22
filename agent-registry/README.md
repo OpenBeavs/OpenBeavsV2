@@ -275,7 +275,7 @@ Every module sits in `agent_registry/`.
 | `a2a_auth.py` | Google/local caller verification and request body limit |
 | `selection.py` | Prompt/schema construction and decision validation |
 | `llm.py` | Gemini request, overall deadline and per-process concurrency limit |
-| `models.py`, `db/` | The `Agent` model, its declarative base, the engine and sessions, and the seed |
+| `models.py`, `database/` | The `Agent` model, its declarative base, the engine and sessions, and the seed |
 | `config.py` | Settings from the environment and the root `.env` |
 
 ### Query the registry directly
@@ -473,7 +473,7 @@ Locally, a fresh `agent-registry/openbeavs.db` is simpler: run the migrations an
 seed. To keep the agents an existing `backend/openbeavs.db` holds, copy that file to
 `agent-registry/openbeavs.db` and follow steps 2 to 5 on the copy.
 
-Neither seed (`agent_registry/db/seed_agents.py`, `scripts/seed_agents.sql`)
+Neither seed (`agent_registry/database/seed_agents.py`, `scripts/seed_agents.sql`)
 inserts Chris: he is the orchestrator, his discovery card is served by his own code, and
 `routable_agents()` excludes the id `chris` in any case. Both seeds insert missing
 default agents as `approved` and leave existing records entirely unchanged. Re-running
@@ -507,7 +507,7 @@ and its own database. Set it up from this folder:
 uv sync --locked --python 3.12
 export DATABASE_URL='sqlite:///./openbeavs.db'
 uv run alembic upgrade head
-uv run python -m agent_registry.db.seed_agents
+uv run python -m agent_registry.database.seed_agents
 ```
 
 On Windows:
@@ -519,7 +519,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e . --group dev
 $env:DATABASE_URL = 'sqlite:///./openbeavs.db'
 .\.venv\Scripts\python.exe -m alembic upgrade head
-.\.venv\Scripts\python.exe -m agent_registry.db.seed_agents
+.\.venv\Scripts\python.exe -m agent_registry.database.seed_agents
 ```
 
 This creates `agent-registry/openbeavs.db`. Configure `REGISTRY_MODEL` and

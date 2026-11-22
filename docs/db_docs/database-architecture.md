@@ -13,8 +13,8 @@ OpenBeavs v2 has **5 core tables** managed by **SQLAlchemy 2.0** and **Alembic**
 The tables have two owners: the chat system owns `users`, `chats`, `messages` and
 `tickets`, and the agent registry owns `agents`. Each owner's models use their own
 declarative base (`ChatSystemBase` in
-`chat-system/application-services/application_services/db/base.py`, `RegistryBase` in
-`agent-registry/agent_registry/db/base.py`), so no foreign key or relationship runs from
+`chat-system/application-services/application_services/database/base.py`, `RegistryBase` in
+`agent-registry/agent_registry/database/base.py`), so no foreign key or relationship runs from
 one owner's tables to the other's, and either set can be created in a database that
 lacks the other. Each owner has its own Alembic history: the one in
 `chat-system/application-services/migrations/` creates the chat system's four tables,

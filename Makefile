@@ -42,7 +42,7 @@ lint:
 
 # ── Database ──────────────────────────────────────────────────────────────────
 seed:
-	cd agent-registry && python -m agent_registry.db.seed_agents
+	cd agent-registry && python -m agent_registry.database.seed_agents
 
 migrate:
 	cd agent-registry && alembic upgrade head

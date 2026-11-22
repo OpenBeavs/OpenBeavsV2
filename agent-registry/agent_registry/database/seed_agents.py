@@ -8,7 +8,7 @@ Can be run locally or against Google Cloud SQL depending on DATABASE_URL.
 
 import logging
 
-from agent_registry.db.session import SessionLocal
+from agent_registry.database.session import SessionLocal
 from agent_registry.models import Agent
 
 logging.basicConfig(level=logging.INFO)

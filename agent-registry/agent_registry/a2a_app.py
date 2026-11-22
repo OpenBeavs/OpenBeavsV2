@@ -37,7 +37,7 @@ from agent_registry.a2a_auth import (
 )
 from agent_registry.auth import check_dev_auth_config
 from agent_registry.config import ConfigError, get_env
-from agent_registry.db import get_db
+from agent_registry.database import get_db
 from agent_registry.llm import LLMCall, ModelLimiter
 from agent_registry.models import Agent
 from agent_registry.router import router as admin_router
@@ -119,7 +119,7 @@ def create_registry_a2a_app(
         return _Unavailable(str(e))
 
     if session_factory is None:
-        from agent_registry.db import SessionLocal
+        from agent_registry.database import SessionLocal
 
         session_factory = SessionLocal
 
@@ -174,7 +174,7 @@ def create_standalone_app(
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("agent_registry").setLevel(logging.INFO)
     if session_factory is None:
-        from agent_registry.db import SessionLocal
+        from agent_registry.database import SessionLocal
 
         session_factory = SessionLocal
     try:

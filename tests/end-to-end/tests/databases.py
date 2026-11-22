@@ -1,7 +1,7 @@
 """The tests' databases: SQLite by default, PostgreSQL when the caller supplies one.
 
 The chat system and the agent registry each own their tables
-(``application_services.db.base`` and ``agent_registry.db.base``). Every end-to-end
+(``application_services.database.base`` and ``agent_registry.database.base``). Every end-to-end
 test that needs an owner's tables gets them from here, freshly created and empty.
 
 With nothing set, each call returns a new SQLite database, so the suite needs no
@@ -28,8 +28,8 @@ from pathlib import Path
 
 import agent_registry.models  # noqa: F401 (registers the agents table)
 import application_services.models  # noqa: F401 (registers the chat system's tables)
-from agent_registry.db.base import RegistryBase
-from application_services.db.base import ChatSystemBase
+from agent_registry.database.base import RegistryBase
+from application_services.database.base import ChatSystemBase
 from sqlalchemy import Engine, MetaData, create_engine
 from sqlalchemy.pool import NullPool, StaticPool
 

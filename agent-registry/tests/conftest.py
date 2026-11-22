@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from agent_registry.a2a_app import create_standalone_app
 from agent_registry.cards import AgentCard, CardError
-from agent_registry.db.base import RegistryBase
-from agent_registry.db.session import get_db
+from agent_registry.database.base import RegistryBase
+from agent_registry.database.session import get_db
 from agent_registry.router import get_card_fetcher
 from tests.databases import registry_engine
 

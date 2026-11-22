@@ -23,7 +23,7 @@ cd agent-registry
 uv sync
 uv run alembic upgrade head
 # Optional: seed the registry's initial expert agents.
-uv run python -m agent_registry.db.seed_agents
+uv run python -m agent_registry.database.seed_agents
 cd ../chat-system/conversation-agent
 uv sync
 cd ../application-services

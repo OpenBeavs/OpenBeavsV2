@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from application_services.db.base import ChatSystemBase
+from application_services.database.base import ChatSystemBase
 
 if TYPE_CHECKING:
     from application_services.models.message import Message

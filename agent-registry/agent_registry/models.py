@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy import JSON, BigInteger, Boolean, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from agent_registry.db.base import RegistryBase
+from agent_registry.database.base import RegistryBase
 
 
 class Agent(RegistryBase):

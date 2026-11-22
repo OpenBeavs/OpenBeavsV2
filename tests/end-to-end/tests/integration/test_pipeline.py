@@ -14,8 +14,8 @@ from pathlib import Path
 import httpx
 import pytest
 from agent_registry.models import Agent
-from application_services.db.base import ChatSystemBase
-from application_services.db.session import get_db
+from application_services.database.base import ChatSystemBase
+from application_services.database.session import get_db
 from application_services.history import bounded_history
 from application_services.main import app as backend_app
 from application_services.models import Message

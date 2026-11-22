@@ -2,8 +2,8 @@
 
 Works against local SQLite or Google Cloud SQL PostgreSQL depending on the
 DATABASE_URL environment variable. Run from this package's folder:
-``python -m application_services.db.init_db``. It creates the chat system's tables
-only; the Agent Registry seeds its own agents (``python -m agent_registry.db.seed_agents``
+``python -m application_services.database.init_db``. It creates the chat system's tables
+only; the Agent Registry seeds its own agents (``python -m agent_registry.database.seed_agents``
 from ``agent-registry/``).
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
-from application_services.db.session import engine
+from application_services.database.session import engine
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)

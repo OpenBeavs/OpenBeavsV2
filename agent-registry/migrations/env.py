@@ -12,7 +12,7 @@ from sqlalchemy import engine_from_config, pool
 
 import agent_registry.models  # noqa: F401 (registers the tables with the metadata)
 from agent_registry.config import get_database_url
-from agent_registry.db.base import RegistryBase
+from agent_registry.database.base import RegistryBase
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_database_url())

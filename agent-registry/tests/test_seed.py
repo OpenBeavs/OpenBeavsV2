@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from agent_registry.db.seed_agents import INITIAL_AGENTS, seed_agents
+from agent_registry.database.seed_agents import INITIAL_AGENTS, seed_agents
 from agent_registry.models import Agent
 from agent_registry.service import routable_agents
 
@@ -31,7 +31,7 @@ def seed(db: Session, monkeypatch: pytest.MonkeyPatch, request):
 
         return seed_sql
     factory = sessionmaker(bind=db.get_bind(), expire_on_commit=False)
-    monkeypatch.setattr("agent_registry.db.seed_agents.SessionLocal", factory)
+    monkeypatch.setattr("agent_registry.database.seed_agents.SessionLocal", factory)
     return seed_agents
 
 

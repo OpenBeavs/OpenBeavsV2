@@ -31,7 +31,7 @@ from agent_registry.a2a_auth import open_verifier
 from agent_registry.llm import ModelLimiter
 from agent_registry.models import Agent
 from application_services.chat import a2a_client
-from application_services.db.session import get_db
+from application_services.database.session import get_db
 from application_services.main import app as backend_app
 from conversation_agent import registry_client
 from conversation_agent.run import create_app as create_chris_app

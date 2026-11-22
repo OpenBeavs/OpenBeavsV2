@@ -21,7 +21,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.pool import NullPool, StaticPool
 
 import application_services.models  # noqa: F401 (registers the tables with the metadata)
-from application_services.db.base import ChatSystemBase
+from application_services.database.base import ChatSystemBase
 
 CHAT_SYSTEM_URL_VARIABLE = "TEST_CHAT_SYSTEM_DATABASE_URL"
 

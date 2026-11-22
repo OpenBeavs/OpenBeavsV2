@@ -7,7 +7,7 @@ and his card is still served. This exercises the registry's model and Chris toge
 from collections.abc import Iterator
 
 import pytest
-from agent_registry.db.base import RegistryBase
+from agent_registry.database.base import RegistryBase
 from agent_registry.models import Agent
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
