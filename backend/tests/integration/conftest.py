@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.chat import a2a_client
 from app.chris import registry_client
 from app.chris.run import create_app as create_chris_app
-from app.db.base import Base
+from app.db.base import ChatSystemBase, RegistryBase
 from app.db.session import get_db
 from app.main import app as backend_app
 from app.models import Agent
@@ -163,7 +163,9 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pipeli
         f"sqlite:///{tmp_path / 'pipeline.db'}",
         connect_args={"check_same_thread": False},
     )
-    Base.metadata.create_all(bind=engine)
+    # One database holds both owners' tables, as the shared server does.
+    ChatSystemBase.metadata.create_all(bind=engine)
+    RegistryBase.metadata.create_all(bind=engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
 
     def override_get_db() -> Iterator[Session]:

@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import ChatSystemBase
 
 if TYPE_CHECKING:
     from app.models.message import Message
     from app.models.user import User
 
 
-class Chat(Base):
+class Chat(ChatSystemBase):
     """Conversation session of a user or guest, with the agent it was last routed to."""
 
     __tablename__ = "chats"

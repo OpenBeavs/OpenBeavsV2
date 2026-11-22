@@ -3,7 +3,7 @@
 from sqlalchemy.orm import Session
 
 from app.config import get_database_url
-from app.db import Base, get_db
+from app.db import ChatSystemBase, get_db
 
 
 def test_default_database_url():
@@ -13,8 +13,15 @@ def test_default_database_url():
 
 
 def test_base_metadata():
-    """Verify declarative Base has active metadata."""
-    assert Base.metadata is not None
+    """Verify the chat system's declarative base holds its tables and no others."""
+    import app.models  # noqa: F401 (registers the models with their metadata)
+
+    assert set(ChatSystemBase.metadata.tables) == {
+        "users",
+        "chats",
+        "messages",
+        "tickets",
+    }
 
 
 def test_get_db_session():

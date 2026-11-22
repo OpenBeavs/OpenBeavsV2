@@ -79,7 +79,7 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     """Run Chat+Chris for real against a fake registry defined by two callables."""
     from sqlalchemy import create_engine
 
-    from app.db.base import Base
+    from app.db.base import ChatSystemBase
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "GET":
@@ -89,7 +89,7 @@ def serve(monkeypatch, tmp_path, on_post, on_get=None):
     engine = create_engine(
         f"sqlite:///{tmp_path / 'f.db'}", connect_args={"check_same_thread": False}
     )
-    Base.metadata.create_all(bind=engine)
+    ChatSystemBase.metadata.create_all(bind=engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
 
     def override_get_db():

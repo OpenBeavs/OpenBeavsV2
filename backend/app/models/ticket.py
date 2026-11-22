@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON, BigInteger, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import ChatSystemBase
 
 if TYPE_CHECKING:
     from app.models.user import User
 
 
-class Ticket(Base):
+class Ticket(ChatSystemBase):
     """User-submitted feedback, issue report, or support request."""
 
     __tablename__ = "tickets"

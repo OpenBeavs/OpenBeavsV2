@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import ChatSystemBase
 
 if TYPE_CHECKING:
     from app.models.chat import Chat
     from app.models.ticket import Ticket
 
 
-class User(Base):
+class User(ChatSystemBase):
     """Authenticated user record originating from OSU SSO claims."""
 
     __tablename__ = "users"

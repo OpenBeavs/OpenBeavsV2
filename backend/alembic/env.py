@@ -2,10 +2,10 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
-import app.models  # noqa: F401 (ensure all 5 models register with Base.metadata)
+import app.models  # noqa: F401 (ensure all 5 models register with their metadata)
 from alembic import context
 from app.config import get_database_url
-from app.db.base import Base
+from app.db.base import ChatSystemBase, RegistryBase
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -19,7 +19,9 @@ config.set_main_option("sqlalchemy.url", db_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+# One migration history still covers both owners' tables, so autogenerate compares
+# the database with both sets of models.
+target_metadata = [ChatSystemBase.metadata, RegistryBase.metadata]
 
 
 def run_migrations_offline() -> None:

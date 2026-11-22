@@ -1,4 +1,4 @@
-"""Agent database model.
+"""Agent database model, owned by the agent registry.
 
 Represents an A2A (Agent-to-Agent) service registered with the hub.
 """
@@ -9,10 +9,10 @@ from typing import Any
 from sqlalchemy import JSON, BigInteger, Boolean, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+from app.db.base import RegistryBase
 
 
-class Agent(Base):
+class Agent(RegistryBase):
     """Registered A2A agent metadata and routing configuration."""
 
     __tablename__ = "agents"

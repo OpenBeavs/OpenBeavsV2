@@ -1,6 +1,8 @@
 """Models package initialization.
 
 Exports all declarative models so Alembic and FastAPI can import them centrally.
+``Agent`` belongs to the agent registry (``RegistryBase``); the others belong to the
+chat system (``ChatSystemBase``). See ``app.db.base``.
 """
 
 from app.models.agent import Agent

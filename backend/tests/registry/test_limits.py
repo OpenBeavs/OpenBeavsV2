@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.base import Base
+from app.db.base import RegistryBase
 from app.registry.llm import (
     DEFAULT_MAX_CONCURRENT,
     DEFAULT_WAIT_SECONDS,
@@ -176,7 +176,7 @@ def db(tmp_path: Path) -> Session:
     engine = create_engine(
         f"sqlite:///{tmp_path / 'limits.db'}", connect_args={"check_same_thread": False}
     )
-    Base.metadata.create_all(bind=engine)
+    RegistryBase.metadata.create_all(bind=engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     yield session
     session.close()

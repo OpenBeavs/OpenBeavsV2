@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db.base import Base
+from app.db.base import RegistryBase
 from app.db.session import get_db
 from app.registry.a2a_app import create_standalone_app
 from app.registry.cards import AgentCard, CardError
@@ -80,19 +80,19 @@ class FakeFetcher:
 
 @pytest.fixture
 def db() -> Iterator[Session]:
-    """A fresh in-memory database with every table created."""
+    """A fresh in-memory database holding the registry's tables and no others."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
+    RegistryBase.metadata.create_all(bind=engine)
     session = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )()
     yield session
     session.close()
-    Base.metadata.drop_all(bind=engine)
+    RegistryBase.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture

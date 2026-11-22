@@ -1,17 +1,18 @@
-"""Unit tests for the 5 core SQLAlchemy models.
+"""Unit tests for the chat system's SQLAlchemy models.
 
 Tests CRUD operations, relationships, cascade deletes, and the anonymous
-iframe workflow with mid-chat authentication promotion.
+iframe workflow with mid-chat authentication promotion. The agent registry's
+model is tested in ``tests/registry/test_models.py``.
 """
 
 import time
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.base import Base
-from app.models import Agent, Chat, Message, Ticket, User
+from app.db.base import ChatSystemBase
+from app.models import Chat, Message, Ticket, User
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def db_session() -> Session:
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
     )
-    Base.metadata.create_all(bind=engine)
+    ChatSystemBase.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )
@@ -30,30 +31,17 @@ def db_session() -> Session:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        ChatSystemBase.metadata.drop_all(bind=engine)
 
 
-def test_create_agent(db_session: Session):
-    """Test creating an A2A agent record."""
-    agent = Agent(
-        id="honors-college",
-        name="Honors College Agent",
-        description="Answers questions about OSU Honors College",
-        endpoint_url="https://agents.oregonstate.edu/honors/message/send",
-        card_url="https://agents.oregonstate.edu/honors/.well-known/agent.json",
-        trust_tier="public",
-        skills=["honors thesis", "scholarships", "advising"],
-        capabilities={"streaming": True},
-    )
-    db_session.add(agent)
-    db_session.commit()
-
-    saved = db_session.get(Agent, "honors-college")
-    assert saved is not None
-    assert saved.name == "Honors College Agent"
-    assert saved.trust_tier == "public"
-    assert "honors thesis" in saved.skills
-    assert saved.is_active is True
+def test_chat_system_tables_stand_alone(db_session: Session):
+    """The chat system's tables are created without the registry's, and point at none."""
+    inspector = inspect(db_session.get_bind())
+    tables = set(inspector.get_table_names())
+    assert tables == {"users", "chats", "messages", "tickets"}
+    for table in tables:
+        for key in inspector.get_foreign_keys(table):
+            assert key["referred_table"] in tables, (table, key["referred_table"])
 
 
 def test_create_user(db_session: Session):

@@ -13,7 +13,7 @@ from app.auth.verifier import (
     verify_state_token,
 )
 from app.chat.a2a_client import ChrisReply
-from app.db.base import Base
+from app.db.base import ChatSystemBase
 from app.db.session import get_db
 from app.main import app
 from app.models import User
@@ -35,7 +35,7 @@ def test_db():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    Base.metadata.create_all(bind=engine)
+    ChatSystemBase.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(
         autocommit=False, autoflush=False, bind=engine, expire_on_commit=False
     )
@@ -51,7 +51,7 @@ def test_db():
     yield session
     app.dependency_overrides.clear()
     session.close()
-    Base.metadata.drop_all(bind=engine)
+    ChatSystemBase.metadata.drop_all(bind=engine)
 
 
 def test_state_token_generation_and_verification():

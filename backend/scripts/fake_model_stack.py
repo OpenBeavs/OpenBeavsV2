@@ -7,7 +7,8 @@ Starts, on loopback only:
 - Chris's A2A agent (real code) on 127.0.0.1:8102, pointed at that registry;
 - the Chat backend (real code) on 127.0.0.1:8100, pointed at that Chris.
 
-The registry uses a fresh temporary SQLite database with three experts. No Gemini key is read
+All share a fresh temporary SQLite database holding both owners' tables and three
+experts. No Gemini key is read
 (``PYTHON_DOTENV_DISABLED`` stops ``.env`` from loading). Expert dispatch and Gemini
 fallback use scripted replies.
 This proves the plumbing and the user interface; it says nothing about how the real model
@@ -70,7 +71,7 @@ from fastapi import FastAPI
 from app.chris import expert_client, gemini
 from app.chris.run import create_app as create_chris_app
 from app.db import SessionLocal, engine
-from app.db.base import Base
+from app.db.base import ChatSystemBase, RegistryBase
 from app.main import app as backend_app
 from app.models import Agent
 from app.registry.a2a import MOUNT_PATH
@@ -83,7 +84,8 @@ REGISTRY_PORT, BACKEND_PORT, CHRIS_PORT = 8101, 8100, 8102
 
 def seed() -> None:
     """Three eligible experts. Their endpoints are placeholders and are never called."""
-    Base.metadata.create_all(bind=engine)
+    ChatSystemBase.metadata.create_all(bind=engine)
+    RegistryBase.metadata.create_all(bind=engine)
     rows = [
         ("math-expert", "Math Expert", "Arithmetic, percentages and unit conversions."),
         ("osu-expert", "OSU Expert", "Questions about Oregon State University."),

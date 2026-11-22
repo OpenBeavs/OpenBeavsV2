@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON, BigInteger, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
+from app.db.base import ChatSystemBase
 
 if TYPE_CHECKING:
     from app.models.chat import Chat
 
 
-class Message(Base):
+class Message(ChatSystemBase):
     """An individual message turn within a chat conversation."""
 
     __tablename__ = "messages"

@@ -16,6 +16,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.chris import expert_client, gemini
+from app.db.base import ChatSystemBase
 from app.db.session import get_db
 from app.history import bounded_history
 from app.main import app as backend_app
@@ -371,8 +372,9 @@ class TestDisplayFieldsComeFromTheRegistry:
     def test_chat_needs_no_agents_table_to_name_the_expert(
         self, experts: Pipeline, tmp_path
     ) -> None:
-        """Chat's own database may be a different one that holds no agents at all."""
+        """Chat's own database may hold the chat system's tables and nothing else."""
         chat_only = create_engine(f"sqlite:///{tmp_path / 'chat-only.db'}")
+        ChatSystemBase.metadata.create_all(bind=chat_only)
 
         def chat_db():
             with Session(chat_only) as db:
