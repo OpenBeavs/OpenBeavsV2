@@ -4,15 +4,12 @@ Represents an A2A (Agent-to-Agent) service registered with the hub.
 """
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import JSON, BigInteger, Boolean, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
-if TYPE_CHECKING:
-    from app.models.chat import Chat
 
 
 class Agent(Base):
@@ -124,10 +121,4 @@ class Agent(Base):
         default=lambda: int(time.time()),
         onupdate=lambda: int(time.time()),
         doc="Last update timestamp in epoch seconds",
-    )
-
-    # Relationships
-    chats: Mapped[list["Chat"]] = relationship(
-        "Chat",
-        back_populates="agent",
     )

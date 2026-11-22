@@ -67,7 +67,6 @@ Both models attempted to call `create_all(bind=engine)` inside their constructor
 ```mermaid
 erDiagram
     USERS ||--o{ CHATS : "owns"
-    AGENTS ||--o{ CHATS : "handles"
     CHATS ||--o{ MESSAGES : "contains"
     USERS ||--o{ TICKETS : "submits"
 
@@ -106,7 +105,7 @@ erDiagram
         string id PK "UUID"
         string user_id FK "References USERS(id), NULL for guest sessions"
         string guest_session_id "UUID, NULL for authenticated users"
-        string agent_id FK "References AGENTS(id)"
+        string agent_id "Registry ID of the routed agent (no foreign key)"
         string title "Chat title or summary"
         string source_domain "OSU site origin (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"
@@ -182,7 +181,7 @@ Represents conversation sessions started from the web app or embedded Floating A
 - **`id`** (`String`, PK): UUIDv4 session identifier.
 - **`user_id`** (`String`, FK -> `users.id`, NULL): NULL if started by an unauthenticated guest.
 - **`guest_session_id`** (`String`, NULL): Ephemeral session token for guests; NULL for authenticated users.
-- **`agent_id`** (`String`, FK -> `agents.id`, NULL): Current active agent (or NULL if routed via Chris).
+- **`agent_id`** (`String`, NULL): ID of the current active agent as the agent registry names it (or NULL if routed via Chris). It is a plain indexed value with no foreign key, because `agents` belongs to the agent registry and the chat tables hold no reference into it. Revision `e6b2c4a9f815` removed the earlier constraint; PostgreSQL drops it in place, and SQLite rebuilds the table, which the migration refuses to do while SQLite foreign-key enforcement is on.
 - **`title`** (`String`): Conversation title generated from the first prompt.
 - **`source_domain`** (`String`, NULL): OSU domain where the chat originated (e.g. `library.oregonstate.edu`) for domain history isolation.
 - **`session_type`** (`String`, NOT NULL): `'authenticated'`, `'guest'`, or `'a2a'`.

@@ -50,11 +50,11 @@ class TestSeedsDoNotInsertChris:
 
 
 class TestMigrationChain:
-    def test_it_follows_the_registry_migration_and_is_the_only_head(self) -> None:
+    def test_it_follows_the_registry_migration_on_a_single_chain(self) -> None:
         config = Config(str(BACKEND / "alembic.ini"))
         config.set_main_option("script_location", str(BACKEND / "alembic"))
         script = ScriptDirectory.from_config(config)
-        assert script.get_heads() == [CHRIS_REVISION]
+        assert len(script.get_heads()) == 1
         assert script.get_revision(CHRIS_REVISION).down_revision == REGISTRY_REVISION
 
     def test_previous_migrations_are_unchanged(self) -> None:
@@ -146,7 +146,7 @@ class TestRemovalMigration:
         url = f"sqlite:///{(tmp_path / 'removal.db').as_posix()}"
         config, engine = build_database(url, monkeypatch)
 
-        command.upgrade(config, "head")
+        command.upgrade(config, CHRIS_REVISION)
 
         assert rows(engine, "SELECT id FROM agents") == [("osu",)]
         # Chats survive; the one that pointed at Chris is detached, others unchanged.
@@ -168,13 +168,13 @@ class TestRemovalMigration:
     ) -> None:
         url = f"sqlite:///{(tmp_path / 'absent.db').as_posix()}"
         config = alembic_config(url, monkeypatch)
-        command.upgrade(config, "head")  # fresh database: no Chris row ever existed
+        command.upgrade(config, CHRIS_REVISION)  # fresh database: no Chris row ever existed
         command.downgrade(config, REGISTRY_REVISION)
         engine = create_engine(url)
         with engine.begin() as connection:
             connection.execute(text("DELETE FROM agents WHERE id = 'chris'"))
 
-        command.upgrade(config, "head")
+        command.upgrade(config, CHRIS_REVISION)
 
         assert rows(engine, "SELECT id FROM agents WHERE id = 'chris'") == []
 
@@ -183,7 +183,7 @@ class TestRemovalMigration:
     ) -> None:
         url = f"sqlite:///{(tmp_path / 'roundtrip.db').as_posix()}"
         config, engine = build_database(url, monkeypatch)
-        command.upgrade(config, "head")
+        command.upgrade(config, CHRIS_REVISION)
 
         command.downgrade(config, REGISTRY_REVISION)
         restored = rows(
@@ -211,7 +211,7 @@ class TestRemovalMigration:
             (None,)
         ]
 
-        command.upgrade(config, "head")
+        command.upgrade(config, CHRIS_REVISION)
         assert rows(engine, "SELECT id FROM agents WHERE id = 'chris'") == []
         assert rows(engine, "SELECT id FROM agents WHERE id = 'osu'") == [("osu",)]
 
@@ -220,7 +220,7 @@ class TestRemovalMigration:
     ) -> None:
         url = f"sqlite:///{(tmp_path / 'existing.db').as_posix()}"
         config, engine = build_database(url, monkeypatch)
-        command.upgrade(config, "head")
+        command.upgrade(config, CHRIS_REVISION)
         with engine.begin() as connection:
             connection.execute(
                 text(

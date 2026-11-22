@@ -429,8 +429,9 @@ served by code and he is never offered to the router, so he has no row in `agent
 Neither seed (`seed_agents.py`, `seed_agents.sql`) inserts him any more, and the new
 migration `d4f1b8a2c967` (after `a7c3e91d5b02`) removes the row the early seed created:
 it sets `chats.agent_id` to NULL for Chris, then deletes `id = 'chris'`. Chats and
-messages are kept (`chats.agent_id` is `ON DELETE SET NULL` and messages belong to
-chats). It touches nothing else and is safe to run when the row is already gone.
+messages are kept (at that revision `chats.agent_id` is `ON DELETE SET NULL` and
+messages belong to chats; the next revision, `e6b2c4a9f815`, removes that foreign key
+and leaves `agent_id` a plain column). It touches nothing else and is safe to run when the row is already gone.
 `routable_agents()` still excludes the id `chris`, so the code is safe before or after
 the migration.
 

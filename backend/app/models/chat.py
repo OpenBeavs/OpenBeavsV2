@@ -13,13 +13,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.agent import Agent
     from app.models.message import Message
     from app.models.user import User
 
 
 class Chat(Base):
-    """Conversation session linking a user or guest to an agent."""
+    """Conversation session of a user or guest, with the agent it was last routed to."""
 
     __tablename__ = "chats"
 
@@ -42,12 +41,13 @@ class Chat(Base):
         index=True,
         doc="Ephemeral session token for unauthenticated iframe guests",
     )
+    # A plain value, not a foreign key: the agents table belongs to the agent
+    # registry, which the chat tables must not reference.
     agent_id: Mapped[str | None] = mapped_column(
         String(64),
-        ForeignKey("agents.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-        doc="Currently routed agent ID (NULL if orchestrator answers directly)",
+        doc="Registry ID of the currently routed agent (NULL if orchestrator answers directly)",
     )
     title: Mapped[str | None] = mapped_column(
         String(255),
@@ -90,10 +90,6 @@ class Chat(Base):
     # Relationships
     user: Mapped["User | None"] = relationship(
         "User",
-        back_populates="chats",
-    )
-    agent: Mapped["Agent | None"] = relationship(
-        "Agent",
         back_populates="chats",
     )
     messages: Mapped[list["Message"]] = relationship(

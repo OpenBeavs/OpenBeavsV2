@@ -1,6 +1,5 @@
 erDiagram
     USERS ||--o{ CHATS : "owns"
-    AGENTS ||--o{ CHATS : "handles"
     CHATS ||--o{ MESSAGES : "contains"
     USERS ||--o{ TICKETS : "submits"
 
@@ -39,7 +38,7 @@ erDiagram
         string id PK "UUID"
         string user_id FK "References USERS(id), NULL for guest sessions"
         string guest_session_id "UUID, NULL for authenticated users"
-        string agent_id FK "References AGENTS(id)"
+        string agent_id "Registry ID of the routed agent (no foreign key)"
         string title "Chat title or summary"
         string source_domain "OSU site origin (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"

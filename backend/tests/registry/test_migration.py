@@ -17,7 +17,7 @@ from app.models import Agent
 BACKEND = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "5f055aea1c94"
 REGISTRY_REVISION = "a7c3e91d5b02"
-HEAD_REVISION = "d4f1b8a2c967"  # removes Chris; see test_chris_removal.py
+HEAD_REVISION = "e6b2c4a9f815"  # drops the chats-to-agents foreign key
 NEW_COLUMNS = {"status", "submitted_by", "reviewed_by", "reviewed_at", "review_note"}
 
 
