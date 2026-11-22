@@ -1,4 +1,8 @@
-"""Launch each service in its own Windows console, supervised by this terminal."""
+"""Start the four OpenBeavs services for local development, and supervise them.
+
+On Windows each service opens in its own console; elsewhere they share this terminal.
+``scripts/dev.py`` and the ``Makefile`` start the services from the definitions here.
+"""
 
 import os
 import shutil
@@ -8,10 +12,15 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+AGENT_REGISTRY = ROOT / "agent-registry"
+CONVERSATION_AGENT = ROOT / "chat-system/conversation-agent"
+APPLICATION_SERVICES = ROOT / "chat-system/application-services"
+WEB_UI = ROOT / "chat-system/web-ui"
+VITE = WEB_UI / "node_modules/vite/bin/vite.js"
 
 
 def get_frontend_port() -> int:
-    """Read frontend port from FRONTEND_PORT, MICROSOFT_REDIRECT_URI, or default 5173."""
+    """Read the Web UI's port from FRONTEND_PORT, MICROSOFT_REDIRECT_URI, or default 5173."""
     if "FRONTEND_PORT" in os.environ:
         try:
             return int(os.environ["FRONTEND_PORT"])
@@ -37,6 +46,7 @@ def get_frontend_port() -> int:
 
 
 def get_ports() -> tuple[int, ...]:
+    """Each service's port, in the order ``service_specs`` lists the services."""
     return (8001, 8000, 8010, get_frontend_port())
 
 
@@ -51,24 +61,34 @@ def service_specs(node: str) -> list[tuple[str, Path, list[str]]]:
     Each service then opens its own SQLite file (``DATABASE_URL`` is relative to the
     folder it starts in), and all of them read the one ``.env`` at the repository root.
     """
-    application_services = ROOT / "chat-system/application-services"
-    registry = ROOT / "agent-registry"
-    conversation_agent = ROOT / "chat-system/conversation-agent"
-    web_ui = ROOT / "chat-system/web-ui"
     frontend_port = str(get_frontend_port())
     return [
-        ("Registry", registry, [str(venv_python(registry)), "-m", "uvicorn",
-         "agent_registry.a2a_app:create_standalone_app", "--factory",
+        ("Agent Registry", AGENT_REGISTRY, [str(venv_python(AGENT_REGISTRY)), "-m",
+         "uvicorn", "agent_registry.a2a_app:create_standalone_app", "--factory",
          "--host", "127.0.0.1", "--port", "8001"]),
-        ("Chris", conversation_agent, [str(venv_python(conversation_agent)), "-m",
-         "conversation_agent.run"]),
-        ("Backend", application_services, [str(venv_python(application_services)),
-         "-m", "uvicorn", "application_services.main:app",
-         "--host", "127.0.0.1", "--port", "8010"]),
-        ("Frontend", web_ui, [node,
-         str(web_ui / "node_modules/vite/bin/vite.js"),
+        ("Conversation Agent", CONVERSATION_AGENT, [str(venv_python(CONVERSATION_AGENT)),
+         "-m", "conversation_agent.run"]),
+        ("Application Services", APPLICATION_SERVICES,
+         [str(venv_python(APPLICATION_SERVICES)), "-m", "uvicorn",
+          "application_services.main:app", "--host", "127.0.0.1", "--port", "8010"]),
+        ("Web UI", WEB_UI, [node, str(VITE),
          "--host", "127.0.0.1", "--port", frontend_port, "--strictPort"]),
     ]
+
+
+def missing_requirements(folders: list[Path]) -> list[str]:
+    """The setup README.md describes that has not been done for the services in ``folders``."""
+    missing = []
+    for folder in folders:
+        name = folder.relative_to(ROOT).as_posix()
+        if folder == WEB_UI:
+            if not shutil.which("node"):
+                missing.append("Node.js 22 or later")
+            elif not VITE.is_file():
+                missing.append(f"{name}/node_modules (run npm ci in {name}/)")
+        elif not venv_python(folder).is_file():
+            missing.append(f"{name}/.venv (run uv sync --locked in {name}/)")
+    return missing
 
 
 def local_environment() -> dict[str, str]:
@@ -108,16 +128,12 @@ def stop_services(processes: list[subprocess.Popen]) -> None:
 
 def main() -> int:
     """Use separate Windows consoles while retaining direct child supervision."""
-    node = shutil.which("node")
-    folders = (ROOT / "agent-registry", ROOT / "chat-system/conversation-agent",
-               ROOT / "chat-system/application-services")
-    if not all(venv_python(f).is_file() for f in folders) or (
-        not node or not (ROOT / "chat-system/web-ui/node_modules/vite/bin/vite.js").is_file()
-    ):
-        print("Missing agent-registry/.venv, chat-system/conversation-agent/.venv, "
-              "chat-system/application-services/.venv, Node.js, or "
-              "chat-system/web-ui/node_modules. Follow README.md first.")
+    missing = missing_requirements([AGENT_REGISTRY, CONVERSATION_AGENT,
+                                    APPLICATION_SERVICES, WEB_UI])
+    if missing:
+        print("Missing: " + "; ".join(missing) + ". Follow README.md first.")
         return 1
+    node = shutil.which("node")
 
     processes = []
     try:
@@ -138,7 +154,8 @@ def main() -> int:
                 }
             processes.append(subprocess.Popen(command, cwd=cwd, env=env, **options))
         f_port = get_frontend_port()
-        print(f"Frontend: http://localhost:{f_port} | Backend: http://127.0.0.1:8010/docs\n"
+        print(f"Web UI: http://localhost:{f_port} | "
+              "Application Services: http://127.0.0.1:8010/docs\n"
               "Services are starting. Keep this launcher open. "
               "Press Ctrl+C here to stop all four.", flush=True)
         while True:

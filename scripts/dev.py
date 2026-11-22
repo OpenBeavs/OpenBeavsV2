@@ -1,223 +1,216 @@
-"""OpenBeavs v2 Development Orchestrator.
+"""OpenBeavs v2 development orchestrator, in a single terminal.
 
-Starts all 3 development services concurrently in a single terminal:
-1. Backend (FastAPI Chat & Chris, port 8000)
-2. Registry (A2A Agent Selection Service, port 8001)
-3. Frontend (SvelteKit Chat UI, port 5173)
+``python scripts/dev.py start`` starts the four services that ``start-dev.py`` starts,
+from the same folders, environments, ports and settings, and prints each one's output
+with a colored prefix:
 
-Provides colored output prefixes, graceful Ctrl+C handling, and a 'stop' command
-that terminates all lingering processes by port.
+1. Agent Registry (A2A expert selection and admin API, port 8001)
+2. Conversation Agent (Chris, A2A, port 8000)
+3. Application Services (the Chat System's HTTPS API, port 8010), reloaded on edits
+4. Web UI (SvelteKit, port 8080 or 5173, as ``start-dev.py`` chooses)
+
+``python scripts/dev.py start <folder>...`` starts only the named services:
+``agent-registry``, ``conversation-agent``, ``application-services``, ``web-ui``.
+Either form first stops whatever is listening on the ports it is about to use.
+Ctrl+C stops what it started.
+
+``python scripts/dev.py stop`` stops whatever is listening on any port the stack uses.
 """
 
+import importlib.util
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
-# Paths relative to repository root
 ROOT_DIR = Path(__file__).resolve().parent.parent
-BACKEND_DIR = ROOT_DIR / "chat-system" / "application-services"
-REGISTRY_DIR = ROOT_DIR / "agent-registry"
-FRONTEND_DIR = ROOT_DIR / "chat-system" / "web-ui"
-
-DEFAULT_PORTS = [8000, 8010, 8001, 5173, 8080, 3000]
 
 
-def get_backend_port() -> int:
-    """Read configured backend port from the root .env or return default 8010."""
-    env_file = ROOT_DIR / ".env"
-    if env_file.exists():
-        try:
-            with open(env_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("CHRIS_PUBLIC_URL=") or line.startswith("CHRIS_A2A_URL="):
-                        val = line.split("=", 1)[1].strip()
-                        from urllib.parse import urlsplit
+def _load_launcher():
+    """``start-dev.py`` holds the one definition of the services; load it as a module."""
+    spec = importlib.util.spec_from_file_location("start_dev", ROOT_DIR / "start-dev.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-                        parsed = urlsplit(val)
-                        if parsed.port:
-                            return parsed.port
-        except Exception:
-            pass
-    return 8010
+
+launcher = _load_launcher()
 
 # ANSI colors for nice terminal output
 COLORS = {
-    "backend": "\033[94m",   # Blue
-    "registry": "\033[93m",  # Yellow
-    "frontend": "\033[92m",  # Green
-    "system": "\033[95m",    # Magenta
+    "agent-registry": "\033[93m",        # Yellow
+    "conversation-agent": "\033[96m",    # Cyan
+    "application-services": "\033[94m",  # Blue
+    "web-ui": "\033[92m",                # Green
+    "system": "\033[95m",                # Magenta
     "reset": "\033[0m",
 }
 
 
-def stop_processes_on_ports(ports=None):
-    """Find and kill any processes listening on the development ports."""
-    if ports is None:
-        ports = DEFAULT_PORTS
+def system(message: str) -> None:
+    print(f"{COLORS['system']}[system] {message}{COLORS['reset']}", flush=True)
 
-    print(f"{COLORS['system']}[system] Stopping processes listening on ports {ports}...{COLORS['reset']}")
-    killed_pids = set()
 
-    try:
-        output = subprocess.check_output("netstat -ano -p tcp", shell=True).decode("utf-8", errors="ignore")
+def stack_ports() -> list[int]:
+    """Every port a start may have used: the Web UI takes 8080 or 5173, by the settings."""
+    return sorted(set(launcher.get_ports()) | {5173, 8080})
+
+
+def listening_pids(ports) -> set[int]:
+    """The processes listening on any of ``ports``."""
+    pids = set()
+    if sys.platform == "win32":
+        output = subprocess.run(["netstat", "-ano", "-p", "tcp"], check=False,
+                                capture_output=True, text=True, errors="ignore").stdout
         for line in output.splitlines():
-            for port in ports:
-                # Match e.g. " 127.0.0.1:8000 " or " 0.0.0.0:8000 " or " [::]:8000 "
-                if f":{port} " in line and "LISTENING" in line:
-                    parts = line.strip().split()
-                    if len(parts) >= 5:
-                        pid = parts[-1]
-                        if pid.isdigit() and pid not in ("0", str(os.getpid())):
-                            killed_pids.add(pid)
-    except Exception as e:
-        print(f"Error querying netstat: {e}")
+            parts = line.split()
+            # e.g. "TCP  127.0.0.1:8000  0.0.0.0:0  LISTENING  1234"
+            if (len(parts) >= 5 and parts[3] == "LISTENING" and parts[4].isdigit()
+                    and any(parts[1].endswith(f":{port}") for port in ports)):
+                pids.add(int(parts[4]))
+    elif shutil.which("lsof") is None:
+        system("lsof is not installed, so the processes on the ports cannot be found.")
+    else:
+        for port in ports:
+            output = subprocess.run(["lsof", "-nP", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                                    check=False, capture_output=True, text=True).stdout
+            pids.update(int(pid) for pid in output.split() if pid.isdigit())
+    pids.discard(0)
+    pids.discard(os.getpid())
+    return pids
 
-    if not killed_pids:
-        print(f"{COLORS['system']}[system] No lingering processes found on ports {ports}. Ports are clean!{COLORS['reset']}")
+
+def stop_processes_on_ports(ports=None) -> None:
+    """Stop every process listening on ``ports`` (by default, every port the stack uses)."""
+    ports = stack_ports() if ports is None else ports
+    pids = listening_pids(ports)
+    if not pids:
+        system(f"Nothing is listening on ports {ports}.")
         return
-
-    for pid in killed_pids:
+    for pid in pids:
         try:
-            # /T terminates process and all child processes, /F forces termination
-            subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, capture_output=True)
-            print(f"{COLORS['system']}[system] Killed PID {pid}{COLORS['reset']}")
-        except Exception as e:
-            print(f"{COLORS['system']}[system] Failed to kill PID {pid}: {e}{COLORS['reset']}")
-
-    print(f"{COLORS['system']}[system] Development ports are now clean.{COLORS['reset']}")
+            if sys.platform == "win32":
+                # /T stops the process and its children, /F forces it.
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], check=False,
+                               capture_output=True)
+            else:
+                os.kill(pid, signal.SIGTERM)
+            system(f"Stopped PID {pid}")
+        except OSError as error:
+            system(f"Failed to stop PID {pid}: {error}")
+    deadline = time.monotonic() + 10
+    while listening_pids(ports) and time.monotonic() < deadline:
+        time.sleep(0.25)
+    if sys.platform != "win32":
+        for pid in listening_pids(ports):
+            os.kill(pid, signal.SIGKILL)
+            system(f"Killed PID {pid}, which ignored the request to stop")
+    system(f"Ports {ports} are free.")
 
 
 def stream_output(pipe, prefix, color):
     """Read lines from process pipe and print with colored prefix."""
     try:
         for line in iter(pipe.readline, ""):
-            if not line:
-                break
             sys.stdout.write(f"{color}[{prefix}]{COLORS['reset']} {line}")
             sys.stdout.flush()
-    except Exception:
+    except (OSError, ValueError):
         pass
 
 
-def start_services():
-    """Start all 3 services (backend, registry, frontend) concurrently."""
-    # First ensure ports are clear
-    stop_processes_on_ports()
+def start_services(selected: list[str]) -> int:
+    """Start the named services (every one when none is named) and supervise them."""
+    node = shutil.which("node") or "node"
+    services = [(cwd.name, port, name, cwd, command) for (name, cwd, command), port
+                in zip(launcher.service_specs(node), launcher.get_ports())]
+    known = [key for key, *_ in services]
+    unknown = [key for key in selected if key not in known]
+    if unknown:
+        print(f"Unknown service {', '.join(unknown)}. Choose from: {', '.join(known)}.")
+        return 2
+    if selected:
+        services = [service for service in services if service[0] in selected]
 
-    py_exec = sys.executable
-    backend_port = get_backend_port()
+    missing = launcher.missing_requirements([cwd for _, _, _, cwd, _ in services])
+    if missing:
+        print("Missing: " + "; ".join(missing) + ". Follow README.md first.")
+        return 1
 
-    services = [
-        {
-            "name": "backend",
-            "cmd": [py_exec, "-m", "uvicorn", "application_services.main:app", "--reload", "--host", "127.0.0.1", "--port", str(backend_port)],
-            "cwd": str(BACKEND_DIR),
-            "color": COLORS["backend"],
-        },
-        {
-            "name": "registry",
-            "cmd": [
-                py_exec,
-                "-m",
-                "uvicorn",
-                "agent_registry.a2a_app:create_standalone_app",
-                "--factory",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "8001",
-            ],
-            "cwd": str(REGISTRY_DIR),
-            "color": COLORS["registry"],
-            "env": {
-                **os.environ,
-                "REGISTRY_PUBLIC_URL": os.environ.get("REGISTRY_PUBLIC_URL", "http://127.0.0.1:8001"),
-                "REGISTRY_A2A_AUTH": os.environ.get("REGISTRY_A2A_AUTH", "dev"),
-            },
-        },
-        {
-            "name": "frontend",
-            "cmd": "npm run dev",
-            "cwd": str(FRONTEND_DIR),
-            "color": COLORS["frontend"],
-            "shell": True,
-            "env": {
-                **os.environ,
-                "BACKEND_ORIGIN": f"http://127.0.0.1:{backend_port}",
-            },
-        },
-    ]
+    # First ensure the ports are clear.
+    ports = [port for _, port, _, _, _ in services] if selected else stack_ports()
+    stop_processes_on_ports(ports)
 
-    print(f"\n{COLORS['system']}════════════════════════════════════════════════════════════════")
-    print("  🚀 Starting OpenBeavs v2 Development Environment (All 3 Services)")
-    print(f"  - Backend:  http://127.0.0.1:{backend_port} (FastAPI Chat & Chris A2A)")
-    print("  - Registry: http://127.0.0.1:8001 (A2A Expert Selection Service)")
-    print("  - Frontend: http://127.0.0.1:5173 (SvelteKit Chat UI)")
-    print("  Press Ctrl+C to stop all services.")
-    print(f"════════════════════════════════════════════════════════════════{COLORS['reset']}\n")
+    env = {**launcher.local_environment(), "PYTHONUNBUFFERED": "1"}
+    print(f"\n{COLORS['system']}{'═' * 64}")
+    print("  Starting the OpenBeavs v2 development environment")
+    for key, port, name, _, _ in services:
+        print(f"  - {name}: http://127.0.0.1:{port}")
+    print("  Press Ctrl+C to stop.")
+    print(f"{'═' * 64}{COLORS['reset']}\n", flush=True)
 
     processes = []
-    threads = []
-
     try:
-        for s in services:
-            is_shell = s.get("shell", False)
-            cmd = s["cmd"]
-            env = s.get("env", os.environ)
-            # On Windows, using CREATE_NEW_PROCESS_GROUP allows clean signal management
-            p = subprocess.Popen(
-                cmd,
-                cwd=s["cwd"],
+        for key, _, _, cwd, command in services:
+            if cwd == launcher.APPLICATION_SERVICES:
+                command = [*command, "--reload"]
+            process = subprocess.Popen(
+                command,
+                cwd=cwd,
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                shell=is_shell,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
             )
-            processes.append((s["name"], p))
+            processes.append((key, process))
+            threading.Thread(target=stream_output, args=(process.stdout, key, COLORS[key]),
+                             daemon=True).start()
 
-            t = threading.Thread(target=stream_output, args=(p.stdout, s["name"], s["color"]), daemon=True)
-            t.start()
-            threads.append(t)
-
-        # Wait while processes run
         while True:
             time.sleep(0.5)
-            for name, p in processes:
-                ret = p.poll()
-                if ret is not None and ret != 0:
-                    print(f"\n{COLORS['system']}[system] Service '{name}' exited with code {ret}.{COLORS['reset']}")
-
+            for key, process in processes:
+                if process.poll() is not None:
+                    system(f"Service '{key}' exited with code {process.returncode}; "
+                           "stopping the others.")
+                    # 0 when it was stopped on request, as by "scripts/dev.py stop".
+                    stopped = (0, -signal.SIGTERM, -signal.SIGINT)
+                    return 0 if process.returncode in stopped else 1
     except KeyboardInterrupt:
-        print(f"\n{COLORS['system']}[system] Received shutdown signal. Terminating services...{COLORS['reset']}")
+        print()
+        system("Received shutdown signal. Terminating services...")
+        return 0
     finally:
-        for name, p in processes:
-            try:
+        for _, process in processes:
+            if process.poll() is None:
                 if sys.platform == "win32":
-                    subprocess.run(f"taskkill /F /T /PID {p.pid}", shell=True, capture_output=True)
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                                   check=False, capture_output=True)
                 else:
-                    p.terminate()
-            except Exception:
-                pass
-        stop_processes_on_ports()
-        print(f"{COLORS['system']}[system] All services stopped.{COLORS['reset']}")
+                    process.terminate()
+        for _, process in processes:
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        stop_processes_on_ports(ports)
+        system("All services stopped.")
 
 
-def main():
-    if len(sys.argv) > 1 and sys.argv[1].lower() in ("stop", "kill", "down"):
+def main() -> int:
+    command = sys.argv[1].lower() if len(sys.argv) > 1 else "start"
+    if command in ("stop", "kill", "down"):
         stop_processes_on_ports()
-    elif len(sys.argv) > 1 and sys.argv[1].lower() in ("start", "run", "dev", "up"):
-        start_services()
-    else:
-        # Default action: start
-        start_services()
+        return 0
+    if command in ("start", "run", "dev", "up"):
+        return start_services(sys.argv[2:])
+    print(__doc__)
+    return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

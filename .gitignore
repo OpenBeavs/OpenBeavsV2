@@ -1,8 +1,9 @@
-# Secrets and local environments
+# Secrets and local environments: a .env at the repository root or in any package
+# folder, and each package's virtual environment
 .env
 .venv/
 
-# Python caches
+# Python caches and build output
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -12,10 +13,9 @@ agent-registry/build/
 chat-system/conversation-agent/build/
 chat-system/application-services/build/
 
-# Local database files
+# Local database files, such as each owner's openbeavs.db
 *.db
 *.sqlite3
-agent_registry with new repo
 
 # Web UI dependencies, generated output and browser-test artifacts
 node_modules/
@@ -28,7 +28,6 @@ chat-system/web-ui/.env.*
 !chat-system/web-ui/.env.example
 /chat-system/web-ui/vite.config.ts.timestamp-*.mjs
 
-.env
 docs/imgs/registry-a2a-flow.png
 docs/imgs/registry-registration-current.png
 docs/imgs/registry-selection-current.png

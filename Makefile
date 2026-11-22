@@ -1,67 +1,80 @@
-.PHONY: run dev stop down dev-back dev-registry dev-front test test-registry test-backend test-frontend lint seed migrate help
+.PHONY: run dev stop down dev-back dev-chris dev-registry dev-front test test-backend test-frontend lint seed migrate help
+
+# The launchers use only Python's standard library. Each service, test suite and
+# migration runs in its own package's environment, through uv.
+PYTHON ?= uv run --no-project --python 3.12 python
 
 # ── Development ───────────────────────────────────────────────────────────────
-# Starts all 4 services (registry, chris, backend, frontend) using the team's start-dev.py
+# Starts all 4 services (Agent Registry, Conversation Agent, Application Services,
+# Web UI) with start-dev.py
 run:
-	python start-dev.py
+	$(PYTHON) start-dev.py
 
 dev: run
 
-# Stops all running development servers and frees ports 8000, 8001, 8010, and 5173
+# Stops whatever listens on the stack's ports: 8000, 8001, 8010, 5173 and 8080
 stop:
-	python scripts/dev.py stop
+	$(PYTHON) scripts/dev.py stop
 
 down: stop
 
-# Run individual services in their own terminal if desired
-dev-back:
-	cd chat-system/application-services && python -m uvicorn application_services.main:app --reload --host 127.0.0.1 --port 8000
-
+# Run individual services, each in its own terminal, with start-dev.py's settings
 dev-registry:
-	cd agent-registry && python -m uvicorn agent_registry.a2a_app:create_standalone_app --factory --host 127.0.0.1 --port 8001
+	$(PYTHON) scripts/dev.py start agent-registry
+
+dev-chris:
+	$(PYTHON) scripts/dev.py start conversation-agent
+
+dev-back:
+	$(PYTHON) scripts/dev.py start application-services
 
 dev-front:
-	cd chat-system/web-ui && npm run dev
+	$(PYTHON) scripts/dev.py start web-ui
 
 # ── Testing & Quality ─────────────────────────────────────────────────────────
-test: test-registry test-backend test-frontend
-
-test-registry:
-	cd agent-registry && python -m pytest
+test: test-backend test-frontend
 
 test-backend:
-	cd tests/end-to-end && python -m pytest
+	cd agent-registry && uv run pytest
+	cd chat-system/conversation-agent && uv run pytest
+	cd chat-system/application-services && uv run pytest
+	cd tests/end-to-end && uv run pytest
 
 test-frontend:
 	cd chat-system/web-ui && npm test
 
 lint:
-	cd agent-registry && python -m ruff check .
-	cd tests/end-to-end && python -m ruff check .
-	cd chat-system/web-ui && npm run check
+	cd agent-registry && uv run ruff check .
+	cd chat-system/conversation-agent && uv run ruff check .
+	cd chat-system/application-services && uv run ruff check .
+	cd tests/end-to-end && uv run ruff check .
+	cd chat-system/web-ui && npm run lint
 
 # ── Database ──────────────────────────────────────────────────────────────────
+# Each owner's own database (DATABASE_URL, relative to the owner's folder) and history
 seed:
-	cd agent-registry && python -m agent_registry.database.seed_agents
+	cd agent-registry && uv run python -m agent_registry.database.seed_agents
 
 migrate:
-	cd agent-registry && alembic upgrade head
-	cd chat-system/application-services && alembic upgrade head
+	cd agent-registry && uv run alembic upgrade head
+	cd chat-system/application-services && uv run alembic upgrade head
 
 # ── Help ──────────────────────────────────────────────────────────────────────
 help:
 	@echo ""
 	@echo "OpenBeavs v2 — Developer Commands"
 	@echo "────────────────────────────────────────────────────────────────────"
-	@echo "  make run          Start all 3 dev servers in 1 terminal:"
-	@echo "                    - Backend (8000), Registry (8001), Frontend (5173)"
-	@echo "  make stop         Stop all running servers and free ports"
-	@echo "  make dev-back     Start backend server only (port 8000)"
-	@echo "  make dev-registry Start registry A2A service only (port 8001)"
-	@echo "  make dev-front    Start frontend server only (port 5173)"
-	@echo "  make test         Run registry and backend (pytest) and frontend (vitest) tests"
-	@echo "  make lint         Run ruff and svelte-check"
-	@echo "  make seed         Seed initial agents into the database"
-	@echo "  make migrate      Run database migrations (Alembic)"
+	@echo "  make run          Start all 4 dev servers with start-dev.py:"
+	@echo "                    - Agent Registry (8001), Conversation Agent (8000),"
+	@echo "                      Application Services (8010), Web UI (8080 or 5173)"
+	@echo "  make stop         Stop whatever listens on the stack's ports"
+	@echo "  make dev-registry Start the Agent Registry only (port 8001)"
+	@echo "  make dev-chris    Start the Conversation Agent only (port 8000)"
+	@echo "  make dev-back     Start Application Services only (port 8010, reloads)"
+	@echo "  make dev-front    Start the Web UI only (port 8080 or 5173)"
+	@echo "  make test         Run every Python suite (pytest) and the Web UI's unit tests (vitest)"
+	@echo "  make lint         Run ruff in every Python folder, and ESLint and svelte-check"
+	@echo "  make seed         Seed the sample agents into the Agent Registry's database"
+	@echo "  make migrate      Migrate the Agent Registry's and Application Services' databases"
 	@echo "────────────────────────────────────────────────────────────────────"
 	@echo ""
