@@ -29,8 +29,8 @@ from .conftest import Pipeline, reply, slow
 real_expert_send = expert_client.send_message
 
 # The registry's command-line client is a script in its package, not a module, so it is
-# loaded from its file.
-_CLIENT = Path(__file__).resolve().parents[3] / "agent-registry/scripts/registry_a2a_client.py"
+# loaded from its file. parents[4] is the repository's root.
+_CLIENT = Path(__file__).resolve().parents[4] / "agent-registry/scripts/registry_a2a_client.py"
 _spec = importlib.util.spec_from_file_location("registry_a2a_client", _CLIENT)
 registry_a2a_client = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(registry_a2a_client)

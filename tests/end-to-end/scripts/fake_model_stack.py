@@ -37,7 +37,7 @@ contains       model behavior
 anything else  no match
 =============  ===========================================================
 
-Run from ``backend/``::
+Run from ``tests/end-to-end/``::
 
     .venv\\Scripts\\python.exe scripts\\fake_model_stack.py
 """

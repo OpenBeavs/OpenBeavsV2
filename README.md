@@ -3,7 +3,7 @@
 The OSU AI hub prototype, with a standalone Chris frontend and FastAPI backend.
 
 - `chat-system/`: the OpenBeavs Chat System. `chat-system/web-ui/` holds the Web UI, the Svelte chat interface. `chat-system/application-services/` holds Application Services (the chat REST API and sign-in), a Python package with its own environment, database and migrations. `chat-system/conversation-agent/` holds Chris, the Conversation Agent (an ADK agent served over A2A), a Python package with its own environment. Each runs as its own service.
-- `backend/`: the end-to-end tests, which run the Chat System and the registry together, and the fake-model stack the browser pipeline test starts.
+- `tests/end-to-end/`: the end-to-end tests, which run the Chat System and the registry together, and the fake-model stack the browser pipeline test starts.
 - `agent-registry/`: the Agent Registry (expert selection over A2A, and registry management), a Python package with its own environment, database and migrations, run as its own service.
 - `docs/`: design, requirements, risk, and database documentation, and the RFCs.
 

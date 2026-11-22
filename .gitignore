@@ -1,5 +1,4 @@
 # Secrets and local environments
-backend/.env
 .env
 .venv/
 
@@ -9,7 +8,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
-backend/build/
 agent-registry/build/
 chat-system/conversation-agent/build/
 chat-system/application-services/build/

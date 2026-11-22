@@ -4,10 +4,11 @@
 -- Equivalent of Alembic revision a7c3e91d5b02 of the earlier shared migration
 -- history (backend/alembic/, since removed).
 --
--- Use this file ONLY if the database was created from create_tables_cloud.sql
--- (no alembic_version table). If it was created with Alembic, follow
--- agent-registry/README.md, "A database built by the earlier, shared migrations",
--- instead and do not run this file.
+-- Use this file ONLY if the database was created from the schema export
+-- docs/db_docs/create_tables_cloud.sql (since removed; each owner's migrations
+-- now create its tables) and has no alembic_version table. If it was created
+-- with Alembic, follow agent-registry/README.md, "A database built by the
+-- earlier, shared migrations", instead and do not run this file.
 --
 -- Safe for existing data: every agent already in the table becomes 'approved',
 -- so Chris keeps routing to the same agents as before. The default is then
@@ -41,9 +42,12 @@ COMMIT;
 -- AFTER: every existing agent should be approved (expect only 'approved' rows)
 --   SELECT id, name, status, is_active FROM agents ORDER BY name;
 --
--- If the database is managed with Alembic from now on, record the revision so
--- `alembic upgrade head` does not try to run it again:
---   alembic stamp a7c3e91d5b02
+-- To manage the database with Alembic from now on, record this revision in the
+-- earlier shared history, which this tree no longer holds: from a checkout of it
+-- (agent-registry/README.md, step 2 of the section named above, says how to find
+-- one), run `alembic stamp a7c3e91d5b02`. Then follow that section, and the same
+-- section of chat-system/application-services/README.md, to move each owner onto
+-- its own migrations, in the schema shared-resources/postgres/README.md gives it.
 
 -- ROLLBACK (only if you must undo this change):
 --   BEGIN;

@@ -14,8 +14,7 @@ from agent_registry.db.seed_agents import INITIAL_AGENTS, seed_agents
 from agent_registry.models import Agent
 from agent_registry.service import routable_agents
 
-REPOSITORY = Path(__file__).resolve().parents[2]
-SEED_SQL = REPOSITORY / "docs/db_docs/seed_agents.sql"
+SEED_SQL = Path(__file__).resolve().parents[1] / "scripts/seed_agents.sql"
 OSU_ID = "8f695b47-27a7-4ce7-9932-975fc618ba1d"
 
 

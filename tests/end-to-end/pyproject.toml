@@ -1,11 +1,11 @@
 [project]
-name = "openbeavs-backend"
+name = "openbeavs-end-to-end-tests"
 version = "0.1.0"
 description = "OpenBeavs v2 end-to-end tests: the tests and the fake-model stack that run the Chat System and the Agent Registry together."
 requires-python = ">=3.12"
 dependencies = [
-    # Application Services (../chat-system/application-services), the Conversation Agent
-    # (../chat-system/conversation-agent) and the Agent Registry (../agent-registry) are
+    # Application Services (chat-system/application-services), the Conversation Agent
+    # (chat-system/conversation-agent) and the Agent Registry (agent-registry) are
     # packages of their own. The tests here and the fake-model stack run them together,
     # so this environment installs all three from their folders as editable packages,
     # with the libraries they bring.
@@ -19,9 +19,9 @@ dependencies = [
 package = false
 
 [tool.uv.sources]
-openbeavs-agent-registry = { path = "../agent-registry", editable = true }
-openbeavs-application-services = { path = "../chat-system/application-services", editable = true }
-openbeavs-conversation-agent = { path = "../chat-system/conversation-agent", editable = true }
+openbeavs-agent-registry = { path = "../../agent-registry", editable = true }
+openbeavs-application-services = { path = "../../chat-system/application-services", editable = true }
+openbeavs-conversation-agent = { path = "../../chat-system/conversation-agent", editable = true }
 
 [dependency-groups]
 dev = [

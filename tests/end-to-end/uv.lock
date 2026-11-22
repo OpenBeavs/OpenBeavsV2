@@ -903,7 +903,7 @@ wheels = [
 [[package]]
 name = "openbeavs-agent-registry"
 version = "0.0.0"
-source = { editable = "../agent-registry" }
+source = { editable = "../../agent-registry" }
 dependencies = [
     { name = "a2a-sdk", extra = ["http-server"] },
     { name = "alembic" },
@@ -940,7 +940,7 @@ dev = [
 [[package]]
 name = "openbeavs-application-services"
 version = "0.0.0"
-source = { editable = "../chat-system/application-services" }
+source = { editable = "../../chat-system/application-services" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "alembic" },
@@ -973,38 +973,9 @@ dev = [
 ]
 
 [[package]]
-name = "openbeavs-backend"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "openbeavs-agent-registry" },
-    { name = "openbeavs-application-services" },
-    { name = "openbeavs-conversation-agent" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "openbeavs-agent-registry", editable = "../agent-registry" },
-    { name = "openbeavs-application-services", editable = "../chat-system/application-services" },
-    { name = "openbeavs-conversation-agent", editable = "../chat-system/conversation-agent" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8,<10" },
-    { name = "ruff", specifier = ">=0.14,<1" },
-]
-
-[[package]]
 name = "openbeavs-conversation-agent"
 version = "0.0.0"
-source = { editable = "../chat-system/conversation-agent" }
+source = { editable = "../../chat-system/conversation-agent" }
 dependencies = [
     { name = "a2a-sdk", extra = ["http-server"] },
     { name = "google-adk", extra = ["a2a"] },
@@ -1024,6 +995,35 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "starlette" },
     { name = "uvicorn", extras = ["standard"] },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8,<10" },
+    { name = "ruff", specifier = ">=0.14,<1" },
+]
+
+[[package]]
+name = "openbeavs-end-to-end-tests"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "openbeavs-agent-registry" },
+    { name = "openbeavs-application-services" },
+    { name = "openbeavs-conversation-agent" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "openbeavs-agent-registry", editable = "../../agent-registry" },
+    { name = "openbeavs-application-services", editable = "../../chat-system/application-services" },
+    { name = "openbeavs-conversation-agent", editable = "../../chat-system/conversation-agent" },
 ]
 
 [package.metadata.requires-dev]

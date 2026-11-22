@@ -27,19 +27,19 @@ Each login's `search_path` is its own schema, so the tables it creates land ther
 
 ## Test against it
 
-The Application Services, Agent Registry, and backend tests run on SQLite unless they are given a PostgreSQL server prepared as above. Give them one URL per login, and they create each owner's tables signed in as that owner and run each owner's code under its own login:
+The Agent Registry's, Application Services', and end-to-end tests run on SQLite unless they are given a PostgreSQL server prepared as above. Give them one URL per login, and they create each owner's tables signed in as that owner and run each owner's code under its own login:
 
 ```bash
 export TEST_CHAT_SYSTEM_DATABASE_URL="postgresql+psycopg2://chat_system:$CHAT_SYSTEM_PASSWORD@127.0.0.1:5432/openbeavs"
 export TEST_REGISTRY_DATABASE_URL="postgresql+psycopg2://registry:$REGISTRY_PASSWORD@127.0.0.1:5432/openbeavs"
 (cd agent-registry && uv run pytest)
 (cd chat-system/application-services && uv run pytest)
-(cd backend && uv run pytest)
+(cd tests/end-to-end && uv run pytest)
 ```
 
 The registry's own tests read only `TEST_REGISTRY_DATABASE_URL`, and Application Services' only `TEST_CHAT_SYSTEM_DATABASE_URL`. These two URLs begin `postgresql+psycopg2://` because SQLAlchemy reads them, and `psycopg2` is the PostgreSQL driver the packages install. A URL that begins `postgresql://` asks SQLAlchemy for a driver they lack.
 
-`tests/test_database_grants.py` tests the boundary itself: each login works in its own schema and is refused on the other's. Without the two URLs those tests are skipped, and the rest of the suite runs on SQLite. With the same two variables set, `npm run test:pipeline` in `chat-system/web-ui/` runs the browser pipeline against the server as well.
+`tests/end-to-end/tests/test_database_grants.py` tests the boundary itself: each login works in its own schema and is refused on the other's. Without the two URLs those tests are skipped, and the rest of the suite runs on SQLite. With the same two variables set, `npm run test:pipeline` in `chat-system/web-ui/` runs the browser pipeline against the server as well.
 
 The tests drop and recreate each owner's tables, so give them a database kept for testing.
 

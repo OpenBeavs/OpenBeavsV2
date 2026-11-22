@@ -19,7 +19,7 @@ def seed(db: Session, monkeypatch: pytest.MonkeyPatch, request):
     """Run ``seed_agents`` against the test database."""
     if request.param == "sql":
         sql = (
-            Path(__file__).resolve().parents[2] / "docs/db_docs/seed_agents.sql"
+            Path(__file__).resolve().parents[1] / "scripts/seed_agents.sql"
         ).read_text()
         # SQLite exercises the INSERT/conflict behavior; PostgreSQL JSON casts
         # are the only syntax adaptation. This is not a PostgreSQL rehearsal.

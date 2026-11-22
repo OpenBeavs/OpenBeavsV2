@@ -473,7 +473,7 @@ Locally, a fresh `agent-registry/openbeavs.db` is simpler: run the migrations an
 seed. To keep the agents an existing `backend/openbeavs.db` holds, copy that file to
 `agent-registry/openbeavs.db` and follow steps 2 to 5 on the copy.
 
-Neither seed (`agent_registry/db/seed_agents.py`, `docs/db_docs/seed_agents.sql`)
+Neither seed (`agent_registry/db/seed_agents.py`, `scripts/seed_agents.sql`)
 inserts Chris: he is the orchestrator, his discovery card is served by his own code, and
 `routable_agents()` excludes the id `chris` in any case. Both seeds insert missing
 default agents as `approved` and leave existing records entirely unchanged. Re-running
@@ -596,7 +596,7 @@ against PostgreSQL, set `TEST_REGISTRY_DATABASE_URL` as
 [the shared PostgreSQL server](../shared-resources/postgres/README.md#test-against-it)
 describes. Live model calls verify
 provider configuration separately; they are not a repeatable accuracy benchmark.
-See the [end-to-end checks](../backend/README.md#dependencies-and-checks) for the
+See the [end-to-end checks](../tests/end-to-end/README.md#dependencies-and-checks) for the
 tests that run the registry with Application Services and Chris,
 and [the Web UI's README](../chat-system/web-ui/README.md) for browser validation.
 

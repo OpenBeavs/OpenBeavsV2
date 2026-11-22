@@ -111,13 +111,13 @@ To automatically close an issue tracked on your project board or GitHub reposito
 
 ## Code Style, Linting & Formatting
 
-Python lint uses `uv run ruff check .` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `backend/`. Frontend `npm run lint` runs
+Python lint uses `uv run ruff check .` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `tests/end-to-end/`. Frontend `npm run lint` runs
 ESLint without rewriting files, followed by Svelte/TypeScript checks. Keep
 changes readable and limited to the feature being implemented.
 
 ## Testing
 
-Run `uv run pytest` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `backend/`, including their
+Run `uv run pytest` from `agent-registry/`, `chat-system/conversation-agent/`, `chat-system/application-services/`, and `tests/end-to-end/`, including their
 authorization tests. From `chat-system/web-ui/`,
 run `npm run test`, `npm run build`, and `npm run test:e2e` after installing the
 Playwright Chromium browser. Browser tests use API fixtures; a live Gemini

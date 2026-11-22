@@ -30,14 +30,14 @@ test-registry:
 	cd agent-registry && python -m pytest
 
 test-backend:
-	cd backend && python -m pytest
+	cd tests/end-to-end && python -m pytest
 
 test-frontend:
 	cd chat-system/web-ui && npm test
 
 lint:
 	cd agent-registry && python -m ruff check .
-	cd backend && python -m ruff check .
+	cd tests/end-to-end && python -m ruff check .
 	cd chat-system/web-ui && npm run check
 
 # ── Database ──────────────────────────────────────────────────────────────────

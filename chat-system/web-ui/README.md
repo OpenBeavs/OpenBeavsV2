@@ -138,8 +138,8 @@ navigation, rendering safety, input, errors, refresh, mobile keyboard behavior,
 and the absence of unsupported API calls. These test dependencies are retained
 only for development; no browser AI or Open WebUI runtime packages are needed.
 
-From `chat-system/application-services/`, and again from `backend/`, whose environment
-`test:pipeline` uses to start the stack:
+From `chat-system/application-services/`, and again from `tests/end-to-end/`, whose
+environment `test:pipeline` uses to start the stack:
 
 ```bash
 uv sync --locked
@@ -147,7 +147,7 @@ uv run ruff check .
 PYTHON_DOTENV_DISABLED=1 DATABASE_URL=sqlite:///:memory: uv run pytest
 ```
 
-`.github/workflows/checks.yml` runs the Application Services and backend suites (including security-related
+`.github/workflows/checks.yml` runs the Application Services and end-to-end suites (including security-related
 authorization cases), Ruff, Web UI lint/type checks, unit tests, build, and
 browser tests. Secret scanning and production dependency-policy gates remain
 separate team work; this workflow does not claim to implement them.

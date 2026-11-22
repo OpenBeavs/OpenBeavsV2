@@ -207,4 +207,4 @@ validation, sign-in, the models, and the migrations, with no Gemini key. To run 
 against PostgreSQL, set `TEST_CHAT_SYSTEM_DATABASE_URL` as
 [the shared PostgreSQL server](../../shared-resources/postgres/README.md#test-against-it)
 describes. The tests that run Application Services together with Chris and the
-registry are in `backend/tests/` at the repository root.
+registry are in `tests/end-to-end/` at the repository root.
