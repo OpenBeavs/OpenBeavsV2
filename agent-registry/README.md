@@ -18,7 +18,7 @@ in **manual** mode it waits for an admin to approve it.
 
 It is its own Python package, `agent_registry`, in this folder, with its own
 environment, its own database holding the `agents` table described in
-`docs/db_docs/database-architecture.md`, and its own migrations (`migrations/`). No other
+`docs/database/database-architecture.md`, and its own migrations (`migrations/`). No other
 system reads that table. The registry runs as its own service
 (`agent_registry.a2a_app:create_standalone_app`, port 8001 locally), which serves both
 registry management (`/registry/*`) and A2A selection (`/a2a/registry/`). Application
@@ -632,5 +632,5 @@ and [the Web UI's README](../chat-system/web-ui/README.md) for browser validatio
 - **The same agent can be registered twice under different hostnames.** Uniqueness is
   on the card URL, so Cloud Run's two hostnames for one service count as two agents.
 - **No pagination.**
-- `docs/db_docs/database-erd.png` was not regenerated; `database-erd.mmd` and the
+- `docs/database/database-erd.png` was not regenerated; `database-erd.mmd` and the
   diagram in `database-architecture.md` are current.
