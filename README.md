@@ -226,7 +226,161 @@ The Registry's own service serves its admin API, at `/registry/agents`; Applicat
 
 ## Windows
 
-The launcher runs on Windows and opens each service in a console of its own. uv and Node.js behave the same in PowerShell, so run the install, database, and test commands above from each folder, with PowerShell's syntax for changing folders and setting variables (`$env:DATABASE_URL = 'sqlite:///./openbeavs.db'`). Start the stack from the repository root with `.\chat-system\application-services\.venv\Scripts\python.exe start-dev.py`. These Windows steps have not been rehearsed for this layout.
+Use PowerShell for the commands below. Run them from the repository root, in order, and stop if a command fails. Homebrew, Bash, and Make are not required on Windows.
+
+### Prerequisites
+
+Install Git, Node.js **22 or newer**, and uv. Docker Desktop is needed only for the PostgreSQL tests. A Gemini API key is needed only for live answers; the automated tests run without one.
+
+Install uv using its [official Windows package](https://docs.astral.sh/uv/getting-started/installation/#winget):
+
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+Open a new PowerShell window after installation and verify the tools:
+
+```powershell
+git --version
+node --version
+npm.cmd --version
+uv --version
+```
+
+Each Python project requests Python 3.12, and uv obtains it if needed. If you already have the repository, change to its root before continuing. For a new checkout of the restructuring branch:
+
+```powershell
+git clone --branch restructure/v2-tree --single-branch https://github.com/OpenBeavs/OpenBeavsV2.git
+cd .\OpenBeavsV2
+```
+
+The branch above is the source of PR #33. After that work is merged, use the team's intended development branch instead.
+
+### Install
+
+```powershell
+foreach ($project in @(
+    'agent-registry'
+    'chat-system/conversation-agent'
+    'chat-system/application-services'
+    'tests/end-to-end'
+)) {
+    uv --directory $project sync --locked
+    if ($LASTEXITCODE -ne 0) { throw "Install failed: $project" }
+}
+
+Push-Location chat-system/web-ui
+try {
+    npm.cmd ci
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend installation failed' }
+    npx.cmd playwright install chromium
+    if ($LASTEXITCODE -ne 0) { throw 'Chromium installation failed' }
+}
+finally {
+    Pop-Location
+}
+```
+
+Each Python project has its own `.venv`; Python packages are not installed globally. `uv run` selects the appropriate environment without activation. Frontend packages go into `chat-system/web-ui/node_modules`. The `.cmd` suffix avoids PowerShell execution-policy restrictions on npm's and npx's `.ps1` wrappers.
+
+### Settings
+
+Every service reads the one `.env` at the repository root. If the team supplied a configured file, place it there. Otherwise, move the earlier layout's settings if present, or copy the example without overwriting an existing file:
+
+```powershell
+if ((Test-Path -LiteralPath backend/.env) -and !(Test-Path -LiteralPath .env)) {
+    Move-Item -LiteralPath backend/.env -Destination .env -ErrorAction Stop
+}
+if (!(Test-Path -LiteralPath .env)) {
+    Copy-Item -LiteralPath .env.example -Destination .env -ErrorAction Stop
+}
+```
+
+Privately configure `GEMINI_API_KEY`, `REGISTRY_MODEL`, and `CHRIS_MODEL` before testing live answers. Never commit `.env`, paste its contents into chat, or create additional `.env` files in component folders. For this local SQLite setup, leave `DATABASE_URL` absent or set it to `sqlite:///./openbeavs.db`.
+
+The example enables local development authentication bypass (`AUTH_BYPASS_DEV=true`) and local unauthenticated Registry selection (`REGISTRY_A2A_AUTH=dev`). These settings are for local development. Microsoft Entra sign-in requires the separate configuration described under [Settings](#settings).
+
+### Databases
+
+In a fresh PowerShell window at the repository root, create the two local SQLite databases and seed the Registry. These commands explicitly select SQLite and disable `.env` loading during initialization:
+
+```powershell
+$env:PYTHON_DOTENV_DISABLED = '1'
+$env:DATABASE_URL = 'sqlite:///./openbeavs.db'
+
+try {
+    uv --directory agent-registry run alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw 'Registry migration failed' }
+    uv --directory agent-registry run python -m agent_registry.database.seed_agents
+    if ($LASTEXITCODE -ne 0) { throw 'Registry seeding failed' }
+    uv --directory chat-system/application-services run alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw 'Application Services migration failed' }
+}
+finally {
+    Remove-Item Env:PYTHON_DOTENV_DISABLED -ErrorAction SilentlyContinue
+    Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+}
+```
+
+This creates `agent-registry/openbeavs.db` and `chat-system/application-services/openbeavs.db`. The Conversation Agent has no database. Rerun migrations after receiving new migrations; rerunning the seed leaves existing default agents unchanged. Close this setup window afterward so its temporary environment changes cannot affect later work.
+
+### Start and stop
+
+Open PowerShell at the repository root and run:
+
+```powershell
+.\chat-system\application-services\.venv\Scripts\python.exe .\start-dev.py
+```
+
+The launcher opens each service in its own console. Keep the launcher terminal open and press **Ctrl+C in that terminal** to stop all four services. Restart after code changes. If a required port is occupied, stop the existing stack before launching another copy.
+
+Open [http://localhost:8080](http://localhost:8080), or the frontend URL printed by the launcher. `FRONTEND_PORT` overrides the port in `MICROSOFT_REDIRECT_URI`; without either setting, the frontend defaults to 5173. Application Services exposes its API documentation at [http://127.0.0.1:8010/docs](http://127.0.0.1:8010/docs), and Registry readiness is at [http://127.0.0.1:8001/ready](http://127.0.0.1:8001/ready).
+
+### Tests
+
+Open a separate, fresh PowerShell window at the repository root. Run every Python project's lint and tests with `.env` loading disabled and an in-memory database:
+
+```powershell
+$env:PYTHON_DOTENV_DISABLED = '1'
+$env:DATABASE_URL = 'sqlite:///:memory:'
+
+try {
+    foreach ($project in @(
+        'agent-registry'
+        'chat-system/conversation-agent'
+        'chat-system/application-services'
+        'tests/end-to-end'
+    )) {
+        uv --directory $project run ruff check .
+        if ($LASTEXITCODE -ne 0) { throw "Lint failed: $project" }
+        uv --directory $project run pytest
+        if ($LASTEXITCODE -ne 0) { throw "Tests failed: $project" }
+    }
+
+    Push-Location chat-system/web-ui
+    try {
+        foreach ($task in @('lint', 'test', 'build', 'test:e2e', 'test:pipeline')) {
+            npm.cmd run $task
+            if ($LASTEXITCODE -ne 0) { throw "Frontend check failed: $task" }
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+finally {
+    Remove-Item Env:PYTHON_DOTENV_DISABLED -ErrorAction SilentlyContinue
+    Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+}
+```
+
+Close the test window afterward. The pipeline test starts the real service code with scripted model and expert responses and drives the UI in Chromium. It needs the `tests/end-to-end` environment installed above, but no Gemini key.
+
+The SQLite run skips the **16 PostgreSQL grants tests**, so it does not prove the database permission boundaries. Follow [Test against it](shared-resources/postgres/README.md#test-against-it) for the PostgreSQL setup and owner-specific connection settings; the shell examples there use macOS syntax and need PowerShell equivalents on Windows. Microsoft Entra sign-in also requires separate verification.
+
+For a live smoke test, confirm the UI shows "Backend connected", ask a general question, ask an OSU question and check the expert attribution, then ask a follow-up that depends on the previous answer. Avoid using "hello" as the routing check: the seeded Hello World expert points to an unavailable sample endpoint. Refreshing the page clears the conversation.
+
+At commit `bd1a6c2`, local Windows verification passed Registry 588, Conversation Agent 152, Application Services 101, end-to-end 106 (with 16 PostgreSQL grants tests skipped), Web UI unit tests 46, browser tests 7, and scripted pipeline tests 9. All Python lint and Web UI lint/type checks passed, and the production build completed with Svelte compatibility warnings. Live Gemini fallback and OSU expert requests also succeeded. PostgreSQL grants and Microsoft Entra sign-in were not verified on Windows. npm reported 19 dependency vulnerabilities in the locked dependencies; these remain unresolved.
 
 ## Contributing
 
