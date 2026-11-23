@@ -125,6 +125,6 @@ Project evidence inspected November 20, 2026 in the local OpenBeavsV2 developmen
 
 Focused execution evidence: November 20, 2026, Python pytest with `-B -p no:cacheprovider`, environment-file loading disabled and an in-memory SQLite database. Selected suites: `test_a2a_auth.py`, `test_selection.py`, `test_chris_gating.py`, `test_pipeline.py`, and `test_registry_failures.py`. Result: 196 passed, one dependency deprecation warning, 20.03 seconds. Migration tests were inspected but were not included in this focused run; Google verification and model calls use test doubles where specified by the suites.
 
-[P8] `LICENSE`, `AGENTS.md` (now `CLAUDE.md`). Licensing, confidentiality, and human-review requirements.
+[P8] `LICENSE`, `AGENTS.md`. Licensing, confidentiality, and human-review requirements.
 
 [P9] October 25 RFC, "Delegation and Validation"; author's supplied local launch/login troubleshooting observations, November 20. Historical self-reported validation and local observations, not independent production measurements.

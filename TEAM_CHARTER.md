@@ -17,7 +17,7 @@ The project roles and their associated responsibilities are defined as follows:
    Responsible for communicating the expectations of the project partner to the team and relaying any status changes within project deliverables between the partner and the team. The PM is the primary individual tracking project progress, managing the sprint backlog, and ensuring scheduled milestones are achieved. The PM also conducts regular check-ins with team members to ensure all contributors are aligned, up to date with meetings, and clear on their project duties.
 
 2. **AI Coordinator:**  
-   Responsible for provisioning and maintaining AI credits, keeping Google Cloud Platform (GCP) configurations up to date, and managing [`CLAUDE.md`](CLAUDE.md). The AI Coordinator ensures all AI coding agents configured in the repository are operational and the workflow architecture is effective.  
+   Responsible for provisioning and maintaining AI credits, keeping Google Cloud Platform (GCP) configurations up to date, and managing [`AGENTS.md`](AGENTS.md). The AI Coordinator ensures all AI coding agents configured in the repository are operational and the workflow architecture is effective.  
    **Confidentiality & Security Responsibilities:**  
    - Oversees team-wide compliance with AI confidentiality guidelines across all external AI tools (e.g., ChatGPT, Claude, Antigravity) and internal agents.  
    - Ensures that no sensitive credentials, service account tokens, or environment variables are passed to or stored within AI prompt contexts.  
@@ -103,12 +103,12 @@ Team members may utilize AI tools of their choice (such as ChatGPT, Claude, Anti
   - **Secrets such as environment variables (`.env`, `.env.local`), private API keys, signing secrets, service account credentials, database passwords, and auth tokens must NEVER be explicitly given or pasted into AI tools or committed to GitHub.**
   - **Microsoft SSO & OSU Account Credentials:** OpenBeavs integrates Microsoft SSO authentication for OSU accounts. Team members must never input real OSU account credentials, passwords, student/staff personally identifiable information (PII), or live session tokens into any AI tool.
   - Mock values, placeholder strings (e.g., `YOUR_API_KEY_HERE`), or variable names must be used in place of actual secrets when interacting with AI tools.
-- **AI Coordinator Oversight:** The AI Coordinator monitors AI tool configurations, credit allocations, and security compliance, maintaining up-to-date instructions in [`CLAUDE.md`](CLAUDE.md).
+- **AI Coordinator Oversight:** The AI Coordinator monitors AI tool configurations, credit allocations, and security compliance, maintaining up-to-date instructions in [`AGENTS.md`](AGENTS.md).
 - **Human Review Mandate:** AI-generated code, documentation, and tests must always be inspected, executed, and validated by a human team member before submitting a pull request or merging into `main`.
 
 ---
 
 ## Associated Project Artifacts
 
-- **AI Agent Context & Operating Instructions:** [`CLAUDE.md`](CLAUDE.md)
+- **AI Agent Context & Operating Instructions:** [`AGENTS.md`](AGENTS.md)
 - **Contribution Guide, Definition of Done & Code of Conduct:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
