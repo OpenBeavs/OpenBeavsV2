@@ -7,12 +7,14 @@ on:
 permissions:
   contents: read
 
+# Each Python package installs into its own environment, so an import from another
+# package fails here as it would in production. Only tests/end-to-end installs all three.
 jobs:
-  backend:
+  agent-registry:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: agent-registry
     env:
       DATABASE_URL: 'sqlite:///:memory:'
       PYTHON_DOTENV_DISABLED: '1'
@@ -21,23 +23,140 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install . -r requirements-dev.txt
-      - run: ruff check .
-      # Includes the guest/owner authorization, trust-tier and persistence tests.
-      - run: pytest
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      # Includes the test that no other system's package is importable here.
+      - run: uv run pytest
 
-  frontend:
+  conversation-agent:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: chat-system/conversation-agent
+    env:
+      PYTHON_DOTENV_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      # Includes the test that no other system's package is importable here.
+      - run: uv run pytest
+
+  application-services:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chat-system/application-services
+    env:
+      DATABASE_URL: 'sqlite:///:memory:'
+      PYTHON_DOTENV_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      # Includes the stateless-chat privacy, sign-in and migration tests, and the test
+      # that no other system's package is importable here.
+      - run: uv run pytest
+
+  # The tests that run the Chat System and the Agent Registry together, on PostgreSQL 16
+  # prepared as shared-resources/postgres/README.md says, so the grants test runs.
+  end-to-end:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/end-to-end
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-superuser
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: 'sqlite:///:memory:'
+      PYTHON_DOTENV_DISABLED: '1'
+      # Throwaway passwords for this job's own server, which no one else can reach.
+      ADMIN_DATABASE_URL: 'postgresql://openbeavs_admin:ci-admin@127.0.0.1:5432/openbeavs'
+      TEST_CHAT_SYSTEM_DATABASE_URL: 'postgresql+psycopg2://chat_system:ci-chat-system@127.0.0.1:5432/openbeavs'
+      TEST_REGISTRY_DATABASE_URL: 'postgresql+psycopg2://registry:ci-registry@127.0.0.1:5432/openbeavs'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: chat-system/web-ui/package-lock.json
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      # The superuser creates an admin login with Cloud SQL's rights (CREATEROLE and
+      # CREATEDB, no superuser) and its database; that login applies owners.sql and sets
+      # the owners' passwords.
+      - name: Prepare PostgreSQL
+        working-directory: .
+        run: |
+          psql 'postgresql://postgres:ci-superuser@127.0.0.1:5432/postgres' -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE openbeavs_admin LOGIN CREATEROLE CREATEDB PASSWORD 'ci-admin'" \
+            -c "CREATE DATABASE openbeavs OWNER openbeavs_admin"
+          psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f shared-resources/postgres/owners.sql
+          psql "$ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -v chat_system=ci-chat-system -v registry=ci-registry <<'SQL'
+          ALTER ROLE chat_system PASSWORD :'chat_system';
+          ALTER ROLE registry PASSWORD :'registry';
+          SQL
+      # Includes tests/test_database_grants.py. A skipped test fails the job: the grants
+      # test skips itself without a server, and a skip means the boundary went unchecked.
+      - name: Run the end-to-end tests and the grants test on PostgreSQL
+        shell: bash
+        run: |
+          uv run pytest -rs | tee "$RUNNER_TEMP/end-to-end.txt"
+          if grep -Eq '[0-9]+ skipped' "$RUNNER_TEMP/end-to-end.txt"; then
+            echo "Tests were skipped; every end-to-end test must run against PostgreSQL." >&2
+            exit 1
+          fi
+      # The browser pipeline starts the real services from this folder's environment
+      # (chat-system/web-ui/playwright.pipeline.config.ts), against the same server.
+      - run: npm ci
+        working-directory: chat-system/web-ui
+      - run: npx playwright install --with-deps chromium
+        working-directory: chat-system/web-ui
+      - run: npm run test:pipeline
+        working-directory: chat-system/web-ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pipeline-test-results
+          path: chat-system/web-ui/test-results/
+          retention-days: 7
+
+  web-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chat-system/web-ui
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: chat-system/web-ui/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm run test
@@ -48,5 +167,5 @@ jobs:
         if: failure()
         with:
           name: browser-test-results
-          path: frontend/test-results/
+          path: chat-system/web-ui/test-results/
           retention-days: 7

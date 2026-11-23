@@ -1,0 +1,41 @@
+# A package of its own, so that importing another system's code fails.
+[project]
+name = "openbeavs-conversation-agent"
+version = "0.0.0"
+description = "OpenBeavs Conversation Agent (Chris): asks the Agent Registry for an expert over A2A, calls it, and relays its answer."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx",
+    "starlette",
+    "uvicorn[standard]",
+    "python-dotenv>=1.0.0",
+    # Chris is a Google ADK agent served over A2A. ADK's A2A support is marked
+    # experimental by Google, so the ADK and A2A SDK versions are pinned together.
+    "google-adk[a2a]==2.13.0",
+    "a2a-sdk[http-server]==1.3.0",
+    # Chris calls Gemini directly when the registry selects no expert or fails.
+    "google-genai>=2.30,<3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "ruff>=0.14,<1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Only conversation_agent is the package. An editable install maps that name alone, so
+# an environment that installs the agent cannot import this folder's tests/.
+[tool.setuptools.packages.find]
+include = ["conversation_agent*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+    # ADK prints this on every A2A object it creates; it is not a problem in our code.
+    "ignore:\\[EXPERIMENTAL\\]:UserWarning",
+]

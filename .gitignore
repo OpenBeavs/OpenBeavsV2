@@ -1,17 +1,32 @@
-agent_registry with new repo
+# Secrets and local environments: a .env at the repository root or in any package
+# folder, and each package's virtual environment
+.env
+.venv/
 
-# Frontend dependencies, generated output and browser-test artifacts
+# Python caches and build output
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+agent-registry/build/
+chat-system/conversation-agent/build/
+chat-system/application-services/build/
+
+# Local database files, such as each owner's openbeavs.db
+*.db
+*.sqlite3
+
+# Web UI dependencies, generated output and browser-test artifacts
 node_modules/
 .svelte-kit/
-frontend/build/
-frontend/test-results/
-frontend/playwright-report/
-frontend/.env
-frontend/.env.*
-!frontend/.env.example
-/frontend/vite.config.ts.timestamp-*.mjs
+chat-system/web-ui/build/
+chat-system/web-ui/test-results/
+chat-system/web-ui/playwright-report/
+chat-system/web-ui/.env
+chat-system/web-ui/.env.*
+/chat-system/web-ui/vite.config.ts.timestamp-*.mjs
 
-.env
 docs/imgs/registry-a2a-flow.png
 docs/imgs/registry-registration-current.png
 docs/imgs/registry-selection-current.png

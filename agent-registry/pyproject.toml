@@ -1,0 +1,40 @@
+# A package of its own, so that importing another system's code fails.
+[project]
+name = "openbeavs-agent-registry"
+version = "0.0.0"
+description = "OpenBeavs Agent Registry: selects an expert over A2A, and serves its admin API."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+    # The A2A server, and the SDK client in scripts/. Pinned to the version the Chat
+    # System's Conversation Agent uses, so both ends speak the same protocol code.
+    "a2a-sdk[http-server]==1.3.0",
+    # Verifies the Google ID tokens of A2A callers (REGISTRY_A2A_AUTH=google).
+    "google-auth>=2.30",
+    "requests>=2.31",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "ruff>=0.14,<1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Only agent_registry is the package. An editable install maps that name alone, so an
+# environment that installs the registry cannot import this folder's tests/ or scripts/.
+[tool.setuptools.packages.find]
+include = ["agent_registry*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
