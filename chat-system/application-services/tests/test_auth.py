@@ -211,7 +211,7 @@ def test_authenticated_chat_message(mock_send, test_db: Session):
     assert msg_resp.status_code == 200
     data = msg_resp.json()
     assert data["response"] == "Hello from Chris to authenticated user!"
-    assert data["chat_id"] is None
+    assert isinstance(data["chat_id"], str) and data["chat_id"]
 
 
 def test_cookie_based_authentication(test_db: Session):

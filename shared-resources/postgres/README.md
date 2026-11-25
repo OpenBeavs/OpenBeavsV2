@@ -116,9 +116,9 @@ SQL
 
 ```bash
 (cd agent-registry && export DATABASE_URL="$REGISTRY_DATABASE_URL" && uv run alembic stamp --purge 182d32a2edcd && uv run alembic current && uv run alembic check)
-(cd chat-system/application-services && export DATABASE_URL="$CHAT_SYSTEM_DATABASE_URL" && uv run alembic stamp --purge 34fddc6e996d && uv run alembic current && uv run alembic check)
+(cd chat-system/application-services && export DATABASE_URL="$CHAT_SYSTEM_DATABASE_URL" && uv run alembic stamp --purge 34fddc6e996d && uv run alembic upgrade head && uv run alembic current && uv run alembic check)
 ```
 
-`stamp` creates the owner's `alembic_version` table in its schema and writes the revision there without running it. `current` then prints `182d32a2edcd (head)` for the registry and `34fddc6e996d (head)` for the chat system, and each `check` reports no new upgrade operations: the moved tables are the ones the owner's first revision creates.
+`stamp` creates the owner's `alembic_version` table in its schema and writes the initial revision there without running it, and `upgrade head` applies any newer chat-system migrations (such as `8c4e1b9a2f10`). `current` then prints `182d32a2edcd (head)` for the registry and `8c4e1b9a2f10 (head)` for the chat system, and each `check` reports no new upgrade operations.
 
 7. Verify, then start each service with its own login in `DATABASE_URL`. Signed in as `registry`, `SELECT count(*) FROM agents;` returns the count from step 3, and signed in as `chat_system` so do `users`, `chats`, `messages`, and `tickets`. As the admin user, `SELECT tablename FROM pg_tables WHERE schemaname = 'public';` returns no rows.

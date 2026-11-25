@@ -20,7 +20,8 @@ from application_services.database.base import ChatSystemBase
 from application_services.models import Chat
 
 PACKAGE = Path(__file__).resolve().parents[1]
-HEAD_REVISION = "34fddc6e996d"  # creates users, chats, messages and tickets
+INITIAL_REVISION = "34fddc6e996d"  # creates users, chats, messages and tickets
+HEAD_REVISION = "8c4e1b9a2f10"  # adds chats.is_pinned
 TABLES = {"users", "chats", "messages", "tickets"}
 POSTGRES_URL = "postgresql+psycopg2://user:placeholder@localhost/openbeavs"
 
@@ -153,6 +154,7 @@ def test_postgres_upgrade_sql(
         "CONSTRAINT chats_user_id_fkey FOREIGN KEY(user_id) REFERENCES users (id) "
         "ON DELETE SET NULL" in sql
     )
+    assert "ADD COLUMN is_pinned BOOLEAN DEFAULT false NOT NULL" in sql
 
 
 def test_postgres_downgrade_sql(
@@ -169,3 +171,28 @@ def test_postgres_downgrade_sql(
         "DROP TABLE chats;",
         "DROP TABLE users;",
     ]
+
+
+def test_upgrade_from_initial_preserves_existing_chats_and_downgrades(
+    sqlite_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = alembic_config(sqlite_url, monkeypatch)
+    command.upgrade(config, INITIAL_REVISION)
+    engine = create_engine(sqlite_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO chats (id, session_type, created_at, updated_at) "
+                "VALUES ('existing-chat', 'authenticated', 1, 1)"
+            )
+        )
+
+    command.upgrade(config, HEAD_REVISION)
+    assert rows(engine, "SELECT is_pinned FROM chats WHERE id = 'existing-chat'") == [
+        (0,)
+    ]
+
+    command.downgrade(config, INITIAL_REVISION)
+    columns = {c["name"] for c in inspect(engine).get_columns("chats")}
+    assert "is_pinned" not in columns
+

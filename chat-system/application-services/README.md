@@ -2,10 +2,9 @@
 
 The Chat System's conventional server code, with no LLM. Whatever must come out exactly right on every request lives here.
 
-- **Turn handling.** For each turn: bound the history the browser sends, hand the message and the history to the Conversation Agent, and return the reply with the expert that answered it. Every channel (website, Teams, voice) passes through this one path.
-- **Sign-in and sessions.** OSU single sign-on through Microsoft Entra ID. Application Services verifies the ID token Microsoft returns, accepts only Oregon State accounts, creates or updates the person's user record, and issues a signed session token, which the browser presents as a bearer token or a cookie. A second Microsoft sign-in with Duo multi-factor authentication raises the session to the privileged tier for 30 minutes. The session is the only source of who is asking: identity claimed in a request body is ignored. A development login (`AUTH_BYPASS_DEV=true`) stands in for Microsoft in local testing.
-- **Later: settings.**
-- **Later: conversation storage.** Loads, renames, and deletes conversations with no call to the Conversation Agent. Turn handling then stores each message and reply with its source, and loads the history from storage in place of the browser's copy.
+- **Turn handling and conversation storage.** For guest requests, bound the history the browser sends, hand the message and the history to the Conversation Agent, and return the reply without saving transcripts. For verified signed-in users, store each turn (`chats`, `messages`) with its routing metadata, load bounded prior turns from storage on continued chats (`chat_id`), and serve `/chat/chats*` to list, load, rename, pin, and delete owned conversations. Every channel (website, Teams, voice) passes through this one path.
+- **Sign-in and sessions.** OSU single sign-on through Microsoft Entra ID. Application Services verifies the ID token Microsoft returns, accepts only Oregon State accounts, creates or updates the person's user record, issues a signed session token (presented as a bearer token or `openbeavs_token` cookie), and clears cookies on `POST /auth/logout`. A second Microsoft sign-in with Duo multi-factor authentication raises the session to the privileged tier for 30 minutes. The session is the only source of who is asking: identity claimed in a request body is ignored. A development login (`AUTH_BYPASS_DEV=true`) stands in for Microsoft in local testing and is refused on Cloud Run or with a non-local database, as are missing or placeholder `AUTH_SECRET_KEY` values.
+- **Later: settings and Web UI sign-in/history wiring.**
 
 Its tables live in the `chat_system` schema, created by `migrations/`.
 
@@ -18,7 +17,11 @@ It is its own Python package, `application_services`, in this folder, with its o
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/health` | Returns `{"status":"ok","app":"OpenBeavs v2"}`; does not check dependencies. |
-| POST | `/chat/message` | Bound client history and call Chris over A2A without saving transcripts. |
+| POST | `/chat/message` | Call Chris over A2A: stateless for guests (`chat_id: null`), persisted for signed-in callers (`chat_id` returned). |
+| GET | `/chat/chats` | List the signed-in user's saved conversations (pinned first, then recently updated); 401 when unauthenticated. |
+| GET | `/chat/chats/{chat_id}` | Load an owned conversation and its chronological messages with routing attribution; 401/404 otherwise. |
+| PATCH | `/chat/chats/{chat_id}` | Rename (`title`) and/or pin (`is_pinned`) an owned conversation; 401/404 otherwise. |
+| DELETE | `/chat/chats/{chat_id}` | Delete an owned conversation (cascades to messages) and return 204; 401/404 otherwise. |
 
 The former `/chris/message` path has been replaced by `/chat/message`; no
 compatibility alias is registered. The agent directory (`/chat/agents`, earlier
@@ -31,6 +34,7 @@ registered agents is the registry's own API (`GET /registry/agents`).
 {
   "message": "What majors does OSU offer?",
   "history": [{"role":"user","content":"Earlier question"}],
+  "chat_id": null,
   "source_domain": "library.oregonstate.edu"
 }
 ```
@@ -58,20 +62,17 @@ A response has this shape:
 The schema accepts legacy `no_match` replies from older Chris instances. Endpoints are never sent to the
 browser. There is no error field. The UI renders `response` in a normal bubble and
 shows “Answered by” with `agent_name` for expert replies. `routing` is null for Gemini answers. The older
-flat fields mirror a selected result and are null otherwise. `chat_id` is always
-null for compatibility. The public endpoint is stateless: history comes only from
-the request, bounded before forwarding to Chris. Omit the current message from
-`history`, because it is supplied separately. Legacy `chat_id`, `guest_session_id`
-and `user_id` request fields are ignored, including IDs belonging to real users.
-No conversation history, routing metadata or guest identifier is saved to the DB.
+flat fields mirror a selected result and are null otherwise.
 
-Errors: 400 for blank message text, 422 for invalid request bodies, 500 for
-chat-to-Chris configuration errors, and 503 when Chris cannot produce a completed
-A2A reply. Failed turns are not added to the browser's successful history.
+- **Unauthenticated (guest) calls:** `chat_id` is always null, and no conversation history, routing metadata, or guest identifier is saved to the DB. Legacy `chat_id`, `guest_session_id`, and `user_id` request fields are ignored, including IDs belonging to real users. History comes only from the request, bounded before forwarding to Chris.
+- **Authenticated calls:** When a valid session token is present, a new turn creates a `chats` row (`session_type = 'authenticated'`) and saves both the user and assistant `messages` rows (including routing metadata), returning the saved `chat_id`. Passing an owned `chat_id` reloads bounded prior turns from the database instead of trusting client `history`, and rejects unowned or legacy guest IDs with 404.
+
+Omit the current message from `history`, because it is supplied separately.
+
+Errors: 400 for blank message text, 404 for unknown or unowned `chat_id` (authenticated calls), 422 for invalid request bodies, 500 for chat-to-Chris configuration errors, and 503 when Chris cannot produce a completed A2A reply or saving fails. Failed turns are never persisted or added to history.
 
 The database owner handles deletion of existing guest chats and their messages
 separately. The former `DELETE /chat/chats/expired` endpoint is removed.
-Account-backed chat storage is not implemented.
 
 ### Sign-in routes
 
@@ -81,13 +82,17 @@ Account-backed chat storage is not implemented.
 | GET | `/auth/login` | Redirects to Microsoft's sign-in page; 503 when Microsoft sign-in is not configured. |
 | GET | `/auth/callback`, `/oauth/microsoft/callback` | Microsoft's redirect: checks the state, verifies the ID token, records the user, and returns a page that hands the session token to the opener window. |
 | GET | `/auth/me` | The signed-in person's profile and tier; 401 without a session. |
+| POST | `/auth/logout` | Clears `openbeavs_token` and `dev_user_email` session cookies. |
 | POST | `/auth/step-up/initiate` | Starts the Duo step-up sign-in; 401 without a session. |
 | GET | `/auth/step-up/callback` | Microsoft's redirect after step-up; issues a privileged session token for 30 minutes. |
-| POST | `/auth/dev/login`, `/auth/dev/elevate` | Development login and elevation; 403 unless `AUTH_BYPASS_DEV=true`. |
+| POST | `/auth/dev/login`, `/auth/dev/elevate` | Development login and elevation; 403 unless `AUTH_BYPASS_DEV=true` in a local environment. |
 
 The Microsoft settings (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`,
 `MICROSOFT_CLIENT_TENANT_ID`, `MICROSOFT_REDIRECT_URI`), `AUTH_SECRET_KEY`, and
 `FRONTEND_ORIGIN` are read from the environment or the `.env` at the repository root.
+The service refuses to start on Cloud Run (`K_SERVICE`/`K_REVISION`/`K_CONFIGURATION`) or
+with a non-local `DATABASE_URL` when `AUTH_BYPASS_DEV=true` or when `AUTH_SECRET_KEY` is
+missing, shorter than 32 bytes, or set to a known placeholder.
 The Web UI has no sign-in screen yet; these routes are the API it will call.
 
 ## Layout
@@ -116,8 +121,9 @@ The chat system's tables, and only those, are created by its own migrations in
 `alembic_version` table, in the `chat_system` schema.
 
 The first revision, `34fddc6e996d`, creates `users`, `chats`, `messages`, and
-`tickets`. `chats.agent_id` holds the id the Agent Registry gave an agent, as plain
-text with no foreign key, because the agents table belongs to the registry.
+`tickets`. Revision `8c4e1b9a2f10` adds `chats.is_pinned` (default `false`). `chats.agent_id`
+holds the id the Agent Registry gave an agent, as plain text with no foreign key, because the
+agents table belongs to the registry.
 
 `DATABASE_URL` selects the database. The default, `sqlite:///./openbeavs.db`, is a file
 in the folder the service starts in: `chat-system/application-services/openbeavs.db`
@@ -150,7 +156,7 @@ removes the other owner's tables from its copy. For the chat system's copy:
    [Agent Registry's README](../../agent-registry/README.md#a-database-built-by-the-earlier-shared-migrations)).
 4. Remove the registry's table from the chat system's copy: `DROP TABLE agents;`. No
    chat table refers to it.
-5. Verify: `uv run alembic current` prints `34fddc6e996d (head)`, `uv run alembic check`
+5. Run `uv run alembic upgrade head` to apply newer revisions (such as `8c4e1b9a2f10`), then verify: `uv run alembic current` prints `8c4e1b9a2f10 (head)`, `uv run alembic check`
    reports no new upgrade operations, and `SELECT count(*) FROM users;` (and the same
    for `chats`, `messages`, and `tickets`) returns what it did before.
 
