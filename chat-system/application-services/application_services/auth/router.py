@@ -86,8 +86,9 @@ def _auth_popup_response(
         value=token,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=AuthConfig.cookie_secure(),
         max_age=7 * 24 * 3600,
+        path="/",
     )
     return response
 
@@ -118,7 +119,7 @@ async def get_authorization_url(
         value=state,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=AuthConfig.cookie_secure(),
         max_age=300,
         path="/",
     )
@@ -146,7 +147,7 @@ async def login_redirect(redirect_uri: str | None = None) -> RedirectResponse:
         value=state,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=AuthConfig.cookie_secure(),
         max_age=300,
         path="/",
     )
@@ -264,6 +265,26 @@ async def get_current_user_profile(
     )
 
 
+@router.post("/logout")
+async def logout(response: Response) -> dict[str, str]:
+    """Clear session cookies so the browser ends its signed-in session."""
+    secure = AuthConfig.cookie_secure()
+    response.delete_cookie(
+        key="openbeavs_token",
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=secure,
+    )
+    response.delete_cookie(
+        key="dev_user_email",
+        path="/",
+        samesite="lax",
+        secure=secure,
+    )
+    return {"status": "ok"}
+
+
 @router.post("/step-up/initiate", response_model=StepUpInitiateResponse)
 async def initiate_step_up(
     response: Response,
@@ -282,7 +303,7 @@ async def initiate_step_up(
         value=state,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=AuthConfig.cookie_secure(),
         max_age=300,
         path="/",
     )

@@ -42,9 +42,10 @@ erDiagram
         string title "Chat title or summary"
         string source_domain "OSU site origin (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"
+        boolean is_pinned "Whether the signed-in owner pinned this chat"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
-        bigint expires_at "24-hour TTL for guest chats; NULL for auth users"
+        bigint expires_at "Legacy expiry (guest storage removed); NULL for auth users"
     }
 
     MESSAGES {

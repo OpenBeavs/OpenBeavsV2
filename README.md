@@ -164,8 +164,8 @@ It answers 200 with the seeded agents; the same request without the headers answ
 - **The seeded OSU expert** (`osu_rag_agent`) runs on Google Cloud Run. When it has been idle it takes about 17 seconds to answer, so the first OSU question after a pause is slow.
 - **The seeded "Hello World Agent"** points at a sample server that answers HTTP 404. The Registry routes a greeting such as "hello" to it, the call fails, and the Web UI shows "Chris is temporarily unavailable" instead of an answer. Ask a real question instead.
 - **An expert's answer** carries a badge under it, "Answered by" and the expert's name, taken from the Registry's record. A general answer from Chris carries no badge.
-- **The conversation lives in the browser.** Application Services stores no conversations; the Web UI sends the history with each message, and a reload clears it.
-- **Sign-in.** Microsoft Entra ID single sign-on is built into Application Services' API (`/auth/*`), and it creates a user record for each person who signs in. The Web UI has no sign-in screen yet, and chat works without signing in.
+- **The conversation lives in the browser for guests, and in Application Services' database for signed-in users.** Unauthenticated chat is stateless (the Web UI sends bounded history with each message, and a reload clears it). Signed-in callers persist chats and turns via `POST /chat/message` (`chat_id`) and `/chat/chats*`.
+- **Sign-in.** Microsoft Entra ID single sign-on (`GET /auth/login`, `/auth/callback`) and `POST /auth/logout` are built into Application Services' API (`/auth/*`), creating a user record for each person who signs in. The Web UI has no sign-in screen yet, and guest chat works without signing in. `AUTH_BYPASS_DEV` and missing/placeholder `AUTH_SECRET_KEY` values are refused in deployments (Cloud Run or non-local databases).
 
 ## Tests
 

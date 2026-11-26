@@ -60,8 +60,8 @@ Keep this overview accurate as the tree changes (see "Documentation rules").
 ### How the system works today
 
 - The Agent Registry, the Conversation Agent, Application Services, and the Web UI each run as a process of their own. The Web UI calls Application Services over HTTP, Application Services calls the Conversation Agent over A2A, and the Conversation Agent calls the Registry, and then the expert, over A2A.
-- Application Services stores no conversations. The browser keeps the conversation and sends its history with each message.
-- Sign-in with Microsoft Entra ID is built as API routes in Application Services (`chat-system/application-services/application_services/auth/`). The Web UI has no sign-in screen yet, and chat works without signing in.
+- Application Services keeps guest chat stateless (the browser keeps guest transcripts and sends bounded history with each message), and persists conversations in its own database (`chats` and `messages`) when a request carries a verified user session.
+- Sign-in with Microsoft Entra ID is built as API routes in Application Services (`chat-system/application-services/application_services/auth/`), alongside `POST /auth/logout` and deployment guards for dev bypass and signing secrets. The Web UI has no sign-in screen yet, and guest chat works without signing in.
 - The Registry's own process serves its admin API. Application Services serves no Registry route and reads no Registry table.
 - The Conversation Agent runs only as its own process, and it has no database.
 - Each owner of data, the Chat System and the Agent Registry, has its own database: locally a SQLite file in its own folder, and on PostgreSQL its own schema and login.

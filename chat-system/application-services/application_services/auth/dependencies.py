@@ -4,7 +4,9 @@ import time
 from collections.abc import Callable
 from typing import Annotated
 
+import jwt
 from fastapi import Depends, Header, HTTPException, Request, status
+from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
 from application_services.auth.config import AuthConfig
@@ -46,17 +48,22 @@ async def get_optional_user(
         # 2. Try validating as raw Microsoft Entra ID token (asymmetric JWKS verification)
         if AuthConfig.is_ms_configured():
             try:
-                ms_claims = verify_microsoft_id_token(token)
-                email = ms_claims.get("email") or ms_claims.get("preferred_username") or ""
-                onid = email.split("@")[0]
-                name = ms_claims.get("name")
-                user = upsert_user(db, email=email, onid=onid, display_name=name)
-                request.state.user = user
-                request.state.elevated_until = None
-                return user
-            except ValueError:
-                # Token provided but invalid
-                pass
+                header = jwt.get_unverified_header(token)
+            except PyJWTError:
+                header = {}
+            if header.get("alg") == "RS256":
+                try:
+                    ms_claims = verify_microsoft_id_token(token)
+                    email = ms_claims.get("email") or ms_claims.get("preferred_username") or ""
+                    onid = email.split("@")[0]
+                    name = ms_claims.get("name")
+                    user = upsert_user(db, email=email, onid=onid, display_name=name)
+                    request.state.user = user
+                    request.state.elevated_until = None
+                    return user
+                except ValueError:
+                    # Token provided but invalid
+                    pass
 
     # 3. Local Developer Bypass (only when AUTH_BYPASS_DEV=true)
     if AuthConfig.is_dev_bypass_enabled():

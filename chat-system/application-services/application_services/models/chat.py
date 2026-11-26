@@ -7,7 +7,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from application_services.database.base import ChatSystemBase
@@ -66,6 +66,13 @@ class Chat(ChatSystemBase):
         nullable=False,
         default="guest",
         doc="Identity mode: 'authenticated', 'guest', or 'a2a'",
+    )
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+        doc="Whether the authenticated user pinned this conversation",
     )
     created_at: Mapped[int] = mapped_column(
         BigInteger,

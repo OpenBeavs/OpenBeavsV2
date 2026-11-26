@@ -7,15 +7,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from application_services.auth.config import check_auth_config
 from application_services.auth.router import router as auth_router
 from application_services.chat.router import router as chat_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Configure logging. Chris runs as its own process (``conversation_agent.run``)."""
+    """Configure logging and refuse unsafe dev auth settings in deployments."""
     logging.basicConfig(level=logging.WARNING)
     logging.getLogger("application_services").setLevel(logging.INFO)
+    check_auth_config()
     yield
 
 

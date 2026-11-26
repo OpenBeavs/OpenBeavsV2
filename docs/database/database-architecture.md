@@ -19,10 +19,11 @@ one owner's tables to the other's, and either set can be created in a database t
 lacks the other. Each owner has its own Alembic history: the one in
 `chat-system/application-services/migrations/` creates the chat system's four tables,
 and the one in `agent-registry/migrations/` creates `agents` alone.
-The public chat service stores no conversation turns; Chris receives message
-text/history over A2A and does not access these tables. Microsoft Entra ID sign-in is
-built in Application Services and creates or updates a row in `users` for each person
-who signs in. Streaming, history pagination, and envelope encryption are not
+The chat service keeps guest chat stateless (Chris receives bounded request history over
+A2A without reading or writing these tables), while authenticated users persist chats
+and turns in `chats` and `messages` (plus CRUD via `/chat/chats*`). Microsoft Entra ID
+sign-in is built in Application Services and creates or updates a row in `users` for each
+person who signs in. Streaming, history pagination, and envelope encryption are not
 implemented by the current API. Cold-start and capacity benefits have not been measured here.
 
 ---
@@ -62,7 +63,7 @@ Both models attempted to call `create_all(bind=engine)` inside their constructor
 ## 3. OpenBeavs V2 Database Architecture
 
 ### 3.1 Design Principles
-1. **Single Responsibility:** The registry stores discovery metadata, and the chat system stores the users who sign in; conversation tables remain as legacy schema.
+1. **Single Responsibility:** The registry stores discovery metadata, and the chat system stores signed-in users and their authenticated conversations (while unauthenticated guest chat remains stateless).
 2. **Single Modern ORM:** SQLAlchemy 2.0 (async/sync) with Alembic for migrations. No dual ORM wrappers.
 3. **Relational Messages:** Conversations are broken down into indexed, sequential message rows rather than monolithic JSON blobs.
 4. **Identity & Privacy:** Schema fields reserve space for OIDC identity and
@@ -119,6 +120,7 @@ erDiagram
         string title "Chat title or summary"
         string source_domain "OSU site origin (e.g. library.oregonstate.edu)"
         string session_type "authenticated | guest | a2a"
+        boolean is_pinned "Whether the signed-in owner pinned this chat"
         bigint created_at "Epoch timestamp"
         bigint updated_at "Epoch timestamp"
         bigint expires_at "Legacy expiry (guest storage removed)"
@@ -195,6 +197,7 @@ Represents conversation sessions started from the web app or embedded Floating A
 - **`title`** (`String`): Conversation title generated from the first prompt.
 - **`source_domain`** (`String`, NULL): OSU domain where the chat originated (e.g. `library.oregonstate.edu`) for domain history isolation.
 - **`session_type`** (`String`, NOT NULL): `'authenticated'`, `'guest'`, or `'a2a'`.
+- **`is_pinned`** (`Boolean`, NOT NULL, default `False`): Whether an authenticated user pinned the chat in their sidebar.
 - **`created_at`** (`BigInteger`): Session start epoch.
 - **`updated_at`** (`BigInteger`): Timestamp of the last received message.
 - **`expires_at`** (`BigInteger`, NULL): Legacy expiry timestamp; no new guest sessions are stored.
@@ -226,16 +229,13 @@ Support and bug feedback tracking.
 
 ## 5. Security, Privacy & Retention Architecture
 
-1. **Stateless public chat:** `/chat/message` uses bounded request history and
-   does not read or write `chats` or `messages`. Guest identifiers and claimed
-   user IDs cannot enable persistence. The browser keeps transcripts in memory.
+1. **Stateless guest chat, authenticated persistence:** Unauthenticated `/chat/message` requests use bounded request history and do not read or write `chats` or `messages`; guest identifiers and claimed `user_id` values cannot enable persistence. Verified signed-in users persist chats/messages under strict `chat.user_id == caller.id` ownership checks.
 2. **Legacy data removal:** The database owner handles cleanup of existing
-   `session_type = 'guest'` chats and their messages after the stateless chat app
+   `session_type = 'guest'` chats and their messages after the stateless guest chat app
    is deployed. The expiry maintenance endpoint has been removed.
-3. **Retained schema:** Chat/message tables and their legacy guest/expiry columns
-   remain for migration compatibility. They do not imply an active persistence
-   feature. Sign-in records users; account-backed history is not implemented. Encryption columns
-   remain reserved schema fields; the public chat service stores no transcripts.
+3. **Retained columns:** Legacy guest/expiry columns (`guest_session_id`, `expires_at`)
+   and reserved encryption columns (`kms_key_ref`, `encrypted_dek`) remain for migration
+   compatibility; envelope encryption is not implemented yet.
 
 ---
 
@@ -259,10 +259,11 @@ Support and bug feedback tracking.
 ## 7. Implementation status
 
 SQLAlchemy's synchronous engine, all five models, each owner's Alembic migrations,
-and agent queries exist. The public chat stores no conversations. The Web UI
-integrates the existing API without adding migrations. Chat calls Chris over A2A;
+and agent queries exist. Guest chat stores no conversations, while signed-in users
+persist and manage conversations (`POST /chat/message`, `/chat/chats*`). The Web UI
+does not yet expose sign-in or saved-chat views. Chat calls Chris over A2A;
 Chris asks the configured registry, calls the selected expert, and falls back to
 Gemini on error or no match. Chris's ADK sessions/tasks are in memory and do not
 change these tables. Sign-in creates and updates user records. A2A service
-authentication, role promotion, encryption, streaming, saved-chat retrieval, and a
+authentication, role promotion, encryption, streaming, and a
 scheduled cleanup service remain future work.
